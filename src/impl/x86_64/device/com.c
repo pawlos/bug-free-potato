@@ -20,6 +20,18 @@ void write_serial(char a) {
 	outb(COM1, a);
 }
 
+void write_serial_str(char *str) {
+	for (size_t i=0; 1; i++) {
+		char character = (uint8_t)str[i];
+
+		if (character == '\0') {
+			return;
+		}
+
+		write_serial(character);
+	}
+}
+
 void initCom() {
 	outb(COM1 + 1, 0x00);
 	outb(COM1 + 3, 0x80);
@@ -37,8 +49,7 @@ void initCom() {
 
 	outb(COM1 + 4, 0x0F);
 	
-	write_serial('o');
-	write_serial('k');
+	write_serial_str("Serial Port initialized");
 }
 
 
