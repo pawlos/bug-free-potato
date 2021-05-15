@@ -15,7 +15,7 @@ $(kernel_object_files): build/kernel/%.o : src/impl/kernel/%.c
 
 $(x86_64_c_object_files): build/x86_64/%.o : src/impl/x86_64/%.c
 	mkdir -p $(dir $@) && \
-	gcc -c -I src/intf -ffreestanding $(patsubst build/x86_64/%.o, src/impl/x86_64/%.c, $@) -o $@
+	gcc -c -I src/intf -masm=intel -ffreestanding $(patsubst build/x86_64/%.o, src/impl/x86_64/%.c, $@) -o $@
 
 
 $(x86_64_asm_object_files): build/x86_64/%.o : src/impl/x86_64/%.asm
