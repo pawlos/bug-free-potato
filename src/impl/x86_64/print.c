@@ -83,3 +83,20 @@ void print_str(char* str) {
 void print_set_color(uint8_t foreground, uint8_t background) {
 	color = foreground + (background << 4);
 }
+
+char hexToStringOuput[128];
+char *hexToString(uint64_t value) {
+	uint8_t size = sizeof(value) * 2 - 1;
+	uint64_t* valuePtr = &value;
+	uint8_t* ptr;
+	uint8_t temp;
+	for (int i = 0; i < size; i++) {
+		ptr = ((uint8_t*)valuePtr + i);
+		temp = ((*ptr & 0xF0) >> 4);
+		hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? 55 : 48);
+		temp = ((*ptr & 0x0F));
+		hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? 55 : 48);
+	}
+	hexToStringOuput[size + 1] = 0;
+	return hexToStringOuput;
+}
