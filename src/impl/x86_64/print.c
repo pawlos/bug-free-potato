@@ -90,13 +90,19 @@ char *hexToString(uint64_t value) {
 	uint64_t* valuePtr = &value;
 	uint8_t* ptr;
 	uint8_t temp;
+
 	for (int i = 0; i < size; i++) {
 		ptr = ((uint8_t*)valuePtr + i);
+
 		temp = ((*ptr & 0xF0) >> 4);
 		hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? 55 : 48);
+
 		temp = ((*ptr & 0x0F));
 		hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? 55 : 48);
 	}
 	hexToStringOuput[size + 1] = 0;
-	return hexToStringOuput;
+	for (int i = 0; i < size; i++) {
+		if (hexToStringOuput[i] != '0') return &hexToStringOuput[i];
+	}
+	return &hexToStringOuput[size];
 }
