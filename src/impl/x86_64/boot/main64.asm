@@ -11,6 +11,8 @@ long_mode_start:
 	mov fs, ax
 	mov gs, ax
 
+	pop rsi
+	pop rdi
 	call kernel_main
 
 	hlt

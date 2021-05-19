@@ -5,6 +5,11 @@ section .text
 bits 32
 start:
 	mov esp, stack_top
+	;save GRUB multiboot info
+	push 0
+	push ebx
+	push 0
+	push eax	
 
 	call check_multiboot
 	call check_cpuid
