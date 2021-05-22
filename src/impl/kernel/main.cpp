@@ -2,7 +2,7 @@
 #include "com.h"
 #include "multiboot.h"
 
-void kernel_main(struct multiboot_info* mbt, unsigned int magic) {
+extern "C" void kernel_main(struct multiboot_info* mbt, unsigned int magic) {
 	initCom();
 	print_clear();
 	if (magic != 0x36d76289)
