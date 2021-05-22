@@ -7,4 +7,8 @@
 #define COM3 0x3E8
 #define COM4 0x2E8
 
-void initCom();
+class ComDevice 
+{
+	public:
+		ComDevice();
+};

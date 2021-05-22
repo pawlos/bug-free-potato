@@ -32,7 +32,7 @@ void write_serial_str(char *str) {
 	}
 }
 
-void initCom() {
+ComDevice::ComDevice() {
 	outb(COM1 + 1, 0x00);
 	outb(COM1 + 3, 0x80);
 	outb(COM1 + 0, 0x03);

@@ -3,7 +3,7 @@
 #include "multiboot.h"
 
 extern "C" void kernel_main(struct multiboot_info* mbt, unsigned int magic) {
-	initCom();
+	ComDevice comDevice;
 	print_clear();
 	if (magic != 0x36d76289)
     {
