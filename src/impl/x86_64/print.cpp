@@ -42,6 +42,10 @@ void TerminalPrinter::print_char(char character) {
 		print_newline();
 		return;
 	}
+	if (character == '\r') {
+		col = 0;
+		return;
+	}
 
 	if (col > NUM_COLS) {
 		print_newline();	
