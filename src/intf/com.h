@@ -11,4 +11,5 @@ class ComDevice
 {
 	public:
 		ComDevice();
+		void write_serial_str(const char *str);
 };

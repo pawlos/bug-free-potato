@@ -1,11 +1,11 @@
 #include "print.h"
 #include "com.h"
 #include "multiboot.h"
+#include "idt.h"
 
 extern const char Logo[];
 
 extern "C" void kernel_main(struct multiboot_info* mbt, unsigned int magic) {
-	ComDevice comDevice;
 	TerminalPrinter terminal;
 	terminal.print_clear();
 	
@@ -19,4 +19,6 @@ extern "C" void kernel_main(struct multiboot_info* mbt, unsigned int magic) {
 	terminal.print_str("\n\n");
 	terminal.print_str("Welcome to 64-bit potat OS\n");
 	terminal.print_str("Boot info: ");
+	InitializeIDT();
+	terminal.print_str("IDT inialiazed...");
 }
