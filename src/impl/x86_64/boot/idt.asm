@@ -3,7 +3,7 @@ idtDescriptor:
 	dw 4095
 	dq _idt
 
-%macro PUSAHLL 0
+%macro PUSHALL 0
 	push rax
 	push rcx
 	push rdx
@@ -25,7 +25,7 @@ idtDescriptor:
 
 [extern isr1_handler]
 isr1:
-	PUSAHLL
+	PUSHALL
 	call isr1_handler
 	POPALL
 	iretq
