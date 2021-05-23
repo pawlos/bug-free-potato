@@ -31,5 +31,7 @@ build-x86_64: $(kernel_object_files) $(x86_64_object_files)
 
 clean:
 	-rm -f build/kernel/*.o
+	-rm -f build/x86_64/*.o
 	-rm -f build/x86_64/boot/*.o
 	-rm -f build/x86_64/device/*.o
+	-rm -f dist/x86_64/kernel.*
