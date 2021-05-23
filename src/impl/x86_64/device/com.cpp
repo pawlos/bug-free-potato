@@ -5,7 +5,7 @@ int is_transmit_empty() {
 	return IO::inb(COM1 + 5) & 0x20;
 }
 
-void write_serial(char a) {
+void ComDevice::write_serial_ch(const char a) {
 	while (is_transmit_empty() == 0);
 
 	IO::outb(COM1, a);
@@ -16,13 +16,12 @@ void ComDevice::write_serial_str(const char *str) {
 		char character = (uint8_t)str[i];
 
 		if (character == '\0') {
-			write_serial('\n');
+			write_serial_ch('\n');
 			return;
 		}
 
-		write_serial(character);
+		write_serial_ch(character);
 	}
-
 }
 
 ComDevice::ComDevice() {

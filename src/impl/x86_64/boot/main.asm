@@ -1,4 +1,4 @@
-global start
+global start, gdt64
 extern long_mode_start
 
 section .text
@@ -9,8 +9,7 @@ start:
 	push 0
 	push ebx
 	push 0
-	push eax	
-
+	push eax
 	call check_multiboot
 	call check_cpuid
 	call check_long_mode
@@ -124,6 +123,7 @@ page_table_l3:
 	resb 4096
 page_table_l2:
 	resb 4096
+
 stack_bottom:
 	resb 4096 * 4
 stack_top:
@@ -131,9 +131,27 @@ stack_top:
 
 section .rodata
 gdt64:
-	dq 0
+.null_segment: equ $ - gdt64
+	dw 0xffff
+	dw 0
+	db 0
+	db 0
+	db 1
+	db 0
 .code_segment: equ $ - gdt64
-	dq (1 << 43) | (1 << 44) | (1 << 47) | (1 << 53)
+	dw 0
+	dw 0
+	db 0
+	db 10011010b
+	db 10101111b
+	db 0
+.data_segment: equ $ - gdt64
+	dw 0
+	dw 0
+	db 0
+	db 10010010b
+	db 0
+	db 0
 .pointer:
 	dw $ - gdt64 - 1
 	dq gdt64

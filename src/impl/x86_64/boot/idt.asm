@@ -23,6 +23,7 @@ idtDescriptor:
 	pop rax
 %endmacro
 
+bits 64
 [extern isr1_handler]
 isr1:
 	PUSHALL
