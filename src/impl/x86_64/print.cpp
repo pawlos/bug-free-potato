@@ -20,6 +20,12 @@ void TerminalPrinter::print_clear() {
 	}
 }
 
+void TerminalPrinter::set_cursor_position(uint8_t posx, uint8_t posy)
+{
+	this->col = posx;
+	this->row = posy;
+}
+
 void TerminalPrinter::print_newline() {
 	col = 0;
 

@@ -44,4 +44,5 @@ class TerminalPrinter
 		void print_char(const char *character);
 		void print_str(const char *str);
 		void print_set_color(uint8_t foreground, uint8_t background);
+		void set_cursor_position(uint8_t posx, uint8_t posy);
 };

@@ -18,6 +18,7 @@ extern "C" void kernel_main(struct multiboot_info* mbt, unsigned int magic) {
 	terminal.print_str(Logo);
 	terminal.print_str("\n\n");
 	terminal.print_str("Welcome to 64-bit potat OS\n");
+	terminal.set_cursor_position(0, 12);
 	terminal.print_str("Boot info: \n");
 	InitializeIDT();
 	terminal.print_str("IDT inialiazed...\n");
