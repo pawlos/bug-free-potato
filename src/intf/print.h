@@ -34,15 +34,15 @@ class TerminalPrinter
 
 	void clear_row(size_t row);
 	void print_newline();
-	void print_char(char character);
 	struct Char* buffer = (struct Char*)0xb8000;
 	size_t col = 0;
 	size_t row = 0;
 	
 	public:
 		void print_clear();
-		void print_char(const char *character);
+		void print_char(const char character);
 		void print_str(const char *str);
 		void print_set_color(uint8_t foreground, uint8_t background);
 		void set_cursor_position(uint8_t posx, uint8_t posy);
+		void print_hex(const uint64_t value);
 };
