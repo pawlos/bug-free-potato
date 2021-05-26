@@ -104,22 +104,32 @@ const char* hexToString(uint64_t value)
 	uint8_t* ptr;
 	uint8_t temp;
 
-	for (int i = 0; i < size; i++)
+	if (value != 0)
 	{
-		ptr = ((uint8_t*)valuePtr + i);
+		for (int i = 0; i < size; i++)
+		{
+			ptr = ((uint8_t*)valuePtr + i);
 
-		temp = ((*ptr & 0xF0) >> 4);
-		hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? 55 : 48);
+			temp = ((*ptr & 0xF0) >> 4);
+			hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? 55 : 48);
 
-		temp = ((*ptr & 0x0F));
-		hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? 55 : 48);
+			temp = ((*ptr & 0x0F));
+			hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? 55 : 48);
+		}
+		hexToStringOuput[size + 1] = 0;
+		int pos = 0;
+		for (int i = 0; i < size * 2; i++, pos++)
+		{
+			if (hexToStringOuput[i] != '0') break;
+		}
+		return &hexToStringOuput[pos];
 	}
-	hexToStringOuput[size + 1] = 0;
-	for (int i = 0; i < size; i++)
+	else
 	{
-		if (hexToStringOuput[i] != '0') return &hexToStringOuput[i];
+		hexToStringOuput[0] = '0';
+		hexToStringOuput[1] = '\0';
 	}
-	return &hexToStringOuput[size];
+	return &hexToStringOuput[0];
 }
 
 void TerminalPrinter::print_hex(uint64_t value)

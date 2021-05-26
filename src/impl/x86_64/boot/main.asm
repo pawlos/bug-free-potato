@@ -8,8 +8,6 @@ start:
 	;save GRUB multiboot info
 	push 0
 	push ebx
-	push 0
-	push eax
 	call check_multiboot
 	call check_cpuid
 	call check_long_mode
