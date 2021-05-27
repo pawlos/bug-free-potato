@@ -76,14 +76,42 @@ void TerminalPrinter::print_char(char character)
 	col++;
 }
 
-void TerminalPrinter::print_str(const char *str)
+const char* hexToString(uint64_t value);
+void TerminalPrinter::print_str(const char *str, ...)
 {
+	va_list ap;
+    va_start(ap, str);
 	for (size_t i=0; 1; i++)
 	{
 		char character = (uint8_t)str[i];
 
-		if (character == '\0') {
+		if (character == '\0') 
+		{
+			va_end(ap);
 			return;
+		}
+
+		if (character == '%')
+		{
+			char next = (uint8_t)str[i+1];
+			switch(next)
+			{
+				case 'x':
+				{
+					int a = va_arg(ap, int);
+					print_str("0x");
+					print_str(hexToString(a));
+					i+=1;
+					continue;
+				}
+				case 's':
+				{
+					char *a = va_arg(ap, char *);
+					print_str(a);
+					i+=1;
+					continue;
+				}
+			}
 		}
 
 		print_char(character);

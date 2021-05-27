@@ -14,9 +14,7 @@ int toEightByteDivisible(uintptr_t addr) {
 void print_boot_info(TerminalPrinter terminal, boot_info* boot_info)
 {
 	terminal.print_str("Boot info: \n");
-	terminal.print_str("Size: 0x");
-	terminal.print_hex(boot_info->size);
-	terminal.print_char('\n');
+	terminal.print_str("Size: %x\n", boot_info->size);
 	uintptr_t start = (uintptr_t)boot_info;
 	uintptr_t end = start + boot_info->size;
 	uintptr_t ptr = start + 8;
@@ -34,73 +32,50 @@ void print_boot_info(TerminalPrinter terminal, boot_info* boot_info)
 			case 1:
 			{
 				boot_command_line* cmd_line = (boot_command_line *)ptr;
-				terminal.print_str("Boot command line: ");
-				terminal.print_str((const char *)&cmd_line->cmd);
-				terminal.print_char('\n');
+				terminal.print_str("Boot command line: %s\n", (const char *)&cmd_line->cmd);
 				break;
 			}
 			case 2:
 			{
 				boot_loader_name* name_tag = (boot_loader_name *)ptr;
-				terminal.print_str("Boot loader name: ");
-				terminal.print_str((const char *)&name_tag->name);
-				terminal.print_char('\n');
+				terminal.print_str("Boot loader name: %s\n", (const char *)&name_tag->name);
 				break;
 			}
 			case 4:
 			{
 				boot_basic_memory* mem = (boot_basic_memory *)ptr;
-				terminal.print_str("Basic memory info - Lower: 0x");
-				terminal.print_hex(mem->mem_lower);
-				terminal.print_str(", Upper: 0x");
-				terminal.print_hex(mem->mem_upper);
-				terminal.print_char('\n');
+				terminal.print_str("Basic memory info - Lower: %x, Upper: %x\n", mem->mem_lower, mem->mem_upper);
+
 				break;
 			}
 			case 5:
 			{
 				boot_bios_device* bios = (boot_bios_device *)ptr;
-				terminal.print_str("BIOS boot device: 0x");
-				terminal.print_hex(bios->biosdev);
-				terminal.print_char('\n');
+				terminal.print_str("BIOS boot device: %x\n", bios->biosdev);
 				break;
 			}
 			case 6:
 			{
 				boot_memory_map* mmap = (boot_memory_map *)ptr;
-				terminal.print_str("Memory map: ");
-				terminal.print_str("Entry size: 0x");
-				terminal.print_hex(mmap->entry_size);
-				terminal.print_str(", Entry version: 0x");
-				terminal.print_hex(mmap->entry_version);
-				terminal.print_char('\n');
+				terminal.print_str("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
 				break;
 			}
 			case 8:
 			{
 				boot_framebuffer* framebuffer = (boot_framebuffer *)ptr;
-				terminal.print_str("Framebuffer addr: 0x");
-				terminal.print_hex(framebuffer->framebuffer_addr);
-				terminal.print_char('\n');
+				terminal.print_str("Framebuffer addr: %x\n", framebuffer->framebuffer_addr);
 				break;
 			}
 			case 9:
 			{
 				boot_elf_symbols* elf = (boot_elf_symbols *)ptr;
-				terminal.print_str("Elf symbols: Num: 0x");
-				terminal.print_hex(elf->num);
-				terminal.print_str(", EntSize: 0x");
-				terminal.print_hex(elf->entsize);
-				terminal.print_char('\n');
+				terminal.print_str("Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
 				break;
 			}
 			case 10:
 			{
 				boot_apm_table* apm_table = (boot_apm_table *)ptr;
-				terminal.print_str("APM table: ");
-				terminal.print_str("Version: 0x");
-				terminal.print_hex(apm_table->version);
-				terminal.print_char('\n');
+				terminal.print_str("APM table - Version: %x\n", apm_table->version);
 				break;
 			}
 			case 14:
@@ -113,20 +88,14 @@ void print_boot_info(TerminalPrinter terminal, boot_info* boot_info)
 			case 21:
 			{
 				boot_loader_physical_address* addr_tag = (boot_loader_physical_address *)ptr;
-				terminal.print_str("Load base address: 0x");
-				terminal.print_hex(addr_tag->load_base_addr);
-				terminal.print_char('\n');
+				terminal.print_str("Load base address: %x\n", addr_tag->load_base_addr);
 				break;
 			}	
 			default:
 			{
 				if (tag->type != 0)
 				{
-					terminal.print_str("Unsupported type: 0x");
-					terminal.print_hex(tag->type);
-					terminal.print_str(", size=0x");
-					terminal.print_hex(tag->size);
-					terminal.print_char('\n');
+					terminal.print_str("Unsupported type = %x, size = %x\n", tag->type, tag->size);
 				}
 				break;
 			}
