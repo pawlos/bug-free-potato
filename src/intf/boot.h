@@ -83,4 +83,32 @@ struct boot_basic_memory
 	uint32_t size;
 	uint32_t mem_lower;
 	uint32_t mem_upper;
-};
+} __attribute__((packed));
+
+struct boot_bios_device
+{
+	uint32_t type;
+	uint32_t size;
+	uint32_t biosdev;
+	uint32_t partition;
+	uint32_t sub_partition;
+} __attribute__((packed));
+
+struct boot_acpi
+{
+	uint32_t type;
+	uint32_t size;
+} __attribute__((packed));
+
+struct boot_framebuffer
+{
+	uint32_t type;
+	uint32_t size;
+	uint64_t framebuffer_addr;
+	uint32_t framebuffer_pitch;
+	uint32_t framebuffer_width;
+	uint32_t framebuffer_height;
+	uint8_t framebuffer_bpp;
+	uint8_t framebuffer_type;
+	uint8_t reserved;
+} __attribute__((packed));

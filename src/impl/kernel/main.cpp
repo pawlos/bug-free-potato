@@ -57,6 +57,14 @@ void print_boot_info(TerminalPrinter terminal, boot_info* boot_info)
 				terminal.print_char('\n');
 				break;
 			}
+			case 5:
+			{
+				boot_bios_device* bios = (boot_bios_device *)ptr;
+				terminal.print_str("BIOS boot device: 0x");
+				terminal.print_hex(bios->biosdev);
+				terminal.print_char('\n');
+				break;
+			}
 			case 6:
 			{
 				boot_memory_map* mmap = (boot_memory_map *)ptr;
@@ -65,6 +73,14 @@ void print_boot_info(TerminalPrinter terminal, boot_info* boot_info)
 				terminal.print_hex(mmap->entry_size);
 				terminal.print_str(", Entry version: 0x");
 				terminal.print_hex(mmap->entry_version);
+				terminal.print_char('\n');
+				break;
+			}
+			case 8:
+			{
+				boot_framebuffer* framebuffer = (boot_framebuffer *)ptr;
+				terminal.print_str("Framebuffer addr: 0x");
+				terminal.print_hex(framebuffer->framebuffer_addr);
 				terminal.print_char('\n');
 				break;
 			}
@@ -84,6 +100,13 @@ void print_boot_info(TerminalPrinter terminal, boot_info* boot_info)
 				terminal.print_str("APM table: ");
 				terminal.print_str("Version: 0x");
 				terminal.print_hex(apm_table->version);
+				terminal.print_char('\n');
+				break;
+			}
+			case 14:
+			{
+				boot_acpi* acpi = (boot_acpi *)ptr;
+				terminal.print_str("Boot ACPI");
 				terminal.print_char('\n');
 				break;
 			}
