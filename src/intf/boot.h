@@ -1,11 +1,25 @@
 #pragma once
 #include <stddef.h>
+#include <print.h>
 
 struct boot_info 
 {
 	uint32_t size;
 	uint32_t reserved;
 } __attribute__((packed));
+
+class BootInfo
+{	
+	private:
+		TerminalPrinter *m_terminal;
+	public:
+		BootInfo(TerminalPrinter* terminal)
+		{
+			this->m_terminal = terminal;
+		}
+		void parse(boot_info *boot_info);
+};
+
 
 struct basic_tag 
 {
