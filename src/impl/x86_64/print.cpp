@@ -96,6 +96,12 @@ void TerminalPrinter::print_str(const char *str, ...)
 			char next = (uint8_t)str[i+1];
 			switch(next)
 			{
+				case '%':
+				{
+					print_char('%');
+					i+=1;
+					continue;
+				}
 				case 'x':
 				{
 					int a = va_arg(ap, int);
