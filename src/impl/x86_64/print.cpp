@@ -76,7 +76,7 @@ void TerminalPrinter::print_char(char character)
 	col++;
 }
 
-const char* hexToString(uint64_t value);
+const char* hexToString(uint64_t value, bool upper = false);
 void TerminalPrinter::print_str(const char *str, ...)
 {
 	va_list ap;
@@ -110,6 +110,14 @@ void TerminalPrinter::print_str(const char *str, ...)
 					i+=1;
 					continue;
 				}
+				case 'X':
+				{
+					int a = va_arg(ap, int);
+					print_str("0x");
+					print_str(hexToString(a,true));
+					i+=1;
+					continue;
+				}
 				case 's':
 				{
 					char *a = va_arg(ap, char *);
@@ -131,13 +139,13 @@ void TerminalPrinter::print_set_color(uint8_t foreground, uint8_t background)
 
 
 char hexToStringOuput[128];
-const char* hexToString(uint64_t value)
+const char* hexToString(uint64_t value, bool upper)
 {
 	uint8_t size = sizeof(value) * 2 - 1;
 	uint64_t* valuePtr = &value;
 	uint8_t* ptr;
 	uint8_t temp;
-
+	int offset = upper ? 55 : 87;
 	if (value != 0)
 	{
 		for (int i = 0; i < size; i++)
@@ -145,10 +153,10 @@ const char* hexToString(uint64_t value)
 			ptr = ((uint8_t*)valuePtr + i);
 
 			temp = ((*ptr & 0xF0) >> 4);
-			hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? 55 : 48);
+			hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? offset : 48);
 
 			temp = ((*ptr & 0x0F));
-			hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? 55 : 48);
+			hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? offset : 48);
 		}
 		hexToStringOuput[size + 1] = 0;
 		int pos = 0;
@@ -164,10 +172,4 @@ const char* hexToString(uint64_t value)
 		hexToStringOuput[1] = '\0';
 	}
 	return &hexToStringOuput[0];
-}
-
-void TerminalPrinter::print_hex(uint64_t value)
-{
-	const char *str = hexToString(value);
-	print_str(str);
 }
