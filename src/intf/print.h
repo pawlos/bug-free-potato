@@ -47,3 +47,5 @@ class TerminalPrinter
 		void set_cursor_position(uint8_t posx, uint8_t posy);
 
 };
+
+const char* hexToString(uint64_t value, bool upper);

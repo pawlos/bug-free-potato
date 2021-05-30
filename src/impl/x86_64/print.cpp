@@ -54,12 +54,20 @@ void TerminalPrinter::print_newline()
 
 void TerminalPrinter::print_char(char character)
 {
-	if (character == '\n') {
+	if (character == '\n')
+	{
 		print_newline();
 		return;
 	}
-	if (character == '\r') {
+	if (character == '\r')
+	{
 		col = 0;
+		return;
+	}
+	if (character == '\t')
+	{
+		col += 4;
+		col = col % NUM_COLS;
 		return;
 	}
 
@@ -80,7 +88,7 @@ const char* hexToString(uint64_t value, bool upper = false);
 void TerminalPrinter::print_str(const char *str, ...)
 {
 	va_list ap;
-    va_start(ap, str);
+	va_start(ap, str);
 	for (size_t i=0; 1; i++)
 	{
 		char character = (uint8_t)str[i];
