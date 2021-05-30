@@ -5,7 +5,7 @@ extern IDT64 _idt[256];
 extern uint64_t isr1;
 extern "C" void LoadIDT();
 
-void InitializeIDT()
+void IDT::initialize()
 {		
 	_idt[1].zero = 0;
 	_idt[1].offset_low  = (uint16_t)(((uint64_t)&isr1 & 0x000000000000FFFF));

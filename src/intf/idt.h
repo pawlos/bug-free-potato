@@ -15,4 +15,14 @@ struct IDT64
 	uint32_t zero;
 };
 
-void InitializeIDT();
+class IDT
+{
+	private:
+		TerminalPrinter *m_terminal;
+	public:
+		IDT(TerminalPrinter* terminal)
+		{
+			this->m_terminal = terminal;
+		}
+		void initialize();
+};
