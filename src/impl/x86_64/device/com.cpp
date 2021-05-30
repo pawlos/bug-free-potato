@@ -2,17 +2,20 @@
 #include "io.h"
 #include "print.h"
 
-int is_transmit_empty() {
+int is_transmit_empty()
+{
 	return IO::inb(COM1 + 5) & 0x20;
 }
 
-void ComDevice::write_serial_ch(const char a) {
+void ComDevice::write_serial_ch(const char a)
+{
 	while (is_transmit_empty() == 0);
 
 	IO::outb(COM1, a);
 }
 
-void ComDevice::write_serial_str(const char *str, ...) {
+void ComDevice::write_serial_str(const char *str, ...)
+{
 	va_list ap;
 	va_start(ap, str);
 	for (size_t i=0; 1; i++) 
@@ -65,7 +68,8 @@ void ComDevice::write_serial_str(const char *str, ...) {
 	}
 }
 
-ComDevice::ComDevice() {
+ComDevice::ComDevice()
+{
 	IO::outb(COM1 + 1, 0x00);
 	IO::outb(COM1 + 3, 0x80);
 	IO::outb(COM1 + 0, 0x03);
@@ -84,6 +88,3 @@ ComDevice::ComDevice() {
 	
 	write_serial_str("Serial Port initialized\n");
 }
-
-
-

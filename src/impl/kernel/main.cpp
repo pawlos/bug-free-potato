@@ -21,7 +21,5 @@ extern "C" void kernel_main(boot_info* boot_info) {
 	BootInfo bi {&terminal};
 	bi.parse(boot_info);
 
-	for(;;) {
-		asm("hlt");
-	}
+	halt();
 }
