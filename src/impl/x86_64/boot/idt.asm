@@ -24,6 +24,14 @@ idtDescriptor:
 %endmacro
 
 bits 64
+[extern isr6_handler]
+isr6:
+	PUSHALL
+	call isr6_handler
+	POPALL
+	iretq
+GLOBAL isr6
+
 [extern isr3_handler]
 isr3:
 	PUSHALL

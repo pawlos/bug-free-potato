@@ -1,5 +1,7 @@
 #pragma once
 
+#define ASMCALL extern "C"
+
 
 void inline halt()
 {

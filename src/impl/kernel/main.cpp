@@ -7,7 +7,7 @@
 extern const char Logo[];
 
 
-extern "C" void kernel_main(boot_info* boot_info) {
+ASMCALL void kernel_main(boot_info* boot_info) {
 	TerminalPrinter terminal;
 
 	terminal.print_clear();	
