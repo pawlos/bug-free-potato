@@ -5,9 +5,10 @@
 extern IDT64 _idt[256];
 extern uint64_t isr0;
 extern uint64_t isr1;
+extern uint64_t isr2;
 extern uint64_t isr3;
 extern uint64_t isr6;
-extern "C" void LoadIDT();
+ASMCALL void LoadIDT();
 
 void init_idt_entry(int irq_no, uint64_t& irq)
 {
@@ -24,6 +25,7 @@ void IDT::initialize()
 {		
 	init_idt_entry(0, isr0);
 	init_idt_entry(1, isr1);
+	init_idt_entry(2, isr2);
 	init_idt_entry(3, isr3);
 	init_idt_entry(6, isr6);
 	
@@ -46,6 +48,11 @@ ASMCALL void isr1_handler()
 	uint8_t c = IO::inb(0x60);
 
 	IO::outb(0x20, 0x20);
+}
+
+ASMCALL void isr2_handler()
+{	
+	kernel_panic("NMI", 2);
 }
 
 ASMCALL void isr3_handler()

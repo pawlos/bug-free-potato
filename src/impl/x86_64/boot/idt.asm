@@ -40,6 +40,14 @@ isr3:
 	iretq
 GLOBAL isr3
 
+[extern isr2_handler]
+isr2:
+	PUSHALL
+	call isr2_handler
+	POPALL
+	iretq
+GLOBAL isr2
+
 [extern isr1_handler]
 isr1:
 	PUSHALL
