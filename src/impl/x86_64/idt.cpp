@@ -3,8 +3,9 @@
 #include "kernel.h"
 
 extern IDT64 _idt[256];
-extern uint64_t isr1;
 extern uint64_t isr0;
+extern uint64_t isr1;
+extern uint64_t isr3;
 extern "C" void LoadIDT();
 
 void init_idt_entry(int irq_no, uint64_t& irq)
@@ -22,6 +23,7 @@ void IDT::initialize()
 {		
 	init_idt_entry(0, isr0);
 	init_idt_entry(1, isr1);
+	init_idt_entry(3, isr3);
 	
 	IO::RemapPic();
 
@@ -41,5 +43,10 @@ extern "C" void isr1_handler()
 extern "C" void isr0_handler()
 {	
 	IO::outb(0x20, 0x20);
-	kernel_panic(0);
+	kernel_panic("Divide by zero", 0);
+}
+
+extern "C" void isr3_handler()
+{	
+	kernel_panic("Debug", 3);
 }

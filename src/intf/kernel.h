@@ -8,7 +8,7 @@ void inline halt()
 	}
 }
 
-void inline kernel_panic(int reason)
+void inline kernel_panic(const char *str, int reason)
 {
 	uint64_t rax, rbx, rcx, rdx, rsi, rdi;
 	uint64_t r8, r9, r10, r11, r12;
@@ -31,7 +31,7 @@ void inline kernel_panic(int reason)
 
 	ComDevice device;
 
-	device.write_serial_str("Kernel_panic: %x\n", reason);
+	device.write_serial_str("Kernel_panic: %s - %x\n", str, reason);
 	device.write_serial_str("RAX: %x\tRBX: %x\n", rax, rbx);
 	device.write_serial_str("RCX: %x\tRDX: %x\n", rcx, rdx);
 	device.write_serial_str("RDX: %x\n", rdx);
