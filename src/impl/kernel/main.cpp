@@ -2,6 +2,7 @@
 #include "com.h"
 #include "boot.h"
 #include "idt.h"
+#include "kernel.h"
 
 extern const char Logo[];
 
