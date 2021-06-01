@@ -7,6 +7,8 @@ extern uint64_t isr0;
 extern uint64_t isr1;
 extern uint64_t isr2;
 extern uint64_t isr3;
+extern uint64_t isr4;
+extern uint64_t isr5;
 extern uint64_t isr6;
 ASMCALL void LoadIDT();
 
@@ -27,6 +29,8 @@ void IDT::initialize()
 	init_idt_entry(1, isr1);
 	init_idt_entry(2, isr2);
 	init_idt_entry(3, isr3);
+	init_idt_entry(4, isr4);
+	init_idt_entry(5, isr5);
 	init_idt_entry(6, isr6);
 	
 	IO::RemapPic();
@@ -38,7 +42,7 @@ void IDT::initialize()
 }
 
 ASMCALL void isr0_handler()
-{	
+{
 	IO::outb(0x20, 0x20);
 	kernel_panic("Divide by zero", 0);
 }
@@ -51,13 +55,23 @@ ASMCALL void isr1_handler()
 }
 
 ASMCALL void isr2_handler()
-{	
+{
 	kernel_panic("NMI", 2);
 }
 
 ASMCALL void isr3_handler()
-{	
+{
 	kernel_panic("Debug", 3);
+}
+
+ASMCALL void isr4_handler()
+{
+	kernel_panic("Overflow", 4);
+}
+
+ASMCALL void isr5_handler()
+{
+	kernel_panic("Bound range exceeded", 5);
 }
 
 ASMCALL void isr6_handler()
