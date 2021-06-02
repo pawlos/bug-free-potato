@@ -64,6 +64,5 @@ void keyboard_routine(uint8_t scancode)
 			const char* current_layout = shiftPressed ? layout_upper : layout;
 			char key = current_layout[scancode];
 		}
-
 	}
 }

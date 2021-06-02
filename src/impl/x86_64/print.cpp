@@ -49,7 +49,7 @@ void TerminalPrinter::print_newline()
 			buffer[col + NUM_COLS * (row - 1)] = character;
 		}
 	}
-	clear_row(NUM_COLS - 1);
+	clear_row(NUM_ROWS - 1);
 }
 
 void TerminalPrinter::print_char(char character)
