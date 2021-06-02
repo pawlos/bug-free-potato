@@ -53,6 +53,15 @@ void BootInfo::parse(boot_info* boot_info)
 			{
 				boot_memory_map* mmap = (boot_memory_map *)ptr;
 				m_terminal->print_str("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
+
+				uintptr_t mem_current = (uintptr_t)&mmap->entries;
+				const uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(uint32_t);
+				while (mem_current < mem_end)
+				{
+					const memory_map_entry* entry = (const memory_map_entry*)mem_current;
+					m_terminal->print_str("\tMemory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
+					mem_current += mmap->entry_size;
+				}
 				break;
 			}
 			case 8:
