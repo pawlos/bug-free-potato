@@ -31,6 +31,11 @@ void TerminalPrinter::set_cursor_position(uint8_t posx, uint8_t posy)
 	this->row = posy;
 }
 
+void TerminalPrinter::freeze_rows(size_t num)
+{
+	this->frozen_rows = num;
+}
+
 void TerminalPrinter::print_newline()
 {
 	col = 0;
@@ -41,7 +46,7 @@ void TerminalPrinter::print_newline()
 		return;
 	}
 
-	for (size_t row = 1; row < NUM_ROWS; row++)
+	for (size_t row = 1 + this->frozen_rows; row < NUM_ROWS; row++)
 	{
 		for (size_t col = 0; col < NUM_COLS; col ++)
 		{

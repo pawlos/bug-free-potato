@@ -38,9 +38,11 @@ class TerminalPrinter
 	struct Char* buffer = (struct Char*)0xb8000;
 	size_t col = 0;
 	size_t row = 0;
+	size_t frozen_rows = 0;
 	
 	public:
 		void print_clear();
+		void freeze_rows(size_t num);
 		void print_char(const char character);
 		void print_str(const char *str, ...);
 		void print_set_color(uint8_t foreground, uint8_t background);
