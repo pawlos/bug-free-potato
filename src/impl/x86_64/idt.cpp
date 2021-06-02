@@ -10,6 +10,8 @@ extern uint64_t isr3;
 extern uint64_t isr4;
 extern uint64_t isr5;
 extern uint64_t isr6;
+
+extern void keyboard_routine(uint8_t scancode);
 ASMCALL void LoadIDT();
 
 void init_idt_entry(int irq_no, uint64_t& irq)
@@ -50,7 +52,7 @@ ASMCALL void isr0_handler()
 ASMCALL void isr1_handler()
 {
 	uint8_t c = IO::inb(0x60);
-
+	keyboard_routine(c);
 	IO::outb(0x20, 0x20);
 }
 
