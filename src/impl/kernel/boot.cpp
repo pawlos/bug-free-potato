@@ -73,7 +73,11 @@ void BootInfo::parse(boot_info* boot_info)
 			case 8:
 			{
 				boot_framebuffer* framebuffer = (boot_framebuffer *)ptr;
-				m_terminal->print_str("Framebuffer addr: %x\n", framebuffer->framebuffer_addr);
+				m_terminal->print_str("Framebuffer addr: %x, width: %x, height: %x, bpp: %x\n",
+									  framebuffer->framebuffer_addr,
+									  framebuffer->framebuffer_width,
+									  framebuffer->framebuffer_height,
+									  framebuffer->framebuffer_bpp);
 				break;
 			}
 			case 9:
