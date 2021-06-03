@@ -126,3 +126,15 @@ struct boot_framebuffer
 	uint8_t framebuffer_type;
 	uint8_t reserved;
 } __attribute__((packed));
+
+struct boot_vbe_info
+{
+	uint32_t type;
+	uint32_t size;
+	uint16_t vbe_mode;
+	uint16_t vbe_infterface_seg;
+	uint16_t vbe_infterface_off;
+	uint16_t vbe_interface_len;
+	uint8_t  vbe_control_info[512];
+	uint8_t  vbe_mode_info[256];
+} __attribute__((packed));

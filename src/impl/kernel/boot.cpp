@@ -64,6 +64,12 @@ void BootInfo::parse(boot_info* boot_info)
 				}
 				break;
 			}
+			case 7:
+			{
+				boot_vbe_info* vbe = (boot_vbe_info *)ptr;
+				m_terminal->print_str("VBE info mode %x\n", vbe->vbe_mode);
+				break;
+			}
 			case 8:
 			{
 				boot_framebuffer* framebuffer = (boot_framebuffer *)ptr;
