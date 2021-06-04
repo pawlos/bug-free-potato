@@ -10,8 +10,8 @@
 class ComDevice 
 {
 	private:
-		void write_serial_ch(const char a);
+		void print_ch(const char a);
 	public:
 		ComDevice();
-		void write_serial_str(const char *str, ...);
+		void print_str(const char *str, ...);
 };

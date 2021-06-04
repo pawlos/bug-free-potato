@@ -33,15 +33,15 @@ void inline kernel_panic(const char *str, int reason)
 
 	ComDevice device;
 
-	device.write_serial_str("Kernel_panic: %s - %x\n", str, reason);
-	device.write_serial_str("RAX: %x\tRBX: %x\n", rax, rbx);
-	device.write_serial_str("RCX: %x\tRDX: %x\n", rcx, rdx);
-	device.write_serial_str("RDX: %x\n", rdx);
-	device.write_serial_str("RSI: %x\tRDI: %x\n", rsi, rdi);
-	device.write_serial_str(" R8: %x\t R9: %x\n",  r8,  r9);
-	device.write_serial_str("R10: %x\tR11: %x\n", r10, r11);
-	device.write_serial_str("R12: %x\tR13: %x\n", r12, r13);
-	device.write_serial_str("R14: %x\tR15: %x\n", r14, r15);
+	device.print_str("Kernel_panic: %s - %x\n", str, reason);
+	device.print_str("RAX: %x\tRBX: %x\n", rax, rbx);
+	device.print_str("RCX: %x\tRDX: %x\n", rcx, rdx);
+	device.print_str("RDX: %x\n", rdx);
+	device.print_str("RSI: %x\tRDI: %x\n", rsi, rdi);
+	device.print_str(" R8: %x\t R9: %x\n",  r8,  r9);
+	device.print_str("R10: %x\tR11: %x\n", r10, r11);
+	device.print_str("R12: %x\tR13: %x\n", r12, r13);
+	device.print_str("R14: %x\tR15: %x\n", r14, r15);
 	
 	halt();
 }

@@ -7,14 +7,14 @@ int is_transmit_empty()
 	return IO::inb(COM1 + 5) & 0x20;
 }
 
-void ComDevice::write_serial_ch(const char a)
+void ComDevice::print_ch(const char a)
 {
 	while (is_transmit_empty() == 0);
 
 	IO::outb(COM1, a);
 }
 
-void ComDevice::write_serial_str(const char *str, ...)
+void ComDevice::print_str(const char *str, ...)
 {
 	va_list ap;
 	va_start(ap, str);
@@ -34,37 +34,37 @@ void ComDevice::write_serial_str(const char *str, ...)
 			{
 				case '%':
 				{
-					write_serial_ch('%');
+					print_ch('%');
 					i+=1;
 					continue;
 				}
 				case 'x':
 				{
 					int a = va_arg(ap, int);
-					write_serial_str("0x");
-					write_serial_str(hexToString(a, false));
+					print_str("0x");
+					print_str(hexToString(a, false));
 					i+=1;
 					continue;
 				}
 				case 'X':
 				{
 					int a = va_arg(ap, int);
-					write_serial_str("0x");
-					write_serial_str(hexToString(a,true));
+					print_str("0x");
+					print_str(hexToString(a,true));
 					i+=1;
 					continue;
 				}
 				case 's':
 				{
 					char *a = va_arg(ap, char *);
-					write_serial_str(a);
+					print_str(a);
 					i+=1;
 					continue;
 				}
 			}
 		}
 
-		write_serial_ch(character);
+		print_ch(character);
 	}
 }
 
@@ -86,5 +86,5 @@ ComDevice::ComDevice()
 
 	IO::outb(COM1 + 4, 0x0F);
 	
-	write_serial_str("Serial Port initialized\n");
+	print_str("Serial Port initialized\n");
 }
