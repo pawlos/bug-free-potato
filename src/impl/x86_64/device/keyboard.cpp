@@ -1,5 +1,6 @@
 #include "keyboard.h"
 #include "com.h"
+#include "kernel.h"
 
 const char layout[128] =
 {
@@ -81,6 +82,10 @@ void keyboard_routine(uint8_t scancode)
 		{			
 			const char* current_layout = shiftPressed ? layout_upper : layout;
 			char key = current_layout[scancode];
+		}
+		if (ctrlPressed && shiftPressed && altPressed)
+		{
+			kernel_panic("Holy trinity!",255);
 		}
 	}
 }
