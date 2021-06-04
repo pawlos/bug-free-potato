@@ -40,6 +40,8 @@ const char layout_upper[128] =
 };
 
 bool shiftPressed = false;
+bool altPressed = false;
+bool ctrlPressed = false;
 
 void keyboard_routine(uint8_t scancode)
 {
@@ -51,6 +53,14 @@ void keyboard_routine(uint8_t scancode)
 		{
 			shiftPressed = false;
 		}
+		else if (code == L_ALT)
+		{
+			altPressed = false;
+		}
+		else if (code == L_CTRL)
+		{
+			ctrlPressed = false;
+		}
 	}
 	else
 	{
@@ -59,8 +69,16 @@ void keyboard_routine(uint8_t scancode)
 		{
 			shiftPressed = true;
 		}
-		else
+		else if (scancode == L_ALT)
 		{
+			altPressed = true;
+		}
+		else if (scancode == L_CTRL)
+		{
+			ctrlPressed = true;
+		}
+		else
+		{			
 			const char* current_layout = shiftPressed ? layout_upper : layout;
 			char key = current_layout[scancode];
 		}
