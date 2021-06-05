@@ -10,6 +10,7 @@ extern uint64_t isr3;
 extern uint64_t isr4;
 extern uint64_t isr5;
 extern uint64_t isr6;
+extern uint64_t isr8;
 
 extern void keyboard_routine(uint8_t scancode);
 ASMCALL void LoadIDT();
@@ -34,6 +35,7 @@ void IDT::initialize()
 	init_idt_entry(4, isr4);
 	init_idt_entry(5, isr5);
 	init_idt_entry(6, isr6);
+	init_idt_entry(8, isr8);
 	
 	IO::RemapPic();
 
@@ -79,4 +81,9 @@ ASMCALL void isr5_handler()
 ASMCALL void isr6_handler()
 {
 	kernel_panic("Invalid opcode", 6);
+}
+
+ASMCALL void isr8_handler()
+{
+	kernel_panic("Double fault", 8);
 }
