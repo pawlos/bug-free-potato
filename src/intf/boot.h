@@ -1,24 +1,13 @@
 #pragma once
 #include <stddef.h>
 #include <print.h>
+#include "kernel.h"
 
 struct boot_info 
 {
 	uint32_t size;
 	uint32_t reserved;
 } __attribute__((packed));
-
-class BootInfo
-{	
-	private:
-		TerminalPrinter *m_terminal;
-	public:
-		BootInfo(TerminalPrinter* terminal)
-		{
-			this->m_terminal = terminal;
-		}
-		void parse(boot_info *boot_info);
-};
 
 
 struct basic_tag 
@@ -138,3 +127,26 @@ struct boot_vbe_info
 	uint8_t  vbe_control_info[512];
 	uint8_t  vbe_mode_info[256];
 } __attribute__((packed));
+
+#define MEMORY_ENTRIES_LIMIT 7
+
+class BootInfo
+{	
+	private:
+		size_t size;
+		boot_command_line* cmd_line;
+		boot_loader_name* loader_name;
+		boot_basic_memory* basic_mem;
+		boot_bios_device* bios;
+		boot_memory_map* mmap;
+		boot_vbe_info* vbe;
+		boot_framebuffer* framebuffer;
+		boot_elf_symbols* elf;
+		boot_apm_table* apm_table;
+		boot_acpi* acpi;
+		boot_loader_physical_address* physical;
+		memory_map_entry* memory_entry[MEMORY_ENTRIES_LIMIT];
+	public:
+		void parse(boot_info *boot_info);
+		void print(TerminalPrinter *terminal);
+};

@@ -20,8 +20,9 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 	IDT idt {&terminal};
 	idt.initialize();
 
-	BootInfo bi {&terminal};
+	BootInfo bi;
 	bi.parse(boot_info);
 
+	bi.print(&terminal);
 	halt();
 }
