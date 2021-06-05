@@ -42,7 +42,6 @@ void IDT::initialize()
 	IO::outb(0x21, 0xfd);
 	IO::outb(0xa1, 0xff);
 	LoadIDT();
-	m_terminal->print_str("IDT initialized...\n");
 }
 
 ASMCALL void isr0_handler()

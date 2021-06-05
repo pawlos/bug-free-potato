@@ -21,6 +21,15 @@ console_start:
 	dd 3
 console_end:
 align 8
+framebuffer_start:
+	dw 5
+	dw 0
+	dd framebuffer_end - framebuffer_start
+	dd 1024
+	dd 768
+	dd 32
+framebuffer_end:
+align 8
 	dw 0  											   ; end marker
 	dw 0
 	dd 8

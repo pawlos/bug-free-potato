@@ -17,12 +17,6 @@ struct IDT64
 
 class IDT
 {
-	private:
-		TerminalPrinter *m_terminal;
 	public:
-		IDT(TerminalPrinter* terminal)
-		{
-			this->m_terminal = terminal;
-		}
 		void initialize();
 };

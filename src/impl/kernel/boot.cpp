@@ -6,6 +6,76 @@ int toEightByteDivisible(uintptr_t addr) {
     return 8 - v;    
 }
 
+uintptr_t BootInfo::get_framebuffer_addr()
+{
+	if (framebuffer == NULL) kernel_panic("BootInfo not parsed!", 253);
+
+	return framebuffer->framebuffer_addr;
+}
+
+void BootInfo::print(ComDevice* debug)
+{
+	debug->print_str("Boot info: \n");
+	debug->print_str("Size: %x\n", size);
+
+	if (cmd_line != NULL)
+	{
+		debug->print_str("Boot command line: %s\n", (const char *)&cmd_line->cmd);
+	}
+	if (loader_name != NULL)
+	{
+		debug->print_str("Boot loader name: %s\n", (const char *)&loader_name->name);
+	}
+	if (basic_mem != NULL)
+	{
+		debug->print_str("Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
+																	   basic_mem->mem_upper);
+	}
+	if (bios != NULL)
+	{
+		debug->print_str("BIOS boot device: %x\n", bios->biosdev);
+	}
+	if (mmap != NULL)
+	{
+		debug->print_str("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
+		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
+		{
+			auto entry = memory_entry[i];
+			if (entry == NULL) break;
+			debug->print_str("\tMemory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
+		}
+	}
+	if (vbe != NULL)
+	{
+		debug->print_str("VBE info mode %x\n", vbe->vbe_mode);
+	}
+	if (framebuffer != NULL)
+	{
+		debug->print_str("Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x\n",
+							framebuffer->framebuffer_addr,
+							framebuffer->framebuffer_width,
+							framebuffer->framebuffer_height,
+							framebuffer->framebuffer_bpp,
+							framebuffer->framebuffer_type);
+	}
+	if (elf != NULL)
+	{
+		debug->print_str("Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
+	}
+	if (apm_table != NULL)
+	{
+		debug->print_str("APM table - Version: %x\n", apm_table->version);
+	}
+	if (acpi != NULL)
+	{
+		debug->print_str("Boot ACPI\n");
+	}
+	if (physical != NULL)
+	{
+		debug->print_str("Load base address: %x\n", physical->load_base_addr);
+	}
+}
+
 void BootInfo::print(TerminalPrinter* terminal)
 {
 	terminal->print_str("Boot info: \n");

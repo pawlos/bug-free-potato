@@ -149,4 +149,6 @@ class BootInfo
 	public:
 		void parse(boot_info *boot_info);
 		void print(TerminalPrinter *terminal);
+		void print(ComDevice *debug);
+		uintptr_t get_framebuffer_addr();
 };
