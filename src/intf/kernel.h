@@ -1,4 +1,5 @@
 #pragma once
+#include "com.h"
 
 #define ASMCALL extern "C"
 
