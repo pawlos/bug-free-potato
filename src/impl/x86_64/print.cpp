@@ -1,4 +1,5 @@
 #include "print.h"
+#include <cstdarg>
 
 uint8_t color = PRINT_COLOR_WHITE | PRINT_COLOR_BLACK << 4;
 

@@ -1,5 +1,5 @@
 #pragma once
-#include <stdint.h>
+#include "defs.h"
 
 
 #define L_SHIFT 0x2A

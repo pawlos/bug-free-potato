@@ -1,8 +1,5 @@
 #pragma once
-
-#include <stdint.h>
-#include <stddef.h>
-#include <stdarg.h>
+#include "defs.h"
 
 enum {
 	PRINT_COLOR_BLACK = 0,

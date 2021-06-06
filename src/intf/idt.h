@@ -1,8 +1,6 @@
 #pragma once
-
-#include <stddef.h>
+#include "defs.h"
 #include "io.h"
-#include "print.h"
 
 struct IDT64
 {

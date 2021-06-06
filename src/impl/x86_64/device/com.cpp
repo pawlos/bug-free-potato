@@ -1,6 +1,7 @@
 #include "com.h"
 #include "io.h"
 #include "print.h"
+#include <cstdarg>
 
 int is_transmit_empty()
 {
