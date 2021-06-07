@@ -90,7 +90,7 @@ void TerminalPrinter::print_char(char character)
 	col++;
 }
 
-const char* hexToString(uint64_t value, bool upper = false);
+template<typename T> const char* hexToString(T value, bool upper);
 void TerminalPrinter::print_str(const char *str, ...)
 {
 	va_list ap;
@@ -120,7 +120,7 @@ void TerminalPrinter::print_str(const char *str, ...)
 				{
 					uint64_t a = va_arg(ap, uint64_t);
 					print_str("0x");
-					print_str(hexToString(a));
+					print_str(hexToString(a, false));
 					i+=1;
 					continue;
 				}
@@ -153,10 +153,10 @@ void TerminalPrinter::print_set_color(uint8_t foreground, uint8_t background)
 
 
 char hexToStringOuput[128];
-const char* hexToString(uint64_t value, bool upper)
+template<typename T> const char* hexToString(T value, bool upper)
 {
 	uint8_t size = sizeof(value) * 2 - 1;
-	uint64_t* valuePtr = &value;
+	T* valuePtr = &value;
 	uint8_t* ptr;
 	uint8_t temp;
 	int offset = upper ? 55 : 87;
