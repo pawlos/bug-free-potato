@@ -1,4 +1,4 @@
-name: C/C++ CI
+name: potat OS CI
 
 on:
   push:
@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - uses: ilammy/setup-nasm@v1
     - uses: actions/checkout@v2
     - name: make clean
       run: make clean
