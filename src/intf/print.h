@@ -48,3 +48,4 @@ class TerminalPrinter
 };
 
 template<typename T> const char* hexToString(T value, bool upper);
+template<typename T> const char* decToString(T value);

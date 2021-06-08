@@ -39,6 +39,13 @@ void ComDevice::print_str(const char *str, ...)
 					i+=1;
 					continue;
 				}
+				case 'd':
+				{
+					int a = va_arg(ap, int);
+					print_str(decToString(a));
+					i += 1;
+					continue;
+				}
 				case 'x':
 				{
 					uint64_t a = va_arg(ap, uint64_t);

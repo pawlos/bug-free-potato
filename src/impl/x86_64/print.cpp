@@ -116,6 +116,13 @@ void TerminalPrinter::print_str(const char *str, ...)
 					i+=1;
 					continue;
 				}
+				case 'd':
+				{
+					int a = va_arg(ap, int);
+					print_str(decToString(a));
+					i += 1;
+					continue;
+				}
 				case 'x':
 				{
 					uint64_t a = va_arg(ap, uint64_t);
@@ -151,6 +158,40 @@ void TerminalPrinter::print_set_color(uint8_t foreground, uint8_t background)
 	color = foreground + (background << 4);
 }
 
+char decToStringOutput[128];
+template<typename T> const char* decToString(T value)
+{
+	T copy = value;
+	bool isNegative;
+	if (copy < 0)
+	{
+		isNegative = true;
+		copy = -copy;
+	}
+	int i = 0;
+	while (copy/10 > 0)
+	{
+		decToStringOutput[i] = copy % 10 + 48;
+		copy /= 10;
+		i++;
+	}
+	decToStringOutput[i] = copy%10 + 48;
+	i++;
+	if (isNegative)
+	{
+		decToStringOutput[i] = '-';
+		i++;
+	}
+	decToStringOutput[i] = NULL;
+	for (int j = 0; j < i/2; j++)
+	{
+		char tmp = decToStringOutput[j];
+		decToStringOutput[j] = decToStringOutput[i - j - 1];
+		decToStringOutput[i - j - 1] = tmp;
+	}
+
+	return &decToStringOutput[0];
+}
 
 char hexToStringOuput[128];
 template<typename T> const char* hexToString(T value, bool upper)
