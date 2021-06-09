@@ -72,7 +72,16 @@ void TerminalPrinter::print_char(char character)
 	}
 	if (character == '\t')
 	{
-		col += 4;
+		size_t backup = col;
+		col += 4 - col % 4;
+		for (size_t i = backup; i < col; i++)
+		{
+			buffer[i + NUM_COLS * row] = (struct Char)
+			{
+				character: (uint8_t)' ',
+				color: color,
+			};
+		}
 		col = col % NUM_COLS;
 		return;
 	}
@@ -82,7 +91,7 @@ void TerminalPrinter::print_char(char character)
 	}
 
 
-	buffer[col + NUM_COLS * row] = (struct  Char)
+	buffer[col + NUM_COLS * row] = (struct Char)
 	{
 		character: (uint8_t)character,
 		color: color,
