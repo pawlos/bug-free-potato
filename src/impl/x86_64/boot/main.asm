@@ -72,19 +72,36 @@ setup_page_tables:
 	or eax, 0b11 ; present, writable
 	mov [page_table_l4], eax
 
-	mov eax, page_table_l2
-	or eax, 0b11; present, writable
-	mov [page_table_l3], eax
-
+	mov esi, page_table_l2
+	mov ebx, page_table_l3
+	mov edi, 0
 	mov ecx, 0
-.loop:
+.loop_l3:
+	push ecx
+	push esi
+	or esi, 0b11; present, writable
+	mov [ebx], esi
+	pop esi
+	mov ecx, 0
+.loop_l2:
+	push ecx
 	mov eax, 0x200000
+	add ecx, edi
 	mul ecx
 	or eax, 0b10000011
-	mov [page_table_l2 + ecx*8], eax
+	pop ecx
+	mov [esi + ecx*8], eax
 	inc ecx
 	cmp ecx, 512
-	jne .loop
+	jne .loop_l2
+	add edi, 512
+	add ebx, 8
+
+	add esi, 512 * 8
+	pop ecx
+	inc ecx
+	cmp ecx, 4
+	jne .loop_l3
 	ret
 
 enable_paging:
@@ -120,7 +137,7 @@ page_table_l4:
 page_table_l3:
 	resb 4096
 page_table_l2:
-	resb 4096
+	resb 4096 * 4
 
 stack_bottom:
 	resb 4096 * 4
