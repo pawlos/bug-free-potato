@@ -51,12 +51,13 @@ void BootInfo::print(ComDevice* debug)
 	}
 	if (framebuffer != NULL)
 	{
-		debug->print_str("Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x\n",
+		debug->print_str("Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
 							framebuffer->framebuffer_addr,
 							framebuffer->framebuffer_width,
 							framebuffer->framebuffer_height,
 							framebuffer->framebuffer_bpp,
-							framebuffer->framebuffer_type);
+							framebuffer->framebuffer_type,
+							framebuffer->framebuffer_pitch);
 	}
 	if (elf != NULL)
 	{
