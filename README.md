@@ -3,7 +3,7 @@
 
 ## Building
 
-    make clean && make build-x86_64
+    make clean && make build-cd
 
 
 ## Running
