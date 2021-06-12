@@ -156,27 +156,27 @@ void BootInfo::parse(boot_info* boot_info)
 		basic_tag* tag = (basic_tag *)ptr;
 		switch(tag->type)
 		{
-			case 1:
+			case BOOT_CMDLINE:
 			{
 				cmd_line = (boot_command_line *)ptr;
 				break;
 			}
-			case 2:
+			case BOOT_LOADER_NAME:
 			{
 				loader_name = (boot_loader_name *)ptr;
 				break;
 			}
-			case 4:
+			case BOOT_BASIC_MEM:
 			{
 				basic_mem = (boot_basic_memory *)ptr;
 				break;
 			}
-			case 5:
+			case BOOT_BIOS:
 			{
 				bios = (boot_bios_device *)ptr;
 				break;
 			}
-			case 6:
+			case BOOT_MMAP:
 			{
 				mmap = (boot_memory_map *)ptr;
 				uintptr_t mem_current = (uintptr_t)&mmap->entries;
@@ -192,32 +192,32 @@ void BootInfo::parse(boot_info* boot_info)
 				}
 				break;
 			}
-			case 7:
+			case BOOT_VBE_INFO:
 			{
 				vbe = (boot_vbe_info *)ptr;
 				break;
 			}
-			case 8:
+			case BOOT_FRAMEBUFFER:
 			{
 				framebuffer = (boot_framebuffer *)ptr;
 				break;
 			}
-			case 9:
+			case BOOT_ELF_SYMBOLS:
 			{
 				elf = (boot_elf_symbols *)ptr;
 				break;
 			}
-			case 10:
+			case BOOT_APM_TABLE:
 			{
 				apm_table = (boot_apm_table *)ptr;
 				break;
 			}
-			case 14:
+			case BOOT_ACPI:
 			{
 				acpi = (boot_acpi *)ptr;
 				break;
 			}
-			case 21:
+			case BOOT_PHYSICAL:
 			{
 				physical = (boot_loader_physical_address *)ptr;
 				break;
