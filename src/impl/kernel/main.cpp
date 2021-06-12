@@ -9,11 +9,10 @@ extern const char Logo[];
 extern const unsigned char PotatoLogo[];
 
 ASMCALL void kernel_main(boot_info* boot_info) {
-	ComDevice debug;
-	debug.print_str("Welcome to 64-bit potat OS\n");
+	klog("Welcome to 64-bit potat OS\n");
+
 	BootInfo bi;
 	bi.parse(boot_info);
-	bi.print(&debug);
 
 	IDT idt;
 	idt.initialize();

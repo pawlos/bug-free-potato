@@ -19,13 +19,19 @@ void ComDevice::print_str(const char *str, ...)
 {
 	va_list ap;
 	va_start(ap, str);
+	print_str(str, ap);
+	va_end(ap);
+}
+
+void ComDevice::print_str(const char *str, va_list args)
+{
 	for (size_t i=0; 1; i++) 
 	{
 		char character = (uint8_t)str[i];
 
 		if (character == '\0') 
 		{
-			va_end(ap);
+			va_end(args);
 			return;
 		}
 		if (character == '%')
@@ -41,14 +47,14 @@ void ComDevice::print_str(const char *str, ...)
 				}
 				case 'd':
 				{
-					int a = va_arg(ap, int);
+					int a = va_arg(args, int);
 					print_str(decToString(a));
 					i += 1;
 					continue;
 				}
 				case 'x':
 				{
-					uint64_t a = va_arg(ap, uint64_t);
+					uint64_t a = va_arg(args, uint64_t);
 					print_str("0x");
 					print_str(hexToString(a, false));
 					i+=1;
@@ -56,7 +62,7 @@ void ComDevice::print_str(const char *str, ...)
 				}
 				case 'X':
 				{
-					uint64_t a = va_arg(ap, uint64_t);
+					uint64_t a = va_arg(args, uint64_t);
 					print_str("0x");
 					print_str(hexToString(a,true));
 					i+=1;
@@ -64,7 +70,7 @@ void ComDevice::print_str(const char *str, ...)
 				}
 				case 's':
 				{
-					char *a = va_arg(ap, char *);
+					char *a = va_arg(args, char *);
 					print_str(a);
 					i+=1;
 					continue;

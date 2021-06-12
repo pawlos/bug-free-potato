@@ -13,45 +13,45 @@ boot_framebuffer* BootInfo::get_framebuffer()
 	return framebuffer;
 }
 
-void BootInfo::print(ComDevice* debug)
+void BootInfo::log()
 {
-	debug->print_str("Boot info: \n");
-	debug->print_str("Size: %x\n", size);
+	klog("Boot info: \n");
+	klog("Size: %x\n", size);
 
 	if (cmd_line != NULL)
 	{
-		debug->print_str("Boot command line: %s\n", (const char *)&cmd_line->cmd);
+		klog("Boot command line: %s\n", (const char *)&cmd_line->cmd);
 	}
 	if (loader_name != NULL)
 	{
-		debug->print_str("Boot loader name: %s\n", (const char *)&loader_name->name);
+		klog("Boot loader name: %s\n", (const char *)&loader_name->name);
 	}
 	if (basic_mem != NULL)
 	{
-		debug->print_str("Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
+		klog("Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
 																	   basic_mem->mem_upper);
 	}
 	if (bios != NULL)
 	{
-		debug->print_str("BIOS boot device: %x\n", bios->biosdev);
+		klog("BIOS boot device: %x\n", bios->biosdev);
 	}
 	if (mmap != NULL)
 	{
-		debug->print_str("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
+		klog("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
 		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
 		{
 			auto entry = memory_entry[i];
 			if (entry == NULL) break;
-			debug->print_str("\tMemory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
+			klog("\tMemory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
 		}
 	}
 	if (vbe != NULL)
 	{
-		debug->print_str("VBE info mode %x\n", vbe->vbe_mode);
+		klog("VBE info mode %x\n", vbe->vbe_mode);
 	}
 	if (framebuffer != NULL)
 	{
-		debug->print_str("Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
+		klog("Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
 							framebuffer->framebuffer_addr,
 							framebuffer->framebuffer_width,
 							framebuffer->framebuffer_height,
@@ -61,81 +61,19 @@ void BootInfo::print(ComDevice* debug)
 	}
 	if (elf != NULL)
 	{
-		debug->print_str("Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
+		klog("Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
 	}
 	if (apm_table != NULL)
 	{
-		debug->print_str("APM table - Version: %x\n", apm_table->version);
+		klog("APM table - Version: %x\n", apm_table->version);
 	}
 	if (acpi != NULL)
 	{
-		debug->print_str("Boot ACPI\n");
+		klog("Boot ACPI\n");
 	}
 	if (physical != NULL)
 	{
-		debug->print_str("Load base address: %x\n", physical->load_base_addr);
-	}
-}
-
-void BootInfo::print(TerminalPrinter* terminal)
-{
-	terminal->print_str("Boot info: \n");
-	terminal->print_str("Size: %x\n", size);
-
-	if (cmd_line != NULL)
-	{
-		terminal->print_str("Boot command line: %s\n", (const char *)&cmd_line->cmd);
-	}
-	if (loader_name != NULL)
-	{
-		terminal->print_str("Boot loader name: %s\n", (const char *)&loader_name->name);
-	}
-	if (basic_mem != NULL)
-	{
-		terminal->print_str("Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
-																		  basic_mem->mem_upper);
-	}
-	if (bios != NULL)
-	{
-		terminal->print_str("BIOS boot device: %x\n", bios->biosdev);
-	}
-	if (mmap != NULL)
-	{
-		terminal->print_str("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
-		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
-		{
-			auto entry = memory_entry[i];
-			if (entry == NULL) break;
-			terminal->print_str("\tMemory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
-		}
-	}
-	if (vbe != NULL)
-	{
-		terminal->print_str("VBE info mode %x\n", vbe->vbe_mode);
-	}
-	if (framebuffer != NULL)
-	{
-		terminal->print_str("Framebuffer addr: %x, width: %x, height: %x, bpp: %x\n",
-							framebuffer->framebuffer_addr,
-							framebuffer->framebuffer_width,
-							framebuffer->framebuffer_height,
-							framebuffer->framebuffer_bpp);
-	}
-	if (elf != NULL)
-	{
-		terminal->print_str("Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
-	}
-	if (apm_table != NULL)
-	{
-		terminal->print_str("APM table - Version: %x\n", apm_table->version);
-	}
-	if (acpi != NULL)
-	{
-		terminal->print_str("Boot ACPI\n");
-	}
-	if (physical != NULL)
-	{
-		terminal->print_str("Load base address: %x\n", physical->load_base_addr);
+		klog("Load base address: %x\n", physical->load_base_addr);
 	}
 }
 
@@ -227,4 +165,5 @@ void BootInfo::parse(boot_info* boot_info)
 		}
 		ptr += tag->size;
 	}
+	this->log();
 }

@@ -157,9 +157,8 @@ class BootInfo
 		boot_acpi* acpi;
 		boot_loader_physical_address* physical;
 		memory_map_entry* memory_entry[MEMORY_ENTRIES_LIMIT];
+		void log();
 	public:
 		void parse(boot_info *boot_info);
-		void print(TerminalPrinter *terminal);
-		void print(ComDevice *debug);
 		boot_framebuffer* get_framebuffer();
 };

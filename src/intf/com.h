@@ -1,5 +1,6 @@
 #pragma once
 #include "defs.h"
+#include <cstdarg>
 
 #define COM1 0x3F8
 #define COM2 0x2F8
@@ -12,5 +13,6 @@ class ComDevice
 		void print_ch(const char a);
 	public:
 		ComDevice();
+		void print_str(const char *str, va_list args);
 		void print_str(const char *str, ...);
 };
