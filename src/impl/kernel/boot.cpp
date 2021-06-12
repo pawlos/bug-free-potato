@@ -6,11 +6,11 @@ int toEightByteDivisible(uintptr_t addr) {
     return 8 - v;    
 }
 
-uintptr_t BootInfo::get_framebuffer_addr()
+boot_framebuffer* BootInfo::get_framebuffer()
 {
 	if (framebuffer == NULL) kernel_panic("BootInfo not parsed!", 253);
 
-	return framebuffer->framebuffer_addr;
+	return framebuffer;
 }
 
 void BootInfo::print(ComDevice* debug)

@@ -8,3 +8,4 @@
 %endmacro
 
 IncBin Logo, "src/impl/x86_64/bins/potato.txt"
+IncBin PotatoLogo, "src/impl/x86_64/bins/potato.raw"
