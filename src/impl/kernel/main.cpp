@@ -4,18 +4,21 @@
 #include "idt.h"
 #include "kernel.h"
 #include "framebuffer.h"
+#include "virtual.h"
 
 extern const char Logo[];
 extern const unsigned char PotatoLogo[];
+static BootInfo bi;
+static IDT idt;
 
 ASMCALL void kernel_main(boot_info* boot_info) {
 	klog("Welcome to 64-bit potat OS\n");
 
-	BootInfo bi;
 	bi.parse(boot_info);
 
-	IDT idt;
 	idt.initialize();
+
+	VMM vmm {bi.get_memory_maps()};
 
 	Framebuffer fb {bi.get_framebuffer()};
 

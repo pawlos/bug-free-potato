@@ -161,4 +161,5 @@ class BootInfo
 	public:
 		void parse(boot_info *boot_info);
 		boot_framebuffer* get_framebuffer();
+		memory_map_entry** get_memory_maps();
 };
