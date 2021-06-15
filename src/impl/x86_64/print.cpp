@@ -132,6 +132,21 @@ void TerminalPrinter::print_str(const char *str, ...)
 					i += 1;
 					continue;
 				}
+				case 's':
+				{
+					const char *a = va_arg(ap, const char *);
+					print_str(a);
+					i+=1;
+					continue;
+				}
+				case 'p':
+				{
+					size_t ptr = va_arg(ap, size_t);
+					print_str("0x");
+					print_str(hexToString(ptr, false));
+					i+=1;
+					continue;
+				}
 				case 'x':
 				{
 					uint64_t a = va_arg(ap, uint64_t);
@@ -145,13 +160,6 @@ void TerminalPrinter::print_str(const char *str, ...)
 					uint64_t a = va_arg(ap, uint64_t);
 					print_str("0x");
 					print_str(hexToString(a,true));
-					i+=1;
-					continue;
-				}
-				case 's':
-				{
-					char *a = va_arg(ap, char *);
-					print_str(a);
 					i+=1;
 					continue;
 				}
