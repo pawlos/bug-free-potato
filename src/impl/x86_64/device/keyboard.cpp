@@ -85,7 +85,7 @@ void keyboard_routine(uint8_t scancode)
 		}
 		if (ctrlPressed && shiftPressed && altPressed)
 		{
-			kernel_panic("Holy trinity!",255);
+			kernel_panic("Holy trinity!", HolyTrinity);
 		}
 	}
 }

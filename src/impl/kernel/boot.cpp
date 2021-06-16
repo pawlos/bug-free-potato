@@ -8,14 +8,14 @@ int toEightByteDivisible(uintptr_t addr) {
 
 boot_framebuffer* BootInfo::get_framebuffer()
 {
-	if (framebuffer == NULL) kernel_panic("BootInfo not parsed!", 253);
+	if (framebuffer == NULL) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
 
 	return framebuffer;
 }
 
 memory_map_entry** BootInfo::get_memory_maps()
 {
-	if (memory_entry == NULL) kernel_panic("BootInfo not parsed!", 253);
+	if (memory_entry == NULL) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
 
 	return memory_entry;
 }
@@ -133,7 +133,7 @@ void BootInfo::parse(boot_info* boot_info)
 				}
 				while (mem_current < mem_end)
 				{
-					if (i >= MEMORY_ENTRIES_LIMIT) kernel_panic("Memory entries limit reached", 254);
+					if (i >= MEMORY_ENTRIES_LIMIT) kernel_panic("Memory entries limit reached", MemEntriesLimitReached);
 					memory_map_entry* entry = (memory_map_entry*)mem_current;
 					memory_entry[i] = entry;
 					i++;

@@ -2,6 +2,13 @@
 #include "com.h"
 #include <cstdarg>
 
+constexpr int HolyTrinity = 255;
+constexpr int MemEntriesLimitReached = 254;
+constexpr int BootInfoNotParsed = 253;
+constexpr int NoSuitableRegion = 252;
+constexpr int NotAbleToAllocateMemory = 251;
+
+
 #define ASMCALL extern "C"
 
 static ComDevice debug;

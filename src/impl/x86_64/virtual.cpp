@@ -49,11 +49,11 @@ void* VMM::kmalloc(size_t size)
 		}
 		if (currentMemorySegment->nextFreeChunk == NULL)
 		{
-			kernel_panic("Not able to allocated more memory.", 251);
+			kernel_panic("Not able to allocated more memory.", NotAbleToAllocateMemory);
 		}
 		currentMemorySegment = currentMemorySegment->nextFreeChunk;
 	}
-	kernel_panic("Not able to allocate memory.", 251);
+	kernel_panic("Not able to allocate memory.", NotAbleToAllocateMemory);
 }
 
 void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
