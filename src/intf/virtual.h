@@ -2,11 +2,20 @@
 #include "defs.h"
 #include "boot.h"
 
+struct kMemoryRegion
+{
+	size_t length;
+	kMemoryRegion* nextFreeChunk;
+	kMemoryRegion* prevFreeChunk;
+	kMemoryRegion* nextChunk;
+	kMemoryRegion* prevChunk;
+	bool free;
+};
+
 class VMM
 {
 private:
-	uint64_t memory_region;
-	size_t memory_size;
+	kMemoryRegion* firstFreeMemoryRegion;
 
 public:
 	void *kmalloc(size_t size);
@@ -34,8 +43,13 @@ public:
 		{
 			kernel_panic("Unable to find suitable memory region!", 252);
 		}
-		memory_region = addr;
-		memory_size = top_size;
-		klog("VMM: Selected memory region %x, size: %x", memory_region, memory_size);
+		klog("VMM: Selected memory region %x, size: %x", addr, top_size);
+		firstFreeMemoryRegion = (kMemoryRegion *)addr;
+		firstFreeMemoryRegion->length = top_size - sizeof(kMemoryRegion);
+		firstFreeMemoryRegion->nextChunk = NULL;
+		firstFreeMemoryRegion->prevChunk = NULL;
+		firstFreeMemoryRegion->nextFreeChunk = NULL;
+		firstFreeMemoryRegion->prevFreeChunk = NULL;
+		firstFreeMemoryRegion->free = true;
 	}
 };
