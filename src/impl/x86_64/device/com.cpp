@@ -55,8 +55,7 @@ void ComDevice::print_str(const char *str, va_list args)
 				case 'p':
 				{
 					size_t ptr = va_arg(args, size_t);
-					print_str("0x");
-					print_str(hexToString(ptr, false));
+					print_str("0x%s", hexToString(ptr, false));
 					i+=1;
 					continue;
 				}
@@ -70,16 +69,14 @@ void ComDevice::print_str(const char *str, va_list args)
 				case 'x':
 				{
 					uint64_t a = va_arg(args, uint64_t);
-					print_str("0x");
-					print_str(hexToString(a, false));
+					print_str("0x%s", hexToString(a, false));
 					i+=1;
 					continue;
 				}
 				case 'X':
 				{
 					uint64_t a = va_arg(args, uint64_t);
-					print_str("0x");
-					print_str(hexToString(a,true));
+					print_str("0x%s", hexToString(a,true));
 					i+=1;
 					continue;
 				}
