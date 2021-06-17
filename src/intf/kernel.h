@@ -28,6 +28,16 @@ void inline halt()
 	}
 }
 
+void inline disable_interrupts()
+{
+	asm __volatile__("cli");
+}
+
+void inline enable_interrupts()
+{
+	asm __volatile__("sti");
+}
+
 void inline kernel_panic(const char *str, int reason)
 {
 	uint64_t rax, rbx, rcx, rdx, rsi, rdi;
