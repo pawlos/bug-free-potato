@@ -1,5 +1,34 @@
 #include "virtual.h"
 
+void memset(void* dst, uint64_t value, size_t size)
+{
+	if (size < 8)
+	{
+		uint8_t* valuePtr = (uint8_t*)&value;
+		for (uint8_t* ptr = (uint8_t*)dst; ptr < (uint8_t*)((uint64_t)dst + size); ptr++)
+		{
+			*ptr = *valuePtr;
+			valuePtr++;
+		}
+
+		return;
+	}
+	
+	uint64_t proceedingBytes = size % 8;
+	uint64_t newnum = size - proceedingBytes;
+
+	for (uint64_t* ptr = (uint64_t*)dst; ptr < (uint64_t*)((uint64_t)dst + size); ptr++)
+	{
+		*ptr = value;
+	}
+
+	uint8_t* valPtr = (uint8_t*)&value;
+	for (uint8_t* ptr = (uint8_t*)((uint64_t)dst+newnum); ptr < (uint8_t*)((uint64_t)dst + size); ptr++)
+	{
+		*ptr = *valPtr;
+		valPtr++;
+	}
+}
 
 void* VMM::kmalloc(size_t size)
 {
@@ -55,6 +84,15 @@ void* VMM::kmalloc(size_t size)
 		currentMemorySegment = currentMemorySegment->nextFreeChunk;
 	}
 	kernel_panic("Not able to allocate memory.", NotAbleToAllocateMemory);
+}
+
+void* VMM::kcalloc(size_t size)
+{
+	klog("[VMM] Callocing %d bytes memory.\n", size);
+	uint64_t remainder = size % 8;
+	void* ptr = kmalloc(size);
+	memset(ptr, '\0', size);
+	return ptr;
 }
 
 void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)

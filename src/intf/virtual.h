@@ -19,6 +19,7 @@ private:
 
 public:
 	void *kmalloc(size_t size);
+	void *kcalloc(size_t size);
 	void kfree(void *);
 
 	VMM(memory_map_entry* mmap[])
