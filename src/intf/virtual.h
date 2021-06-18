@@ -41,9 +41,9 @@ public:
 		}
 		if (!addr)
 		{
-			kernel_panic("Unable to find suitable memory region!", 252);
+			kernel_panic("Unable to find suitable memory region!", NoSuitableRegion);
 		}
-		klog("VMM: Selected memory region %x, size: %x", addr, top_size);
+		klog("[VMM] Selected memory region %x, size: %x\n", addr, top_size);
 		firstFreeMemoryRegion = (kMemoryRegion *)addr;
 		firstFreeMemoryRegion->length = top_size - sizeof(kMemoryRegion);
 		firstFreeMemoryRegion->nextChunk = NULL;

@@ -3,6 +3,7 @@
 
 void* VMM::kmalloc(size_t size)
 {
+	klog("[VMM] Allocating %d bytes memory.\n", size);
 	uint64_t remainder = size % 8;
 	size -= remainder;
 	if (remainder != 0) size += 8;

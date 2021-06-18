@@ -60,7 +60,7 @@ void inline kernel_panic(const char *str, int reason)
 	asm __volatile__("mov %0, r15" : "=r"(r15));
 	asm __volatile__("lea rax, [rip]; mov %0, rax" : "=r"(rip));
 
-	klog("Kernel_panic: %s - %x\n", str, reason);
+	klog("[PANIC] Kernel_panic: %s - %x\n", str, reason);
 	klog("RAX: %x\tRBX: %x\n", rax, rbx);
 	klog("RCX: %x\tRDX: %x\n", rcx, rdx);
 	klog("RDX: %x\n", rdx);

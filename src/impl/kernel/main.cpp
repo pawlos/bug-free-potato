@@ -12,7 +12,7 @@ static BootInfo bi;
 static IDT idt;
 
 ASMCALL void kernel_main(boot_info* boot_info) {
-	klog("Welcome to 64-bit potat OS\n");
+	klog("[MAIN] Welcome to 64-bit potat OS\n");
 
 	bi.parse(boot_info);
 

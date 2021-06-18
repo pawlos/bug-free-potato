@@ -22,43 +22,42 @@ memory_map_entry** BootInfo::get_memory_maps()
 
 void BootInfo::log()
 {
-	klog("Boot info: \n");
-	klog("Size: %x\n", size);
+	klog("[BT] Boot info: Size: %x\n", size);
 
 	if (cmd_line != NULL)
 	{
-		klog("Boot command line: %s\n", (const char *)&cmd_line->cmd);
+		klog("[BT] Boot command line: %s\n", (const char *)&cmd_line->cmd);
 	}
 	if (loader_name != NULL)
 	{
-		klog("Boot loader name: %s\n", (const char *)&loader_name->name);
+		klog("[BT] Boot loader name: %s\n", (const char *)&loader_name->name);
 	}
 	if (basic_mem != NULL)
 	{
-		klog("Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
-																	   basic_mem->mem_upper);
+		klog("[BT] Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
+																basic_mem->mem_upper);
 	}
 	if (bios != NULL)
 	{
-		klog("BIOS boot device: %x\n", bios->biosdev);
+		klog("[BT] BIOS boot device: %x\n", bios->biosdev);
 	}
 	if (mmap != NULL)
 	{
-		klog("Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
+		klog("[BT] Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
 		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
 		{
 			auto entry = memory_entry[i];
 			if (entry == NULL) break;
-			klog("\tMemory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
+			klog("\t[BT] Memory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
 		}
 	}
 	if (vbe != NULL)
 	{
-		klog("VBE info mode %x\n", vbe->vbe_mode);
+		klog("[BT] VBE info mode %x\n", vbe->vbe_mode);
 	}
 	if (framebuffer != NULL)
 	{
-		klog("Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
+		klog("[BT] Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
 							framebuffer->framebuffer_addr,
 							framebuffer->framebuffer_width,
 							framebuffer->framebuffer_height,
@@ -68,19 +67,19 @@ void BootInfo::log()
 	}
 	if (elf != NULL)
 	{
-		klog("Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
+		klog("[BT] Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
 	}
 	if (apm_table != NULL)
 	{
-		klog("APM table - Version: %x\n", apm_table->version);
+		klog("[BT] APM table - Version: %x\n", apm_table->version);
 	}
 	if (acpi != NULL)
 	{
-		klog("Boot ACPI\n");
+		klog("[BT] Boot ACPI\n");
 	}
 	if (physical != NULL)
 	{
-		klog("Load base address: %x\n", physical->load_base_addr);
+		klog("[BT] Load base address: %x\n", physical->load_base_addr);
 	}
 }
 
