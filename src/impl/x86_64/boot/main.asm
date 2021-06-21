@@ -17,7 +17,7 @@ start:
 
 	lgdt [gdt64.pointer]
 
-	jmp gdt64.code_segment:long_mode_start
+	jmp gdt64.code_segment_kernel:long_mode_start
 
 	hlt
 
@@ -153,19 +153,33 @@ gdt64:
 	db 0
 	db 1
 	db 0
-.code_segment: equ $ - gdt64
+.code_segment_kernel: equ $ - gdt64
 	dw 0
 	dw 0
 	db 0
 	db 10011010b
 	db 10101111b
 	db 0
-.data_segment: equ $ - gdt64
+.data_segment_kernel: equ $ - gdt64
 	dw 0
 	dw 0
 	db 0
 	db 10010010b
 	db 0
+	db 0
+.code_segment_user: equ $ - gdt64
+	dw 0
+	dw 0
+	db 0
+	db 11111010b
+	db 11001111b
+	db 0
+.data_segment_user: equ $ - gdt64
+	dw 0
+	dw 0
+	db 0
+	db 11110010b
+	db 11001111b
 	db 0
 .pointer:
 	dw $ - gdt64 - 1
