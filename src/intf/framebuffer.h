@@ -29,4 +29,6 @@ public:
 	void Draw(const uint8_t* what, 
 			  uint32_t width, uint32_t height, 
 			  uint32_t x_pos, uint32_t y_pos);
+
+	void Clear(uint8_t r, uint8_t g, uint8_t b);
 };

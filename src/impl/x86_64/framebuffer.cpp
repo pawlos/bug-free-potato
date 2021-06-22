@@ -22,3 +22,24 @@ void Framebuffer::Draw(const uint8_t* what,
 		}
 	}
 }
+
+void Framebuffer::Clear(uint8_t r, uint8_t g, uint8_t b)
+{
+	uintptr_t fb_addr   = this->m_addr;
+	uint32_t  fb_width  = this->m_width;
+	uint32_t  fb_height  = this->m_height;
+	uint32_t  fb_stride = this->m_stride;
+	uint8_t   fb_bytes  = this->m_bpp / 8;
+
+	uint32_t c =  (r << 16)
+				| (g << 8)
+				| (b);
+
+	for (uint32_t y = 0; y < fb_height; y++)
+	{
+		for (uint32_t x = 0; x < fb_width ; x++)
+		{
+			*(uint64_t *)(fb_addr + x*fb_bytes + y * fb_stride) = c;
+		}
+	}
+}
