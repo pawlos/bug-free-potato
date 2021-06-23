@@ -24,6 +24,22 @@ idtDescriptor:
 %endmacro
 
 bits 64
+[extern irq1_handler]
+irq1:
+	PUSHALL
+	call irq1_handler
+	POPALL
+	iretq
+GLOBAL irq1
+
+[extern irq0_handler]
+irq0:
+	PUSHALL
+	call irq0_handler
+	POPALL
+	iretq
+GLOBAL irq0
+
 [extern isr14_handler]
 isr14:
 	PUSHALL
@@ -87,14 +103,6 @@ isr1:
 	POPALL
 	iretq
 GLOBAL isr1
-
-[extern irq0_handler]
-irq0:
-	PUSHALL
-	call irq0_handler
-	POPALL
-	iretq
-GLOBAL irq0
 
 [extern isr0_handler]
 isr0:

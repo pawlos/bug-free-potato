@@ -13,6 +13,7 @@ extern uint64_t isr6;
 extern uint64_t isr8;
 extern uint64_t isr14;
 extern uint64_t irq0;
+extern uint64_t irq1;
 
 extern void keyboard_routine(uint8_t scancode);
 ASMCALL void LoadIDT();
@@ -41,6 +42,7 @@ void IDT::initialize()
 	init_idt_entry(14, isr14);
 
 	init_idt_entry(32, irq0);
+	init_idt_entry(33, irq1);
 	IO::RemapPic();
 
 	IO::outb(0x21, 0xfc);
@@ -53,6 +55,14 @@ ASMCALL void irq0_handler()
 	IO::outb(0x20, 0x20);
 }
 
+ASMCALL void irq1_handler()
+{
+	uint8_t c = IO::inb(0x60);
+	keyboard_routine(c);
+	IO::outb(0x20, 0x20);
+}
+
+
 ASMCALL void isr0_handler()
 {
 	IO::outb(0x20, 0x20);
@@ -61,10 +71,10 @@ ASMCALL void isr0_handler()
 
 ASMCALL void isr1_handler()
 {
-	uint8_t c = IO::inb(0x60);
-	keyboard_routine(c);
 	IO::outb(0x20, 0x20);
+	kernel_panic("Debug", 0);
 }
+
 
 ASMCALL void isr2_handler()
 {
