@@ -88,6 +88,14 @@ isr1:
 	iretq
 GLOBAL isr1
 
+[extern irq0_handler]
+irq0:
+	PUSHALL
+	call irq0_handler
+	POPALL
+	iretq
+GLOBAL irq0
+
 [extern isr0_handler]
 isr0:
 	PUSHALL

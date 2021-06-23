@@ -42,9 +42,9 @@ public:
 		outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
 		io_wait();
 
-		outb(PIC1_DATA, 0);
+		outb(PIC1_DATA, 32);
 		io_wait();
-		outb(PIC2_DATA, 8);
+		outb(PIC2_DATA, 32+8);
 		io_wait();
 		outb(PIC1_DATA, 4);
 		io_wait();

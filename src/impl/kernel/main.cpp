@@ -5,6 +5,7 @@
 #include "kernel.h"
 #include "framebuffer.h"
 #include "virtual.h"
+#include "timer.h"
 
 extern const char Logo[];
 extern const unsigned char PotatoLogo[];
@@ -19,6 +20,8 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 	idt.initialize();
 
 	VMM vmm {bi.get_memory_maps()};
+
+	init_timer(50);
 
 	Framebuffer fb {bi.get_framebuffer()};
 
