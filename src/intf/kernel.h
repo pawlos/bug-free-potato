@@ -12,6 +12,7 @@ constexpr int NotAbleToAllocateMemory = 251;
 #define ASMCALL extern "C"
 
 static ComDevice debug;
+extern uint64_t ticks;
 
 void inline klog(const char *str, ...)
 {
@@ -70,6 +71,8 @@ void inline kernel_panic(const char *str, int reason)
 	klog("R12: %x\tR13: %x\n", r12, r13);
 	klog("R14: %x\tR15: %x\n", r14, r15);
 	klog("RIP: %x\n", rip);
+
+	klog("Ticks: %d\n", ticks);
 	
 	halt();
 }

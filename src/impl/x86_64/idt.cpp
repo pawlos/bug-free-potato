@@ -16,6 +16,7 @@ extern uint64_t irq0;
 extern uint64_t irq1;
 
 extern void keyboard_routine(uint8_t scancode);
+extern void timer_routine();
 ASMCALL void LoadIDT();
 
 void init_idt_entry(int irq_no, uint64_t& irq)
@@ -52,6 +53,7 @@ void IDT::initialize()
 
 ASMCALL void irq0_handler()
 {
+	timer_routine();
 	IO::outb(0x20, 0x20);
 }
 

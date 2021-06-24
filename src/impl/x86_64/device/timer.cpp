@@ -15,3 +15,9 @@ void init_timer(uint32_t freq)
 	IO::outb(0x40, low);
 	IO::outb(0x40, high);
 }
+
+uint64_t ticks;
+void timer_routine()
+{
+	ticks++;
+}
