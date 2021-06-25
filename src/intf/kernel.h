@@ -2,11 +2,11 @@
 #include "com.h"
 #include <cstdarg>
 
-constexpr int HolyTrinity = 255;
-constexpr int MemEntriesLimitReached = 254;
-constexpr int BootInfoNotParsed = 253;
-constexpr int NoSuitableRegion = 252;
-constexpr int NotAbleToAllocateMemory = 251;
+constexpr uint8_t HolyTrinity = 255;
+constexpr uint8_t MemEntriesLimitReached = 254;
+constexpr uint8_t BootInfoNotParsed = 253;
+constexpr uint8_t NoSuitableRegion = 252;
+constexpr uint8_t NotAbleToAllocateMemory = 251;
 
 
 #define ASMCALL extern "C"

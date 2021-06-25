@@ -2,17 +2,17 @@
 #include "kernel.h"
 #include "print.h"
 
-#define BOOT_CMDLINE 1
-#define BOOT_LOADER_NAME 2
-#define BOOT_BASIC_MEM 4
-#define BOOT_BIOS 5
-#define BOOT_MMAP 6
-#define BOOT_VBE_INFO 7
-#define BOOT_FRAMEBUFFER 8
-#define BOOT_ELF_SYMBOLS 9
-#define BOOT_APM_TABLE 10
-#define BOOT_ACPI 14
-#define BOOT_PHYSICAL 21
+constexpr uint32_t BOOT_CMDLINE = 1;
+constexpr uint32_t BOOT_LOADER_NAME = 2;
+constexpr uint32_t BOOT_BASIC_MEM = 4;
+constexpr uint32_t BOOT_BIOS = 5;
+constexpr uint32_t BOOT_MMAP = 6;
+constexpr uint32_t BOOT_VBE_INFO = 7;
+constexpr uint32_t BOOT_FRAMEBUFFER = 8;
+constexpr uint32_t BOOT_ELF_SYMBOLS = 9;
+constexpr uint32_t BOOT_APM_TABLE = 10;
+constexpr uint32_t BOOT_ACPI = 14;
+constexpr uint32_t BOOT_PHYSICAL = 21;
 
 struct boot_info 
 {
