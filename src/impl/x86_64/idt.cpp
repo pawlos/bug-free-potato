@@ -1,6 +1,7 @@
 #include "idt.h"
 #include "com.h"
 #include "kernel.h"
+#include "pic.h"
 
 extern IDT64 _idt[256];
 extern uint64_t isr0;
@@ -46,7 +47,7 @@ void IDT::initialize()
 	init_idt_entry(32, irq0);
 	init_idt_entry(33, irq1);
 	init_idt_entry(44, irq12);
-	IO::RemapPic();
+	PIC::Remap();
 
 	IO::outb(0x21, 0xfc);
 	IO::outb(0xa1, 0xef);
