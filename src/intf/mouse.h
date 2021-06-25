@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include "kernel.h"
+#include "io.h"
 
 struct mouse_state
 {
