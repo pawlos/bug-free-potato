@@ -57,32 +57,29 @@ void IDT::initialize()
 ASMCALL void irq0_handler()
 {
 	timer_routine();
-	IO::outb(0x20, 0x20);
+	PIC::irq_ack(32);
 }
 
 ASMCALL void irq1_handler()
 {
 	uint8_t c = IO::inb(0x60);
 	keyboard_routine(c);
-	IO::outb(0x20, 0x20);
+	PIC::irq_ack(0x33);
 }
 
 ASMCALL void irq12_handler()
 {
 	klog("mouse\n");
-	IO::outb(0x20, 0x20);
-	IO::outb(0x20, 0x20);
+	PIC::irq_ack(0x44);
 }
 
 ASMCALL void isr0_handler()
 {
-	IO::outb(0x20, 0x20);
 	kernel_panic("Divide by zero", 0);
 }
 
 ASMCALL void isr1_handler()
 {
-	IO::outb(0x20, 0x20);
 	kernel_panic("Debug", 0);
 }
 

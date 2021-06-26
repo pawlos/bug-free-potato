@@ -31,7 +31,7 @@ void PIC::Remap()
 
 void PIC::irq_ack(uint8_t irq)
 {
-	IO::outb(0x20, 0x20);
-	if (irq > Offset)
-		IO::outb(0x20, 0x20);
+	if (irq >= Offset+8)
+		IO::outb(PIC2, PIC_EOI);
+	IO::outb(PIC1, PIC_EOI);
 }
