@@ -22,28 +22,28 @@ memory_map_entry** BootInfo::get_memory_maps()
 
 void BootInfo::log()
 {
-	klog("[BT] Boot info: Size: %x\n", size);
+	klog("[BOOT] Boot info: Size: %x\n", size);
 
 	if (cmd_line != NULL)
 	{
-		klog("[BT] Boot command line: %s\n", (const char *)&cmd_line->cmd);
+		klog("[BOOT] Boot command line: %s\n", (const char *)&cmd_line->cmd);
 	}
 	if (loader_name != NULL)
 	{
-		klog("[BT] Boot loader name: %s\n", (const char *)&loader_name->name);
+		klog("[BOOT] Boot loader name: %s\n", (const char *)&loader_name->name);
 	}
 	if (basic_mem != NULL)
 	{
-		klog("[BT] Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
+		klog("[BOOT] Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
 																basic_mem->mem_upper);
 	}
 	if (bios != NULL)
 	{
-		klog("[BT] BIOS boot device: %x\n", bios->biosdev);
+		klog("[BOOT] BIOS boot device: %x\n", bios->biosdev);
 	}
 	if (mmap != NULL)
 	{
-		klog("[BT] Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
+		klog("[BOOT] Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
 		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
 		{
 			auto entry = memory_entry[i];
@@ -53,11 +53,11 @@ void BootInfo::log()
 	}
 	if (vbe != NULL)
 	{
-		klog("[BT] VBE info mode %x\n", vbe->vbe_mode);
+		klog("[BOOT] VBE info mode %x\n", vbe->vbe_mode);
 	}
 	if (framebuffer != NULL)
 	{
-		klog("[BT] Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
+		klog("[BOOT] Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
 							framebuffer->framebuffer_addr,
 							framebuffer->framebuffer_width,
 							framebuffer->framebuffer_height,
@@ -67,19 +67,19 @@ void BootInfo::log()
 	}
 	if (elf != NULL)
 	{
-		klog("[BT] Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
+		klog("[BOOT] Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
 	}
 	if (apm_table != NULL)
 	{
-		klog("[BT] APM table - Version: %x\n", apm_table->version);
+		klog("[BOOT] APM table - Version: %x\n", apm_table->version);
 	}
 	if (acpi != NULL)
 	{
-		klog("[BT] Boot ACPI\n");
+		klog("[BOOT] Boot ACPI\n");
 	}
 	if (physical != NULL)
 	{
-		klog("[BT] Load base address: %x\n", physical->load_base_addr);
+		klog("[BOOT] Load base address: %x\n", physical->load_base_addr);
 	}
 }
 
@@ -171,6 +171,7 @@ void BootInfo::parse(boot_info* boot_info)
 				break;
 			}	
 			default:
+				klog("[BOOT] No parser for %d", tag->type);
 				break;
 		}
 		ptr += tag->size;
