@@ -33,7 +33,9 @@ void init_idt_entry(int irq_no, uint64_t& irq)
 }
 
 void IDT::initialize()
-{		
+{
+	PIC::Remap();
+
 	init_idt_entry(0, isr0);
 	init_idt_entry(1, isr1);
 	init_idt_entry(2, isr2);
@@ -47,30 +49,29 @@ void IDT::initialize()
 	init_idt_entry(32, irq0);
 	init_idt_entry(33, irq1);
 	init_idt_entry(44, irq12);
-	PIC::Remap();
 
-	IO::outb(0x21, 0xfc);
-	IO::outb(0xa1, 0xef);
+	PIC::Mask();
 	LoadIDT();
 }
 
 ASMCALL void irq0_handler()
 {
 	timer_routine();
-	PIC::irq_ack(32);
+	PIC::irq_ack(0);
 }
 
 ASMCALL void irq1_handler()
 {
 	uint8_t c = IO::inb(0x60);
 	keyboard_routine(c);
-	PIC::irq_ack(0x33);
+	PIC::irq_ack(1);
 }
 
 ASMCALL void irq12_handler()
 {
 	klog("mouse\n");
-	PIC::irq_ack(0x44);
+	uint8_t c = IO::inb(0x60);
+	PIC::irq_ack(12);
 }
 
 ASMCALL void isr0_handler()

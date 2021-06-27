@@ -18,5 +18,6 @@ class PIC
 {	
 public:
 	static void Remap();
+	static void Mask();
 	static void irq_ack(uint8_t irq);
 };

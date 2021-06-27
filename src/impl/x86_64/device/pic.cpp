@@ -3,10 +3,6 @@
 
 void PIC::Remap()
 {
-	uint8_t a1, a2;
-	a1 = IO::inb(PIC1_DATA);
-	a2 = IO::inb(PIC2_DATA);
-
 	IO::outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
 	IO::io_wait();
 	IO::outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
@@ -24,14 +20,17 @@ void PIC::Remap()
 	IO::io_wait();
 	IO::outb(PIC2_DATA, ICW4_8086);
 	IO::io_wait();
+}
 
-	IO::outb(PIC1_DATA, a1);
-	IO::outb(PIC2_DATA, a2);
+void PIC::Mask()
+{
+	IO::outb(0x21, 0xfc);
+	IO::outb(0xa1, 0xef);
 }
 
 void PIC::irq_ack(uint8_t irq)
 {
-	if (irq >= Offset+8)
+	if (irq >= 8)
 		IO::outb(PIC2, PIC_EOI);
 	IO::outb(PIC1, PIC_EOI);
 }
