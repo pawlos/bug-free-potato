@@ -7,6 +7,7 @@ constexpr uint8_t MemEntriesLimitReached = 254;
 constexpr uint8_t BootInfoNotParsed = 253;
 constexpr uint8_t NoSuitableRegion = 252;
 constexpr uint8_t NotAbleToAllocateMemory = 251;
+constexpr uint8_t MouseNotAcked	= 250;
 
 
 #define ASMCALL extern "C"
