@@ -69,7 +69,6 @@ ASMCALL void irq1_handler()
 
 ASMCALL void irq12_handler()
 {
-	klog("mouse\n");
 	uint8_t c = IO::inb(0x60);
 	PIC::irq_ack(12);
 }

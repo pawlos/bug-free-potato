@@ -24,8 +24,8 @@ void PIC::Remap()
 
 void PIC::Mask()
 {
-	IO::outb(0x21, 0xfc);
-	IO::outb(0xa1, 0xef);
+	IO::outb(0x21, 0);
+	IO::outb(0xa1, 0);
 }
 
 void PIC::irq_ack(uint8_t irq)
