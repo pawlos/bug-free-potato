@@ -45,6 +45,7 @@ void ComDevice::print_str(const char *str, va_list args)
 					i+=1;
 					continue;
 				}
+				case 'i':
 				case 'd':
 				{
 					int a = va_arg(args, int);
