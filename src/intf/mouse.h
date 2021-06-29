@@ -13,4 +13,4 @@ struct mouse_state
 
 void init_mouse();
 
-void mouse_handler(mouse_state mouse);
+void mouse_handler(int8_t mouse_byte[]);

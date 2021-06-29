@@ -73,10 +73,18 @@ void init_mouse()
 	if (ack != 0xFA)
 		kernel_panic("Mouse did not ACKed enable!", MouseNotAcked);
 
-	klog("[MOUSE] Initialized");
+	klog("[MOUSE] Initialized\n");
 }
 
-void mouse_handler(mouse_state mouse)
+void mouse_routine(int8_t mouse_byte[])
 {
+	int8_t mouse_x = mouse_byte[1];
+	int8_t mouse_y = mouse_byte[2];
+	bool left_button_pressed  = mouse_byte[0] & 1;
+	bool right_button_pressed = (mouse_byte[0] & 2) >> 1;
 
+	klog("Mouse X: %i, Y: %i, Left: %d, Right: %d\n",
+						mouse_x, mouse_y,
+						left_button_pressed,
+						right_button_pressed);
 }

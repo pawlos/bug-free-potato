@@ -18,6 +18,7 @@ extern uint64_t irq1;
 extern uint64_t irq12;
 
 extern void keyboard_routine(uint8_t scancode);
+extern void mouse_routine(int8_t mouse[]);
 extern void timer_routine();
 ASMCALL void LoadIDT();
 
@@ -67,9 +68,27 @@ ASMCALL void irq1_handler()
 	PIC::irq_ack(1);
 }
 
+uint8_t mouse_cycle=0;
+int8_t  mouse_byte[3];
+
 ASMCALL void irq12_handler()
 {
-	uint8_t c = IO::inb(0x60);
+	switch(mouse_cycle)
+	{
+		case 0:
+			mouse_byte[0] = IO::inb(0x60);
+			mouse_cycle++;
+			break;
+		case 1:
+			mouse_byte[1] = IO::inb(0x60);
+			mouse_cycle++;
+			break;
+		case 2:
+			mouse_byte[2] = IO::inb(0x60);
+			mouse_cycle=0;
+			mouse_routine(mouse_byte);
+			break;
+	}
 	PIC::irq_ack(12);
 }
 
