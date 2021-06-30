@@ -18,14 +18,16 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 
 	bi.parse(boot_info);
 
-	init_mouse();
+	auto boot_fb = bi.get_framebuffer();
+
+	init_mouse(boot_fb->framebuffer_width, boot_fb->framebuffer_height);
 	init_timer(50);
 
 	idt.initialize();
 
 	VMM vmm {bi.get_memory_maps()};
 
-	Framebuffer fb {bi.get_framebuffer()};
+	Framebuffer fb {boot_fb};
 
 	TerminalPrinter terminal;
 

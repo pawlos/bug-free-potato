@@ -27,7 +27,10 @@ void mouse_wait(uint8_t type)
 	}
 }
 
-void init_mouse()
+static uint16_t _x = 0;
+static uint16_t _y = 0;
+
+void init_mouse(uint16_t max_x, uint16_t max_y)
 {
 	klog("[MOUSE] Init mouse\n");
 
@@ -73,8 +76,18 @@ void init_mouse()
 	if (ack != 0xFA)
 		kernel_panic("Mouse did not ACKed enable!", MouseNotAcked);
 
+
+	_x = max_x;
+	_y = max_y;
 	klog("[MOUSE] Initialized\n");
 }
+
+mouse_state mouse {
+	.pos_x = 100,
+	.pos_y = 100,
+	.left_button_pressed = false,
+	.right_button_pressed = false
+};
 
 void mouse_routine(int8_t mouse_byte[])
 {
@@ -83,8 +96,25 @@ void mouse_routine(int8_t mouse_byte[])
 	bool left_button_pressed  = mouse_byte[0] & 1;
 	bool right_button_pressed = (mouse_byte[0] & 2) >> 1;
 
+	int16_t newPosX = mouse.pos_x + mouse_x;
+	if (newPosX < 0)
+		newPosX = 0;
+	if (newPosX > _x)
+		newPosX = _x;
+
+	mouse.pos_x = newPosX;
+	
+	int16_t newPosY = mouse.pos_y - mouse_y;
+	if (newPosY <0)
+		newPosY = 0;
+	if (newPosY > _y)
+		newPosY = _y;
+
+	mouse.pos_y = newPosY;
+	mouse.left_button_pressed = left_button_pressed;
+	mouse.right_button_pressed = right_button_pressed;
 	klog("Mouse X: %i, Y: %i, Left: %d, Right: %d\n",
-						mouse_x, mouse_y,
-						left_button_pressed,
-						right_button_pressed);
+						mouse.pos_x, mouse.pos_y,
+						mouse.left_button_pressed,
+						mouse.right_button_pressed);
 }

@@ -11,6 +11,6 @@ struct mouse_state
 	bool right_button_pressed;
 };
 
-void init_mouse();
+void init_mouse(uint16_t max_x, uint16_t max_y);
 
 void mouse_handler(int8_t mouse_byte[]);
