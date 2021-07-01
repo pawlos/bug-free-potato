@@ -12,6 +12,18 @@ extern const char Logo[];
 extern const unsigned char PotatoLogo[];
 static BootInfo bi;
 static IDT idt;
+static Framebuffer fb = NULL;
+
+void DrawCursor(uint32_t x_pos, uint32_t y_pos)
+{
+	fb.DrawCursor(x_pos, y_pos);
+}
+
+void EraseCursor(uint32_t x_pos, uint32_t y_pos)
+{
+	fb.EraseCursor(x_pos, y_pos);
+}
+
 
 ASMCALL void kernel_main(boot_info* boot_info) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
@@ -27,7 +39,7 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 
 	VMM vmm {bi.get_memory_maps()};
 
-	Framebuffer fb {boot_fb};
+	fb = Framebuffer(boot_fb);
 
 	TerminalPrinter terminal;
 

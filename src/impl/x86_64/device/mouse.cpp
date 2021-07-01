@@ -89,6 +89,9 @@ mouse_state mouse {
 	.right_button_pressed = false
 };
 
+extern void DrawCursor(uint32_t x_pos, uint32_t y_pos);
+extern void EraseCursor(uint32_t x_pos, uint32_t y_pos);
+
 void mouse_routine(int8_t mouse_byte[])
 {
 	int8_t mouse_x = mouse_byte[1];
@@ -96,6 +99,7 @@ void mouse_routine(int8_t mouse_byte[])
 	bool left_button_pressed  = mouse_byte[0] & 1;
 	bool right_button_pressed = (mouse_byte[0] & 2) >> 1;
 
+	EraseCursor(mouse.pos_x, mouse.pos_y);
 	int16_t newPosX = mouse.pos_x + mouse_x;
 	if (newPosX < 0)
 		newPosX = 0;
@@ -113,6 +117,7 @@ void mouse_routine(int8_t mouse_byte[])
 	mouse.pos_y = newPosY;
 	mouse.left_button_pressed = left_button_pressed;
 	mouse.right_button_pressed = right_button_pressed;
+	DrawCursor(mouse.pos_x, mouse.pos_y);
 	klog("Mouse X: %i, Y: %i, Left: %d, Right: %d\n",
 						mouse.pos_x, mouse.pos_y,
 						mouse.left_button_pressed,

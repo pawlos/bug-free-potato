@@ -31,4 +31,7 @@ public:
 			  uint32_t x_pos, uint32_t y_pos);
 
 	void Clear(uint8_t r, uint8_t g, uint8_t b);
+
+	void DrawCursor(uint32_t x_pos, uint32_t y_pos);
+	void EraseCursor(uint32_t x_pos, uint32_t y_pos);
 };
