@@ -23,12 +23,14 @@ void Framebuffer::Draw(const uint8_t* what,
 	}
 }
 
+static uint64_t prevPixel = 0x000000;
 void Framebuffer::DrawCursor(uint32_t x_pos, uint32_t y_pos)
 {
 	uintptr_t fb_addr   = this->m_addr;
 	uint32_t  fb_width  = this->m_width;
 	uint32_t  fb_stride = this->m_stride;
 	uint8_t   fb_bytes  = this->m_bpp / 8;
+	prevPixel = *(uint64_t *)(fb_addr + x_pos*fb_bytes + y_pos*fb_stride);
 	*(uint64_t *)(fb_addr + x_pos*fb_bytes + y_pos*fb_stride) = 0xff0000;
 }
 
@@ -38,7 +40,7 @@ void Framebuffer::EraseCursor(uint32_t x_pos, uint32_t y_pos)
 	uint32_t  fb_width  = this->m_width;
 	uint32_t  fb_stride = this->m_stride;
 	uint8_t   fb_bytes  = this->m_bpp / 8;
-	*(uint64_t *)(fb_addr + x_pos*fb_bytes + y_pos*fb_stride) = 0x000000;
+	*(uint64_t *)(fb_addr + x_pos*fb_bytes + y_pos*fb_stride) = prevPixel;
 }
 
 void Framebuffer::Clear(uint8_t r, uint8_t g, uint8_t b)
