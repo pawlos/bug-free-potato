@@ -43,6 +43,7 @@ const char layout_upper[128] =
 bool shiftPressed = false;
 bool altPressed = false;
 bool ctrlPressed = false;
+bool capsLockOn = false;
 
 void keyboard_routine(uint8_t scancode)
 {
@@ -70,6 +71,10 @@ void keyboard_routine(uint8_t scancode)
 		{
 			shiftPressed = true;
 		}
+		else if (scancode == CAPSLOCK)
+		{
+			capsLockOn = !capsLockOn;
+		}
 		else if (scancode == L_ALT)
 		{
 			altPressed = true;
@@ -80,7 +85,7 @@ void keyboard_routine(uint8_t scancode)
 		}
 		else
 		{			
-			const char* current_layout = shiftPressed ? layout_upper : layout;
+			const char* current_layout = (shiftPressed || capsLockOn) ? layout_upper : layout;
 			char key = current_layout[scancode];
 		}
 		if (ctrlPressed && shiftPressed && altPressed)
