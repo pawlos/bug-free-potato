@@ -136,3 +136,8 @@ ASMCALL void isr14_handler()
 {
 	kernel_panic("Page fault", 14);
 }
+
+ASMCALL void syscall_handler()
+{
+	klog("Syscall executed");
+}

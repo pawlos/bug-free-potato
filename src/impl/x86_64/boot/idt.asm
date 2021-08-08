@@ -48,6 +48,14 @@ irq0:
 	iretq
 GLOBAL irq0
 
+[extern syscall_handler]
+_syscall_stub:
+	PUSHALL
+	call syscall_handler
+	POPALL
+	sysretq
+GLOBAL _syscall_stub
+
 [extern isr14_handler]
 isr14:
 	PUSHALL
