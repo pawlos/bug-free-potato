@@ -30,7 +30,7 @@ void init_idt_entry(int irq_no, uint64_t& irq)
 	_idt[irq_no].offset_high = (uint32_t)(((uint64_t)&irq & 0xFFFFFFFF00000000) >> 32);
 	_idt[irq_no].ist = 0;
 	_idt[irq_no].selector = 0x08;
-	_idt[irq_no].types_addr = 0x8e;
+	_idt[irq_no].type_attr = 0x8e;
 }
 
 void IDT::initialize()
