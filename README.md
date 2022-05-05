@@ -5,6 +5,7 @@
 
     make clean && make build-cd
 
+Build requires the following to be installed: [nasm](https://nasm.us/), [xorriso](https://www.gnu.org/software/xorriso/) & [mtools](https://www.gnu.org/software/mtools/).
 
 ## Running
 
