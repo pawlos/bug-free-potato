@@ -23,7 +23,17 @@ void Framebuffer::Draw(const uint8_t* what,
     }
 }
 
-constexpr int cursor_size = 9;
+constexpr uint8_t cursor_size = 64;
+constexpr uint8_t cursor_width = 8;
+constexpr bool cursor_mask[cursor_size] =
+                            {0,0,0,0,0,0,0,0,
+                             0,1,1,1,1,1,0,0,
+                             0,1,1,1,0,0,0,0,
+                             0,1,1,1,0,0,0,0,
+                             0,1,0,0,1,0,0,0,
+                             0,1,0,0,0,1,0,0,
+                             0,0,0,0,0,0,0,0,
+                             0,0,0,0,0,0,0,0};
 static bool captured = false;
 static uint64_t prevPixel[cursor_size] = {0x000000};
 void Framebuffer::DrawCursor(uint32_t x_pos, uint32_t y_pos)
@@ -33,13 +43,13 @@ void Framebuffer::DrawCursor(uint32_t x_pos, uint32_t y_pos)
     uint32_t  fb_width  = this->m_width;
     uint32_t  fb_stride = this->m_stride;
     uint8_t   fb_bytes  = this->m_bpp / 8;
-    for (uint8_t i = 0; i < 3; i++)
-    {
-        for (uint8_t j = 0; j < 3; j++)
-        {
-            int pos = i*3+j;
+    for (uint8_t i = 0; i < cursor_width; i++) {
+        for (uint8_t j = 0; j < cursor_width; j++) {
+            int pos = i*cursor_width+j;
             prevPixel[pos] = *(uint32_t *)(fb_addr + (x_pos+j)*fb_bytes + (y_pos+i)*fb_stride);
-            *(uint32_t *)(fb_addr + (x_pos+j)*fb_bytes + (y_pos+i)*fb_stride) = 0xff0000;
+            if (cursor_mask[pos] != 0) {
+                *(uint32_t *)(fb_addr + (x_pos+j)*fb_bytes + (y_pos+i)*fb_stride) = 0xff0000;
+            }
         }
     }
 }
@@ -51,11 +61,9 @@ void Framebuffer::EraseCursor(uint32_t x_pos, uint32_t y_pos)
     uint32_t  fb_stride = this->m_stride;
     uint8_t   fb_bytes  = this->m_bpp / 8;
     if (!captured) return;
-    for (uint8_t i = 0; i < 3; i++)
-    {
-        for (uint8_t j = 0; j < 3; j++)
-        {
-            int pos = i*3+j;
+    for (uint8_t i = 0; i < cursor_width; i++) {
+        for (uint8_t j = 0; j < cursor_width; j++) {
+            int pos = i*cursor_width+j;
             *(uint32_t *)(fb_addr + (x_pos+j)*fb_bytes + (y_pos+i)*fb_stride) = prevPixel[pos];
         }
     }
@@ -73,10 +81,8 @@ void Framebuffer::Clear(uint8_t r, uint8_t g, uint8_t b)
                 | (g << 8)
                 | (b);
 
-    for (uint32_t y = 0; y < fb_height; y++)
-    {
-        for (uint32_t x = 0; x < fb_width ; x++)
-        {
+    for (uint32_t y = 0; y < fb_height; y++) {
+        for (uint32_t x = 0; x < fb_width ; x++) {
             *(uint32_t *)(fb_addr + x*fb_bytes + y * fb_stride) = c;
         }
     }
