@@ -10,14 +10,14 @@ private:
     uint32_t  m_height;
     uint32_t  m_bpp;
     uint32_t  m_stride;
-public:
+    uintptr_t *vga_font;
     Framebuffer(uintptr_t addr, uint32_t width,
                 uint32_t height, uint32_t bpp,
                 uint32_t stride) : m_addr(addr), m_width(width),
                                    m_height(height), m_bpp(bpp),
                                    m_stride(stride)
     {}
-
+public:
     Framebuffer(boot_framebuffer *fb) : Framebuffer(
                                              fb->framebuffer_addr,
                                              fb->framebuffer_width,
