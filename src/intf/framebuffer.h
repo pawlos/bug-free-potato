@@ -4,7 +4,6 @@
 #include "defs.h"
 #include "boot.h"
 #include "virtual.h"
-#include "IO.h"
 
 class Framebuffer
 {
