@@ -74,6 +74,6 @@ void inline kernel_panic(const char *str, int reason)
 	klog("RIP: %x\n", rip);
 
 	klog("Ticks: %d\n", ticks);
-	
+
 	halt();
 }

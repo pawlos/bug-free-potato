@@ -13,6 +13,7 @@ extern const unsigned char PotatoLogo[];
 static BootInfo bi;
 static IDT idt;
 static Framebuffer fb = NULL;
+VMM vmm = NULL;
 
 void DrawCursor(uint32_t x_pos, uint32_t y_pos)
 {
@@ -37,13 +38,13 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 
 	idt.initialize();
 
-	VMM vmm {bi.get_memory_maps()};
+	vmm = VMM(bi.get_memory_maps());
 
 	fb = Framebuffer(boot_fb);
 
 	TerminalPrinter terminal;
 
-	terminal.print_clear();	
+	terminal.print_clear();
 	terminal.print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
 	terminal.print_str(Logo);
 

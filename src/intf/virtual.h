@@ -1,6 +1,11 @@
 #pragma once
 #include "defs.h"
 #include "boot.h"
+#include "kernel.h"
+
+class VMM;
+
+extern VMM vmm;
 
 struct kMemoryRegion
 {
@@ -22,17 +27,21 @@ public:
 	void *kcalloc(size_t size);
 	void kfree(void *);
 
+	static VMM* Instance() {
+		return &vmm;
+	}
+
 	VMM(memory_map_entry* mmap[])
 	{
 		size_t top_size = 0;
 		uint64_t addr = NULL;
 		for(size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 		{
-			auto entry = mmap[i];			
+			auto entry = mmap[i];
 			if (entry == NULL)
 				break;
 			if (entry->type == 1)
-			{				
+			{
 				if (entry->length > top_size)
 				{
 					top_size = entry->length;
