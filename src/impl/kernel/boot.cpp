@@ -125,11 +125,11 @@ void BootInfo::parse(boot_info* boot_info)
 				mmap = (boot_memory_map *)ptr;
 				uintptr_t mem_current = (uintptr_t)&mmap->entries;
 				const uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(uint32_t);
-				int i = 0;
 				for (int i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 				{
 					memory_entry[i] = NULL;
 				}
+				int i = 0;
 				while (mem_current < mem_end)
 				{
 					if (i >= MEMORY_ENTRIES_LIMIT) kernel_panic("Memory entries limit reached", MemEntriesLimitReached);
