@@ -171,7 +171,7 @@ void BootInfo::parse(boot_info* boot_info)
 				break;
 			}	
 			default:
-				klog("[BOOT] No parser for %d", tag->type);
+				klog("[BOOT] No parser for %d\n", tag->type);
 				break;
 		}
 		ptr += tag->size;
