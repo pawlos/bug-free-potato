@@ -12,8 +12,8 @@ extern const char Logo[];
 extern const unsigned char PotatoLogo[];
 static BootInfo bi;
 static IDT idt;
-static Framebuffer fb = NULL;
-VMM vmm = NULL;
+static Framebuffer fb = nullptr;
+VMM vmm = nullptr;
 
 void DrawCursor(uint32_t x_pos, uint32_t y_pos)
 {

@@ -25,38 +25,38 @@ void BootInfo::log()
 {
 	klog("[BOOT] Boot info: Size: %x\n", size);
 
-	if (cmd_line != NULL)
+	if (cmd_line != nullptr)
 	{
 		klog("[BOOT] Boot command line: %s\n", (const char *)&cmd_line->cmd);
 	}
-	if (loader_name != NULL)
+	if (loader_name != nullptr)
 	{
 		klog("[BOOT] Boot loader name: %s\n", (const char *)&loader_name->name);
 	}
-	if (basic_mem != NULL)
+	if (basic_mem != nullptr)
 	{
 		klog("[BOOT] Basic memory info - Lower: %x, Upper: %x\n", basic_mem->mem_lower,
 																basic_mem->mem_upper);
 	}
-	if (bios != NULL)
+	if (bios != nullptr)
 	{
 		klog("[BOOT] BIOS boot device: %x\n", bios->biosdev);
 	}
-	if (mmap != NULL)
+	if (mmap != nullptr)
 	{
 		klog("[BOOT] Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
 		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
 		{
 			auto entry = memory_entry[i];
-			if (entry == NULL) break;
+			if (entry == nullptr) break;
 			klog("\t[BT] Memory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
 		}
 	}
-	if (vbe != NULL)
+	if (vbe != nullptr)
 	{
 		klog("[BOOT] VBE info mode %x\n", vbe->vbe_mode);
 	}
-	if (framebuffer != NULL)
+	if (framebuffer != nullptr)
 	{
 		klog("[BOOT] Framebuffer addr: %x, width: %x, height: %x, bpp: %x, type: %x, pitch: %x\n",
 							framebuffer->framebuffer_addr,
@@ -66,19 +66,19 @@ void BootInfo::log()
 							framebuffer->framebuffer_type,
 							framebuffer->framebuffer_pitch);
 	}
-	if (elf != NULL)
+	if (elf != nullptr)
 	{
 		klog("[BOOT] Elf symbols: Num: %x, EntSize: %x\n", elf->num, elf->entsize);
 	}
-	if (apm_table != NULL)
+	if (apm_table != nullptr)
 	{
 		klog("[BOOT] APM table - Version: %x\n", apm_table->version);
 	}
-	if (acpi != NULL)
+	if (acpi != nullptr)
 	{
 		klog("[BOOT] Boot ACPI\n");
 	}
-	if (physical != NULL)
+	if (physical != nullptr)
 	{
 		klog("[BOOT] Load base address: %x\n", physical->load_base_addr);
 	}
@@ -128,7 +128,7 @@ void BootInfo::parse(boot_info* boot_info)
 				const uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(uint32_t);
 				for (int i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 				{
-					memory_entry[i] = NULL;
+					memory_entry[i] = nullptr;
 				}
 				int i = 0;
 				while (mem_current < mem_end)

@@ -196,7 +196,7 @@ template<typename T> const char* decToString(T value)
 		decToStringOutput[i] = '-';
 		i++;
 	}
-	decToStringOutput[i] = NULL;
+	decToStringOutput[i] = 0;
 	for (int j = 0; j < i/2; j++)
 	{
 		char tmp = decToStringOutput[j];

@@ -34,11 +34,11 @@ public:
 	VMM(memory_map_entry* mmap[])
 	{
 		size_t top_size = 0;
-		uint64_t addr = NULL;
+		uint64_t addr = 0;
 		for(size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 		{
 			auto entry = mmap[i];
-			if (entry == NULL)
+			if (entry == nullptr)
 				break;
 			if (entry->type == 1)
 			{
@@ -56,10 +56,10 @@ public:
 		klog("[VMM] Selected memory region %x, size: %x\n", addr, top_size);
 		firstFreeMemoryRegion = (kMemoryRegion *)addr;
 		firstFreeMemoryRegion->length = top_size - sizeof(kMemoryRegion);
-		firstFreeMemoryRegion->nextChunk = NULL;
-		firstFreeMemoryRegion->prevChunk = NULL;
-		firstFreeMemoryRegion->nextFreeChunk = NULL;
-		firstFreeMemoryRegion->prevFreeChunk = NULL;
+		firstFreeMemoryRegion->nextChunk = nullptr;
+		firstFreeMemoryRegion->prevChunk = nullptr;
+		firstFreeMemoryRegion->nextFreeChunk = nullptr;
+		firstFreeMemoryRegion->prevFreeChunk = nullptr;
 		firstFreeMemoryRegion->free = true;
 	}
 };
