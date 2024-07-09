@@ -2,10 +2,10 @@
 #include "defs.h"
 #include <cstdarg>
 
-constexpr uint32_t COM1 = 0x3F8;
-constexpr uint32_t COM2 = 0x2F8;
-constexpr uint32_t COM3 = 0x3E8;
-constexpr uint32_t COM4 = 0x2E8;
+constexpr pt::uint32_t COM1 = 0x3F8;
+constexpr pt::uint32_t COM2 = 0x2F8;
+constexpr pt::uint32_t COM3 = 0x3E8;
+constexpr pt::uint32_t COM4 = 0x2E8;
 
 class ComDevice 
 {

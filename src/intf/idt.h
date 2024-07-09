@@ -3,13 +3,13 @@
 
 struct IDT64
 {
-	uint16_t offset_low;
-	uint16_t selector;
-	uint8_t ist;
-	uint8_t type_attr;
-	uint16_t offset_mid;
-	uint32_t offset_high;
-	uint32_t zero;
+	pt::uint16_t offset_low;
+	pt::uint16_t selector;
+	pt::uint8_t ist;
+	pt::uint8_t type_attr;
+	pt::uint16_t offset_mid;
+	pt::uint32_t offset_high;
+	pt::uint32_t zero;
 };
 
 class IDT

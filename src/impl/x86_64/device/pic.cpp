@@ -28,7 +28,7 @@ void PIC::Mask()
 	IO::outb(0xa1, 0);
 }
 
-void PIC::irq_ack(uint8_t irq)
+void PIC::irq_ack(pt::uint8_t irq)
 {
 	if (irq >= 8)
 		IO::outb(PIC2, PIC_EOI);

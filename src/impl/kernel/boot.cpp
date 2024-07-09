@@ -1,7 +1,7 @@
 #include "boot.h"
 #include "kernel.h"
 
-int toEightByteDivisible(uintptr_t addr) {
+int toEightByteDivisible(pt::uintptr_t addr) {
     int v = (addr % 8);
     if (v == 0) return 0;
     return 8 - v;    
@@ -86,10 +86,10 @@ void BootInfo::log()
 
 void BootInfo::parse(boot_info* boot_info)
 {
-	uintptr_t start = (uintptr_t)boot_info;
+	auto start = (pt::uintptr_t)boot_info;
 	size = boot_info->size;
-	uintptr_t end = start + size;
-	uintptr_t ptr = start + 8;
+	pt::uintptr_t end = start + size;
+	pt::uintptr_t ptr = start + 8;
 
 	while (ptr < end)
 	{
@@ -124,8 +124,8 @@ void BootInfo::parse(boot_info* boot_info)
 			case BOOT_MMAP:
 			{
 				mmap = (boot_memory_map *)ptr;
-				uintptr_t mem_current = (uintptr_t)&mmap->entries;
-				const uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(uint32_t);
+				auto mem_current = (pt::uintptr_t)&mmap->entries;
+				const pt::uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(pt::uint32_t);
 				for (int i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 				{
 					memory_entry[i] = nullptr;

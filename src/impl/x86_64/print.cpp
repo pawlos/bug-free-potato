@@ -1,9 +1,9 @@
 #include "print.h"
 #include <cstdarg>
 
-uint8_t color = PRINT_COLOR_WHITE | PRINT_COLOR_BLACK << 4;
+pt::uint8_t color = PRINT_COLOR_WHITE | PRINT_COLOR_BLACK << 4;
 
-void TerminalPrinter::clear_row(size_t row)
+void TerminalPrinter::clear_row(pt::size_t row)
 {
 	auto empty = (struct Char)
 	{
@@ -11,7 +11,7 @@ void TerminalPrinter::clear_row(size_t row)
 		.color = color,
 	};
 
-	for (size_t col = 0; col < NUM_COLS; col++)
+	for (pt::size_t col = 0; col < NUM_COLS; col++)
 	{
 		buffer[col + NUM_COLS * row] = empty;
 	}
@@ -20,19 +20,19 @@ void TerminalPrinter::clear_row(size_t row)
 
 void TerminalPrinter::print_clear()
 {
-	for (size_t i = 0; i < NUM_ROWS; i++)
+	for (pt::size_t i = 0; i < NUM_ROWS; i++)
 	{
 		clear_row(i);
 	}
 }
 
-void TerminalPrinter::set_cursor_position(uint8_t posx, uint8_t posy)
+void TerminalPrinter::set_cursor_position(pt::uint8_t posx, pt::uint8_t posy)
 {
 	this->col = posx;
 	this->row = posy;
 }
 
-void TerminalPrinter::freeze_rows(size_t num)
+void TerminalPrinter::freeze_rows(pt::size_t num)
 {
 	this->frozen_rows = num;
 }
@@ -47,9 +47,9 @@ void TerminalPrinter::print_newline()
 		return;
 	}
 
-	for (size_t row = 1 + this->frozen_rows; row < NUM_ROWS; row++)
+	for (pt::size_t row = 1 + this->frozen_rows; row < NUM_ROWS; row++)
 	{
-		for (size_t col = 0; col < NUM_COLS; col ++)
+		for (pt::size_t col = 0; col < NUM_COLS; col ++)
 		{
 			struct Char character = buffer[col + NUM_COLS * row];
 			buffer[col + NUM_COLS * (row - 1)] = character;
@@ -72,13 +72,13 @@ void TerminalPrinter::print_char(char character)
 	}
 	if (character == '\t')
 	{
-		size_t backup = col;
+		pt::size_t backup = col;
 		col += 4 - col % 4;
-		for (size_t i = backup; i < col; i++)
+		for (pt::size_t i = backup; i < col; i++)
 		{
 			buffer[i + NUM_COLS * row] = (struct Char)
 			{
-				.character=(uint8_t)' ',
+				.character=(pt::uint8_t)' ',
 				.color=color,
 			};
 		}
@@ -93,7 +93,7 @@ void TerminalPrinter::print_char(char character)
 
 	buffer[col + NUM_COLS * row] = (struct Char)
 	{
-		.character=(uint8_t)character,
+		.character=(pt::uint8_t)character,
 		.color=color,
 	};
 	col++;
@@ -104,9 +104,9 @@ void TerminalPrinter::print_str(const char *str, ...)
 {
 	va_list ap;
 	va_start(ap, str);
-	for (size_t i=0; 1; i++)
+	for (pt::size_t i=0; 1; i++)
 	{
-		char character = (uint8_t)str[i];
+		char character = (pt::uint8_t)str[i];
 
 		if (character == '\0') 
 		{
@@ -116,7 +116,7 @@ void TerminalPrinter::print_str(const char *str, ...)
 
 		if (character == '%')
 		{
-			char next = (uint8_t)str[i+1];
+			char next = (pt::uint8_t)str[i+1];
 			switch(next)
 			{
 				case '%':
@@ -141,21 +141,21 @@ void TerminalPrinter::print_str(const char *str, ...)
 				}
 				case 'p':
 				{
-					size_t ptr = va_arg(ap, size_t);
+					pt::size_t ptr = va_arg(ap, pt::size_t);
 					print_str("0x%s", hexToString(ptr, false));
 					i+=1;
 					continue;
 				}
 				case 'x':
 				{
-					uint64_t a = va_arg(ap, uint64_t);
+					pt::uint64_t a = va_arg(ap, pt::uint64_t);
 					print_str("0x%s", hexToString(a, false));
 					i+=1;
 					continue;
 				}
 				case 'X':
 				{
-					uint64_t a = va_arg(ap, uint64_t);
+					pt::uint64_t a = va_arg(ap, pt::uint64_t);
 					print_str("0x%s", hexToString(a,true));
 					i+=1;
 					continue;
@@ -167,7 +167,7 @@ void TerminalPrinter::print_str(const char *str, ...)
 	}
 }
 
-void TerminalPrinter::print_set_color(uint8_t foreground, uint8_t background)
+void TerminalPrinter::print_set_color(pt::uint8_t foreground, pt::uint8_t background)
 {
 	color = foreground + (background << 4);
 }
@@ -210,16 +210,16 @@ template<typename T> const char* decToString(T value)
 char hexToStringOuput[128];
 template<typename T> const char* hexToString(T value, bool upper)
 {
-	uint8_t size = sizeof(value) * 2 - 1;
+	pt::uint8_t size = sizeof(value) * 2 - 1;
 	T* valuePtr = &value;
-	uint8_t* ptr;
-	uint8_t temp;
+	pt::uint8_t* ptr;
+	pt::uint8_t temp;
 	int offset = upper ? 55 : 87;
 	if (value != 0)
 	{
 		for (int i = 0; i < size; i++)
 		{
-			ptr = ((uint8_t*)valuePtr + i);
+			ptr = ((pt::uint8_t*)valuePtr + i);
 
 			temp = ((*ptr & 0xF0) >> 4);
 			hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? offset : 48);

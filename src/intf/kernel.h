@@ -2,18 +2,18 @@
 #include "com.h"
 #include <cstdarg>
 
-constexpr uint8_t HolyTrinity = 255;
-constexpr uint8_t MemEntriesLimitReached = 254;
-constexpr uint8_t BootInfoNotParsed = 253;
-constexpr uint8_t NoSuitableRegion = 252;
-constexpr uint8_t NotAbleToAllocateMemory = 251;
-constexpr uint8_t MouseNotAcked	= 250;
+constexpr pt::uint8_t HolyTrinity = 255;
+constexpr pt::uint8_t MemEntriesLimitReached = 254;
+constexpr pt::uint8_t BootInfoNotParsed = 253;
+constexpr pt::uint8_t NoSuitableRegion = 252;
+constexpr pt::uint8_t NotAbleToAllocateMemory = 251;
+constexpr pt::uint8_t MouseNotAcked	= 250;
 
 
 #define ASMCALL extern "C"
 
 static ComDevice debug;
-extern uint64_t ticks;
+extern pt::uint64_t ticks;
 
 void inline klog(const char *str, ...)
 {
@@ -42,9 +42,9 @@ void inline enable_interrupts()
 
 void inline kernel_panic(const char *str, int reason)
 {
-	uint64_t rax, rbx, rcx, rdx, rsi, rdi;
-	uint64_t r8, r9, r10, r11, r12;
-	uint64_t r13, r14, r15, rip;
+	pt::uint64_t rax, rbx, rcx, rdx, rsi, rdi;
+	pt::uint64_t r8, r9, r10, r11, r12;
+	pt::uint64_t r13, r14, r15, rip;
 
 	asm __volatile__("mov %0, rax" : "=r"(rax));
 	asm __volatile__("mov %0, rbx" : "=r"(rbx));

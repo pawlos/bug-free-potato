@@ -2,14 +2,14 @@
 #include "kernel.h"
 #include "io.h"
 
-void init_timer(uint32_t freq)
+void init_timer(pt::uint32_t freq)
 {
 	klog("[TIMER] Register for %d freq\n", freq);
 
-	uint32_t divisor = 1193180 / freq;
+	pt::uint32_t divisor = 1193180 / freq;
 
-	uint8_t low = (uint8_t)(divisor & 0xFF);
-	uint8_t high = (uint8_t)((divisor >> 8) & 0xFF);
+	pt::uint8_t low = (pt::uint8_t)(divisor & 0xFF);
+	pt::uint8_t high = (pt::uint8_t)((divisor >> 8) & 0xFF);
 
 
 	IO::outb(ModeCommandRegister, 0x36);
@@ -17,7 +17,7 @@ void init_timer(uint32_t freq)
 	IO::outb(Channel0DataPort, high);
 }
 
-uint64_t ticks;
+pt::uint64_t ticks;
 void timer_routine()
 {
 	ticks++;

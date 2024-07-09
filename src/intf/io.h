@@ -4,16 +4,16 @@
 class IO
 {
 public:
-    static inline void outb(uint16_t port, uint8_t value) {
+    static inline void outb(pt::uint16_t port, pt::uint8_t value) {
         asm volatile("out dx, al" :: "a"(value), "d"(port));
     }
 
-    static inline void outw(uint16_t port, uint16_t value) {
+    static inline void outw(pt::uint16_t port, pt::uint16_t value) {
         asm volatile("out dx, ax" :: "a"(value), "d"(port));
     }
 
-    static inline uint8_t inb(uint16_t port) {
-        uint8_t ret;
+    static inline pt::uint8_t inb(pt::uint16_t port) {
+        pt::uint8_t ret;
         asm volatile("in al, dx" : "=a"(ret) : "d"(port));
         return ret;
     }

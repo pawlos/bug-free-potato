@@ -1,141 +1,141 @@
 #pragma once
 #include "print.h"
 
-constexpr uint32_t BOOT_CMDLINE = 1;
-constexpr uint32_t BOOT_LOADER_NAME = 2;
-constexpr uint32_t BOOT_BASIC_MEM = 4;
-constexpr uint32_t BOOT_BIOS = 5;
-constexpr uint32_t BOOT_MMAP = 6;
-constexpr uint32_t BOOT_VBE_INFO = 7;
-constexpr uint32_t BOOT_FRAMEBUFFER = 8;
-constexpr uint32_t BOOT_ELF_SYMBOLS = 9;
-constexpr uint32_t BOOT_APM_TABLE = 10;
-constexpr uint32_t BOOT_ACPI = 14;
-constexpr uint32_t BOOT_PHYSICAL = 21;
+constexpr pt::uint32_t BOOT_CMDLINE = 1;
+constexpr pt::uint32_t BOOT_LOADER_NAME = 2;
+constexpr pt::uint32_t BOOT_BASIC_MEM = 4;
+constexpr pt::uint32_t BOOT_BIOS = 5;
+constexpr pt::uint32_t BOOT_MMAP = 6;
+constexpr pt::uint32_t BOOT_VBE_INFO = 7;
+constexpr pt::uint32_t BOOT_FRAMEBUFFER = 8;
+constexpr pt::uint32_t BOOT_ELF_SYMBOLS = 9;
+constexpr pt::uint32_t BOOT_APM_TABLE = 10;
+constexpr pt::uint32_t BOOT_ACPI = 14;
+constexpr pt::uint32_t BOOT_PHYSICAL = 21;
 
 struct boot_info 
 {
-	uint32_t size;
-	uint32_t reserved;
+	pt::uint32_t size;
+	pt::uint32_t reserved;
 } __attribute__((packed));
 
 
 struct basic_tag 
 {
-	uint32_t type;
-	uint32_t size;
+	pt::uint32_t type;
+	pt::uint32_t size;
 } __attribute__((packed));
 
 struct boot_loader_name 
 {
-	uint32_t type;
-	uint32_t size;
+	pt::uint32_t type;
+	pt::uint32_t size;
 	char*	name;
 } __attribute__((packed));
 
 struct boot_loader_physical_address
 {
-	uint32_t type;
-	uint32_t size;
-	uint32_t load_base_addr;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint32_t load_base_addr;
 } __attribute__((packed));
 
 struct boot_command_line
 {
-	uint32_t type;
-	uint32_t size;
+	pt::uint32_t type;
+	pt::uint32_t size;
 	char *cmd;
 } __attribute__((packed));
 
 struct boot_apm_table
 {
-	uint32_t type;
-	uint32_t size;
-	uint16_t version;
-	uint16_t cseg;
-	uint32_t offset;
-	uint16_t cseg_16;
-	uint16_t dseg;
-	uint16_t flags;
-	uint16_t cseg_len;
-	uint16_t cseg_16_len;
-	uint16_t dseg_len;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint16_t version;
+	pt::uint16_t cseg;
+	pt::uint32_t offset;
+	pt::uint16_t cseg_16;
+	pt::uint16_t dseg;
+	pt::uint16_t flags;
+	pt::uint16_t cseg_len;
+	pt::uint16_t cseg_16_len;
+	pt::uint16_t dseg_len;
 } __attribute__((packed));
 
 
 struct memory_map_entry
 {
-	uint64_t base_addr;
-	uint64_t length;
-	uint32_t type;
-	uint32_t reserved;
+	pt::uint64_t base_addr;
+	pt::uint64_t length;
+	pt::uint32_t type;
+	pt::uint32_t reserved;
 } __attribute__((packed));
 
 struct boot_memory_map
 {
-	uint32_t type;
-	uint32_t size;
-	uint32_t entry_size;
-	uint32_t entry_version;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint32_t entry_size;
+	pt::uint32_t entry_version;
 	memory_map_entry* entries;
 } __attribute__((packed));
 
 struct boot_elf_symbols
 {
-	uint32_t type;
-	uint32_t size;
-	uint16_t num;
-	uint16_t entsize;
-	uint16_t shndx;
-	uint16_t reserved;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint16_t num;
+	pt::uint16_t entsize;
+	pt::uint16_t shndx;
+	pt::uint16_t reserved;
 } __attribute__((packed));
 
 struct boot_basic_memory
 {
-	uint32_t type;
-	uint32_t size;
-	uint32_t mem_lower;
-	uint32_t mem_upper;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint32_t mem_lower;
+	pt::uint32_t mem_upper;
 } __attribute__((packed));
 
 struct boot_bios_device
 {
-	uint32_t type;
-	uint32_t size;
-	uint32_t biosdev;
-	uint32_t partition;
-	uint32_t sub_partition;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint32_t biosdev;
+	pt::uint32_t partition;
+	pt::uint32_t sub_partition;
 } __attribute__((packed));
 
 struct boot_acpi
 {
-	uint32_t type;
-	uint32_t size;
+	pt::uint32_t type;
+	pt::uint32_t size;
 } __attribute__((packed));
 
 struct boot_framebuffer
 {
-	uint32_t type;
-	uint32_t size;
-	uint64_t framebuffer_addr;
-	uint32_t framebuffer_pitch;
-	uint32_t framebuffer_width;
-	uint32_t framebuffer_height;
-	uint8_t framebuffer_bpp;
-	uint8_t framebuffer_type;
-	uint8_t reserved;
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint64_t framebuffer_addr;
+	pt::uint32_t framebuffer_pitch;
+	pt::uint32_t framebuffer_width;
+	pt::uint32_t framebuffer_height;
+	pt::uint8_t framebuffer_bpp;
+	pt::uint8_t framebuffer_type;
+	pt::uint8_t reserved;
 } __attribute__((packed));
 
 struct boot_vbe_info
 {
-	uint32_t type;
-	uint32_t size;
-	uint16_t vbe_mode;
-	uint16_t vbe_infterface_seg;
-	uint16_t vbe_infterface_off;
-	uint16_t vbe_interface_len;
-	uint8_t  vbe_control_info[512];
-	uint8_t  vbe_mode_info[256];
+	pt::uint32_t type;
+	pt::uint32_t size;
+	pt::uint16_t vbe_mode;
+	pt::uint16_t vbe_infterface_seg;
+	pt::uint16_t vbe_infterface_off;
+	pt::uint16_t vbe_interface_len;
+	pt::uint8_t  vbe_control_info[512];
+	pt::uint8_t  vbe_mode_info[256];
 } __attribute__((packed));
 
 #define MEMORY_ENTRIES_LIMIT 7
@@ -143,7 +143,7 @@ struct boot_vbe_info
 class BootInfo
 {	
 	private:
-		size_t size;
+		pt::size_t size;
 		boot_command_line* cmd_line;
 		boot_loader_name* loader_name;
 		boot_basic_memory* basic_mem;

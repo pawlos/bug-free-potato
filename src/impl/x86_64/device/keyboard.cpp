@@ -45,12 +45,12 @@ bool altPressed = false;
 bool ctrlPressed = false;
 bool capsLockOn = false;
 
-void keyboard_routine(uint8_t scancode)
+void keyboard_routine(pt::uint8_t scancode)
 {
 	if (scancode & 0x80)
 	{
 		//Key released
-		uint8_t code = scancode & ~0x80;
+		pt::uint8_t code = scancode & ~0x80;
 		if (code == L_SHIFT || code == R_SHIFT)
 		{
 			shiftPressed = false;

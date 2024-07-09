@@ -4,30 +4,30 @@
 #include "pic.h"
 
 extern IDT64 _idt[256];
-extern uint64_t isr0;
-extern uint64_t isr1;
-extern uint64_t isr2;
-extern uint64_t isr3;
-extern uint64_t isr4;
-extern uint64_t isr5;
-extern uint64_t isr6;
-extern uint64_t isr8;
-extern uint64_t isr14;
-extern uint64_t irq0;
-extern uint64_t irq1;
-extern uint64_t irq12;
+extern pt::uint64_t isr0;
+extern pt::uint64_t isr1;
+extern pt::uint64_t isr2;
+extern pt::uint64_t isr3;
+extern pt::uint64_t isr4;
+extern pt::uint64_t isr5;
+extern pt::uint64_t isr6;
+extern pt::uint64_t isr8;
+extern pt::uint64_t isr14;
+extern pt::uint64_t irq0;
+extern pt::uint64_t irq1;
+extern pt::uint64_t irq12;
 
-extern void keyboard_routine(uint8_t scancode);
-extern void mouse_routine(int8_t mouse[]);
+extern void keyboard_routine(pt::uint8_t scancode);
+extern void mouse_routine(pt::int8_t mouse[]);
 extern void timer_routine();
 ASMCALL void LoadIDT();
 
-void init_idt_entry(int irq_no, uint64_t& irq)
+void init_idt_entry(int irq_no, pt::uint64_t& irq)
 {
 	_idt[irq_no].zero = 0;
-	_idt[irq_no].offset_low  = (uint16_t)(((uint64_t)&irq & 0x000000000000FFFF));
-	_idt[irq_no].offset_mid  = (uint16_t)(((uint64_t)&irq & 0x00000000FFFF0000) >> 16);
-	_idt[irq_no].offset_high = (uint32_t)(((uint64_t)&irq & 0xFFFFFFFF00000000) >> 32);
+	_idt[irq_no].offset_low  = (pt::uint16_t)(((pt::uint64_t)&irq & 0x000000000000FFFF));
+	_idt[irq_no].offset_mid  = (pt::uint16_t)(((pt::uint64_t)&irq & 0x00000000FFFF0000) >> 16);
+	_idt[irq_no].offset_high = (pt::uint32_t)(((pt::uint64_t)&irq & 0xFFFFFFFF00000000) >> 32);
 	_idt[irq_no].ist = 0;
 	_idt[irq_no].selector = 0x08;
 	_idt[irq_no].type_attr = 0x8e;
@@ -63,13 +63,13 @@ ASMCALL void irq0_handler()
 
 ASMCALL void irq1_handler()
 {
-	uint8_t c = IO::inb(0x60);
+	pt::uint8_t c = IO::inb(0x60);
 	keyboard_routine(c);
 	PIC::irq_ack(1);
 }
 
-uint8_t mouse_cycle=0;
-int8_t  mouse_byte[3];
+pt::uint8_t mouse_cycle=0;
+pt::int8_t  mouse_byte[3];
 
 ASMCALL void irq12_handler()
 {

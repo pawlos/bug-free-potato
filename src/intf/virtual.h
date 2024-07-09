@@ -9,7 +9,7 @@ extern VMM vmm;
 
 struct kMemoryRegion
 {
-	size_t length;
+	pt::size_t length;
 	kMemoryRegion* nextFreeChunk;
 	kMemoryRegion* prevFreeChunk;
 	kMemoryRegion* nextChunk;
@@ -23,8 +23,8 @@ private:
 	kMemoryRegion* firstFreeMemoryRegion;
 
 public:
-	void *kmalloc(size_t size);
-	void *kcalloc(size_t size);
+	void *kmalloc(pt::size_t size);
+	void *kcalloc(pt::size_t size);
 	void kfree(void *);
 
 	static VMM* Instance() {
@@ -33,9 +33,9 @@ public:
 
 	VMM(memory_map_entry* mmap[])
 	{
-		size_t top_size = 0;
-		uint64_t addr = 0;
-		for(size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
+		pt::size_t top_size = 0;
+		pt::uint64_t addr = 0;
+		for(pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 		{
 			auto entry = mmap[i];
 			if (entry == nullptr)

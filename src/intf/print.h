@@ -20,30 +20,30 @@ enum {
 	PRINT_COLOR_WHITE = 15,
 };
 
-const static size_t NUM_COLS = 80;
-const static size_t NUM_ROWS = 25;
+const static pt::size_t NUM_COLS = 80;
+const static pt::size_t NUM_ROWS = 25;
 
 class TerminalPrinter
 {
 	struct Char {
-		uint8_t character;
-		uint8_t color;
+		pt::uint8_t character;
+		pt::uint8_t color;
 	};
 
-	void clear_row(size_t row);
+	void clear_row(pt::size_t row);
 	void print_newline();
 	struct Char* buffer = (struct Char*)0xb8000;
-	size_t col = 0;
-	size_t row = 0;
-	size_t frozen_rows = 0;
+	pt::size_t col = 0;
+	pt::size_t row = 0;
+	pt::size_t frozen_rows = 0;
 	
 	public:
 		void print_clear();
-		void freeze_rows(size_t num);
+		void freeze_rows(pt::size_t num);
 		void print_char(const char character);
 		void print_str(const char *str, ...);
-		void print_set_color(uint8_t foreground, uint8_t background);
-		void set_cursor_position(uint8_t posx, uint8_t posy);
+		void print_set_color(pt::uint8_t foreground, pt::uint8_t background);
+		void set_cursor_position(pt::uint8_t posx, pt::uint8_t posy);
 
 };
 

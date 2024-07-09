@@ -1,11 +1,11 @@
 #include "virtual.h"
 
-void memset(void* dst, uint64_t value, size_t size)
+void memset(void* dst, pt::uint64_t value, pt::size_t size)
 {
 	if (size < 8)
 	{
-		uint8_t* valuePtr = (uint8_t*)&value;
-		for (uint8_t* ptr = (uint8_t*)dst; ptr < (uint8_t*)((uint64_t)dst + size); ptr++)
+		pt::uint8_t* valuePtr = (pt::uint8_t*)&value;
+		for (pt::uint8_t* ptr = (pt::uint8_t*)dst; ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
 		{
 			*ptr = *valuePtr;
 			valuePtr++;
@@ -14,26 +14,26 @@ void memset(void* dst, uint64_t value, size_t size)
 		return;
 	}
 	
-	uint64_t proceedingBytes = size % 8;
-	uint64_t newnum = size - proceedingBytes;
+	pt::uint64_t proceedingBytes = size % 8;
+	pt::uint64_t newnum = size - proceedingBytes;
 
-	for (uint64_t* ptr = (uint64_t*)dst; ptr < (uint64_t*)((uint64_t)dst + size); ptr++)
+	for (pt::uint64_t* ptr = (pt::uint64_t*)dst; ptr < (pt::uint64_t*)((pt::uint64_t)dst + size); ptr++)
 	{
 		*ptr = value;
 	}
 
-	uint8_t* valPtr = (uint8_t*)&value;
-	for (uint8_t* ptr = (uint8_t*)((uint64_t)dst+newnum); ptr < (uint8_t*)((uint64_t)dst + size); ptr++)
+	pt::uint8_t* valPtr = (pt::uint8_t*)&value;
+	for (pt::uint8_t* ptr = (pt::uint8_t*)((pt::uint64_t)dst+newnum); ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
 	{
 		*ptr = *valPtr;
 		valPtr++;
 	}
 }
 
-void* VMM::kmalloc(size_t size)
+void* VMM::kmalloc(pt::size_t size)
 {
 	klog("[VMM] Allocating %d bytes memory.\n", size);
-	uint64_t remainder = size % 8;
+	pt::uint64_t remainder = size % 8;
 	size -= remainder;
 	if (remainder != 0) size += 8;
 
@@ -46,10 +46,10 @@ void* VMM::kmalloc(size_t size)
 			if (currentMemorySegment->length > size + sizeof(kMemoryRegion))
 			{
 				kMemoryRegion* newMemoryRegion =
-						(kMemoryRegion*)((uint64_t) currentMemorySegment +
+						(kMemoryRegion*)((pt::uint64_t) currentMemorySegment +
 										sizeof(kMemoryRegion) + size);
 				newMemoryRegion->free = true;
-				newMemoryRegion->length = ((uint64_t)currentMemorySegment->length) - (sizeof(kMemoryRegion) + size);
+				newMemoryRegion->length = ((pt::uint64_t)currentMemorySegment->length) - (sizeof(kMemoryRegion) + size);
 				newMemoryRegion->nextFreeChunk = currentMemorySegment->nextFreeChunk;
 				newMemoryRegion->nextChunk = currentMemorySegment->nextChunk;
 				newMemoryRegion->prevChunk = currentMemorySegment;
@@ -86,10 +86,10 @@ void* VMM::kmalloc(size_t size)
 	kernel_panic("Not able to allocate memory.", NotAbleToAllocateMemory);
 }
 
-void* VMM::kcalloc(size_t size)
+void* VMM::kcalloc(pt::size_t size)
 {
 	klog("[VMM] Callocing %d bytes memory.\n", size);
-	uint64_t remainder = size % 8;
+	pt::uint64_t remainder = size % 8;
 	void* ptr = kmalloc(size);
 	memset(ptr, '\0', size);
 	return ptr;

@@ -15,12 +15,12 @@ static IDT idt;
 static Framebuffer fb = nullptr;
 VMM vmm = nullptr;
 
-void DrawCursor(uint32_t x_pos, uint32_t y_pos)
+void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos)
 {
 	fb.DrawCursor(x_pos, y_pos);
 }
 
-void EraseCursor(uint32_t x_pos, uint32_t y_pos)
+void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos)
 {
 	fb.EraseCursor(x_pos, y_pos);
 }
