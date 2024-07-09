@@ -5,10 +5,10 @@ uint8_t color = PRINT_COLOR_WHITE | PRINT_COLOR_BLACK << 4;
 
 void TerminalPrinter::clear_row(size_t row)
 {
-	struct Char empty = (struct Char)
+	auto empty = (struct Char)
 	{
-		character: ' ',
-		color: color,
+		.character = ' ',
+		.color = color,
 	};
 
 	for (size_t col = 0; col < NUM_COLS; col++)
@@ -78,8 +78,8 @@ void TerminalPrinter::print_char(char character)
 		{
 			buffer[i + NUM_COLS * row] = (struct Char)
 			{
-				character: (uint8_t)' ',
-				color: color,
+				.character=(uint8_t)' ',
+				.color=color,
 			};
 		}
 		col = col % NUM_COLS;
@@ -93,8 +93,8 @@ void TerminalPrinter::print_char(char character)
 
 	buffer[col + NUM_COLS * row] = (struct Char)
 	{
-		character: (uint8_t)character,
-		color: color,
+		.character=(uint8_t)character,
+		.color=color,
 	};
 	col++;
 }
