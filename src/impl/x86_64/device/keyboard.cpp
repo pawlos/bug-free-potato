@@ -45,7 +45,7 @@ bool altPressed = false;
 bool ctrlPressed = false;
 bool capsLockOn = false;
 
-void keyboard_routine(pt::uint8_t scancode)
+void keyboard_routine(const pt::uint8_t scancode)
 {
 	if (scancode & 0x80)
 	{

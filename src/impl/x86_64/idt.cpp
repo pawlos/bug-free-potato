@@ -18,7 +18,7 @@ extern pt::uint64_t irq1;
 extern pt::uint64_t irq12;
 
 extern void keyboard_routine(pt::uint8_t scancode);
-extern void mouse_routine(pt::int8_t mouse[]);
+extern void mouse_routine(const pt::int8_t mouse[]);
 extern void timer_routine();
 ASMCALL void LoadIDT();
 

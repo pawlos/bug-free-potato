@@ -18,7 +18,7 @@ public:
         return ret;
     }
 
-    static inline void io_wait(void)
+    static inline void io_wait()
     {
         /* TODO: This is probably fragile. */
         asm volatile ( "jmp 1f\n\t"

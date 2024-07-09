@@ -10,7 +10,7 @@ constexpr pt::uint32_t COM4 = 0x2E8;
 class ComDevice 
 {
 	private:
-		void print_ch(const char a);
+		void print_ch(char a);
 	public:
 		ComDevice();
 		void print_str(const char *str, va_list args);

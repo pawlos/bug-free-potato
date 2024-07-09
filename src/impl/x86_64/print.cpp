@@ -58,7 +58,7 @@ void TerminalPrinter::print_newline()
 	clear_row(NUM_ROWS - 1);
 }
 
-void TerminalPrinter::print_char(char character)
+void TerminalPrinter::print_char(const char character)
 {
 	if (character == '\n')
 	{

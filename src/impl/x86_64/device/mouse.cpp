@@ -16,16 +16,12 @@ void mouse_wait(pt::uint8_t type)
         }
         return;
     }
-    else
+    while (_time_out--)
     {
-        while (_time_out--)
+        if((IO::inb(0x64) & 2) == 0)
         {
-            if((IO::inb(0x64) & 2) == 0)
-            {
-                return;
-            }
+            return;
         }
-        return;
     }
 }
 
@@ -94,12 +90,12 @@ mouse_state mouse {
 extern void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos);
 extern void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos);
 
-void mouse_routine(pt::int8_t mouse_byte[])
+void mouse_routine(const pt::int8_t mouse_byte[])
 {
-    pt::int8_t mouse_x = mouse_byte[1];
-    pt::int8_t mouse_y = mouse_byte[2];
-    bool left_button_pressed  = mouse_byte[0] & 1;
-    bool right_button_pressed = (mouse_byte[0] & 2) >> 1;
+    const pt::int8_t mouse_x = mouse_byte[1];
+    const pt::int8_t mouse_y = mouse_byte[2];
+    const bool left_button_pressed  = mouse_byte[0] & 1;
+    const bool right_button_pressed = (mouse_byte[0] & 2) >> 1;
 
     EraseCursor(mouse.pos_x, mouse.pos_y);
     pt::int16_t newPosX = mouse.pos_x + mouse_x;
