@@ -8,8 +8,8 @@ void init_timer(pt::uint32_t freq)
 
 	pt::uint32_t divisor = 1193180 / freq;
 
-	pt::uint8_t low = (pt::uint8_t)(divisor & 0xFF);
-	pt::uint8_t high = (pt::uint8_t)((divisor >> 8) & 0xFF);
+	auto low = (pt::uint8_t)(divisor & 0xFF);
+	auto high = (pt::uint8_t)((divisor >> 8) & 0xFF);
 
 
 	IO::outb(ModeCommandRegister, 0x36);

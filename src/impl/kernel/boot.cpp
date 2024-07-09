@@ -98,7 +98,7 @@ void BootInfo::parse(boot_info* boot_info)
 		{
 			ptr += padding_size;
 		}		
-		basic_tag* tag = (basic_tag *)ptr;
+		auto* tag = (basic_tag *)ptr;
 		switch(tag->type)
 		{
 			case BOOT_CMDLINE:
@@ -134,7 +134,7 @@ void BootInfo::parse(boot_info* boot_info)
 				while (mem_current < mem_end)
 				{
 					if (i >= MEMORY_ENTRIES_LIMIT) kernel_panic("Memory entries limit reached", MemEntriesLimitReached);
-					memory_map_entry* entry = (memory_map_entry*)mem_current;
+					auto* entry = (memory_map_entry*)mem_current;
 					memory_entry[i] = entry;
 					i++;
 					mem_current += mmap->entry_size;

@@ -4,8 +4,8 @@ void memset(void* dst, pt::uint64_t value, pt::size_t size)
 {
 	if (size < 8)
 	{
-		pt::uint8_t* valuePtr = (pt::uint8_t*)&value;
-		for (pt::uint8_t* ptr = (pt::uint8_t*)dst; ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
+		auto* valuePtr = (pt::uint8_t*)&value;
+		for (auto* ptr = (pt::uint8_t*)dst; ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
 		{
 			*ptr = *valuePtr;
 			valuePtr++;
@@ -17,13 +17,13 @@ void memset(void* dst, pt::uint64_t value, pt::size_t size)
 	pt::uint64_t proceedingBytes = size % 8;
 	pt::uint64_t newnum = size - proceedingBytes;
 
-	for (pt::uint64_t* ptr = (pt::uint64_t*)dst; ptr < (pt::uint64_t*)((pt::uint64_t)dst + size); ptr++)
+	for (auto* ptr = (pt::uint64_t*)dst; ptr < (pt::uint64_t*)((pt::uint64_t)dst + size); ptr++)
 	{
 		*ptr = value;
 	}
 
-	pt::uint8_t* valPtr = (pt::uint8_t*)&value;
-	for (pt::uint8_t* ptr = (pt::uint8_t*)((pt::uint64_t)dst+newnum); ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
+	auto* valPtr = (pt::uint8_t*)&value;
+	for (auto* ptr = (pt::uint8_t*)((pt::uint64_t)dst+newnum); ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
 	{
 		*ptr = *valPtr;
 		valPtr++;
@@ -45,7 +45,7 @@ void* VMM::kmalloc(pt::size_t size)
 		{
 			if (currentMemorySegment->length > size + sizeof(kMemoryRegion))
 			{
-				kMemoryRegion* newMemoryRegion =
+				auto* newMemoryRegion =
 						(kMemoryRegion*)((pt::uint64_t) currentMemorySegment +
 										sizeof(kMemoryRegion) + size);
 				newMemoryRegion->free = true;
