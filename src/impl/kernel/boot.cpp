@@ -9,14 +9,14 @@ int toEightByteDivisible(pt::uintptr_t addr) {
 
 boot_framebuffer* BootInfo::get_framebuffer()
 {
-	if (framebuffer == NULL) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
+	if (framebuffer == nullptr) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
 
 	return framebuffer;
 }
 
 memory_map_entry** BootInfo::get_memory_maps()
 {
-	if (memory_entry == NULL) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
+	if (memory_entry == nullptr) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
 
 	return memory_entry;
 }

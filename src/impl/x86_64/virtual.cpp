@@ -66,18 +66,18 @@ void* VMM::kmalloc(pt::size_t size)
 			currentMemorySegment->free = false;
 
 
-			if (currentMemorySegment->prevFreeChunk != NULL)
+			if (currentMemorySegment->prevFreeChunk != nullptr)
 				currentMemorySegment->prevFreeChunk->nextFreeChunk = currentMemorySegment->nextFreeChunk;
-			if (currentMemorySegment->nextFreeChunk != NULL)
+			if (currentMemorySegment->nextFreeChunk != nullptr)
 				currentMemorySegment->nextFreeChunk->prevFreeChunk = currentMemorySegment->prevFreeChunk;
-			if (currentMemorySegment->prevChunk != NULL)
+			if (currentMemorySegment->prevChunk != nullptr)
 				currentMemorySegment->prevChunk->nextFreeChunk = currentMemorySegment->nextChunk;
-			if (currentMemorySegment->nextChunk != NULL)
+			if (currentMemorySegment->nextChunk != nullptr)
 				currentMemorySegment->nextChunk->prevFreeChunk = currentMemorySegment->prevChunk;
 
 			return currentMemorySegment + 1;
 		}
-		if (currentMemorySegment->nextFreeChunk == NULL)
+		if (currentMemorySegment->nextFreeChunk == nullptr)
 		{
 			kernel_panic("Not able to allocated more memory.", NotAbleToAllocateMemory);
 		}
@@ -97,8 +97,8 @@ void* VMM::kcalloc(pt::size_t size)
 
 void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
 {
-	if (a == NULL) return;
-	if (b == NULL) return;
+	if (a == nullptr) return;
+	if (b == nullptr) return;
 
 	if (a < b)
 	{
@@ -131,27 +131,27 @@ void VMM::kfree(void *address)
 		firstFreeMemoryRegion = currentMemorySegment;
 	}
 
-	if (currentMemorySegment->nextFreeChunk != NULL)
+	if (currentMemorySegment->nextFreeChunk != nullptr)
 	{
 		if (currentMemorySegment->nextFreeChunk->prevFreeChunk < currentMemorySegment)
 		{
 			currentMemorySegment->nextFreeChunk->prevFreeChunk = currentMemorySegment;
 		}
 	}
-	if (currentMemorySegment->prevFreeChunk != NULL)
+	if (currentMemorySegment->prevFreeChunk != nullptr)
 	{
 		if (currentMemorySegment->prevFreeChunk->nextFreeChunk > currentMemorySegment)
 		{
 			currentMemorySegment->prevFreeChunk->nextFreeChunk = currentMemorySegment;
 		}
 	}
-	if (currentMemorySegment->nextChunk != NULL)
+	if (currentMemorySegment->nextChunk != nullptr)
 	{
 		currentMemorySegment->nextChunk->prevChunk = currentMemorySegment;
 		if (currentMemorySegment->nextChunk->free)
 			combineFreeSegments(currentMemorySegment, currentMemorySegment->nextChunk);
 	}
-	if (currentMemorySegment->prevChunk != NULL)
+	if (currentMemorySegment->prevChunk != nullptr)
 	{
 		currentMemorySegment->prevChunk->nextChunk = currentMemorySegment;
 		if (currentMemorySegment->prevChunk->free)
