@@ -1,4 +1,6 @@
 #include "mouse.h"
+#include "io.h"
+#include "kernel.h"
 
 void mouse_wait(uint8_t type)
 {

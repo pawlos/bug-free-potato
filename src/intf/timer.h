@@ -1,8 +1,6 @@
 #pragma once
 
 #include "defs.h"
-#include "io.h"
-#include "kernel.h"
 
 constexpr uint8_t ModeCommandRegister = 0x43;
 constexpr uint8_t Channel0DataPort = 0x40;

@@ -1,5 +1,6 @@
 #include "timer.h"
-
+#include "kernel.h"
+#include "io.h"
 
 void init_timer(uint32_t freq)
 {

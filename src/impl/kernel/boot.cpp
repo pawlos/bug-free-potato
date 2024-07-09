@@ -1,4 +1,5 @@
 #include "boot.h"
+#include "kernel.h"
 
 int toEightByteDivisible(uintptr_t addr) {
     int v = (addr % 8);

@@ -1,5 +1,4 @@
 #pragma once
-#include "kernel.h"
 #include "print.h"
 
 constexpr uint32_t BOOT_CMDLINE = 1;
