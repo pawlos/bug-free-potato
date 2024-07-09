@@ -10,7 +10,7 @@ int is_transmit_empty()
 
 void ComDevice::print_ch(const char a)
 {
-	while (is_transmit_empty() == 0);
+	while (is_transmit_empty() == 0) {}
 
 	IO::outb(COM1, a);
 }
