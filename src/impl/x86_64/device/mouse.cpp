@@ -2,7 +2,7 @@
 #include "io.h"
 #include "kernel.h"
 
-void mouse_wait(pt::uint8_t type)
+void mouse_wait(const pt::uint8_t type)
 {
     pt::uint32_t _time_out = 100000;
     if (type == 0)

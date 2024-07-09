@@ -6,10 +6,10 @@ void init_timer(pt::uint32_t freq)
 {
 	klog("[TIMER] Register for %d freq\n", freq);
 
-	pt::uint32_t divisor = 1193180 / freq;
+	const pt::uint32_t divisor = 1193180 / freq;
 
-	auto low = (pt::uint8_t)(divisor & 0xFF);
-	auto high = (pt::uint8_t)((divisor >> 8) & 0xFF);
+	const auto low = (pt::uint8_t)(divisor & 0xFF);
+	const auto high = (pt::uint8_t)((divisor >> 8) & 0xFF);
 
 
 	IO::outb(ModeCommandRegister, 0x36);

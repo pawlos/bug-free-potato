@@ -4,7 +4,7 @@ void memset(void* dst, pt::uint64_t value, pt::size_t size)
 {
 	if (size < 8)
 	{
-		auto* valuePtr = (pt::uint8_t*)&value;
+		const auto* valuePtr = (pt::uint8_t*)&value;
 		for (auto* ptr = (pt::uint8_t*)dst; ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
 		{
 			*ptr = *valuePtr;
@@ -13,9 +13,9 @@ void memset(void* dst, pt::uint64_t value, pt::size_t size)
 
 		return;
 	}
-	
-	pt::uint64_t proceedingBytes = size % 8;
-	pt::uint64_t newnum = size - proceedingBytes;
+
+	const pt::uint64_t proceedingBytes = size % 8;
+	const pt::uint64_t newnum = size - proceedingBytes;
 
 	for (auto* ptr = (pt::uint64_t*)dst; ptr < (pt::uint64_t*)((pt::uint64_t)dst + size); ptr++)
 	{
@@ -33,7 +33,7 @@ void memset(void* dst, pt::uint64_t value, pt::size_t size)
 void* VMM::kmalloc(pt::size_t size)
 {
 	klog("[VMM] Allocating %d bytes memory.\n", size);
-	pt::uint64_t remainder = size % 8;
+	const pt::uint64_t remainder = size % 8;
 	size -= remainder;
 	if (remainder != 0) size += 8;
 
@@ -86,7 +86,7 @@ void* VMM::kmalloc(pt::size_t size)
 	kernel_panic("Not able to allocate memory.", NotAbleToAllocateMemory);
 }
 
-void* VMM::kcalloc(pt::size_t size)
+void* VMM::kcalloc(const pt::size_t size)
 {
 	klog("[VMM] Callocing %d bytes memory.\n", size);
 	pt::uint64_t remainder = size % 8;
@@ -122,7 +122,7 @@ void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
 
 void VMM::kfree(void *address)
 {
-	kMemoryRegion* currentMemorySegment = ((kMemoryRegion*)address) - 1;
+	kMemoryRegion* currentMemorySegment = static_cast<kMemoryRegion *>(address) - 1;
 
 	currentMemorySegment->free = true;
 

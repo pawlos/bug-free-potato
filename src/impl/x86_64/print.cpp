@@ -72,7 +72,7 @@ void TerminalPrinter::print_char(const char character)
 	}
 	if (character == '\t')
 	{
-		pt::size_t backup = col;
+		const pt::size_t backup = col;
 		col += 4 - col % 4;
 		for (pt::size_t i = backup; i < col; i++)
 		{
@@ -104,9 +104,9 @@ void TerminalPrinter::print_str(const char *str, ...)
 {
 	va_list ap;
 	va_start(ap, str);
-	for (pt::size_t i=0; 1; i++)
+	for (pt::size_t i=0; true; i++)
 	{
-		char character = (pt::uint8_t)str[i];
+		const char character = (pt::uint8_t)str[i];
 
 		if (character == '\0') 
 		{
@@ -167,7 +167,7 @@ void TerminalPrinter::print_str(const char *str, ...)
 	}
 }
 
-void TerminalPrinter::print_set_color(pt::uint8_t foreground, pt::uint8_t background)
+void TerminalPrinter::print_set_color(const pt::uint8_t foreground, const pt::uint8_t background)
 {
 	color = foreground + (background << 4);
 }
@@ -176,7 +176,7 @@ char decToStringOutput[128];
 template<typename T> const char* decToString(T value)
 {
 	T copy = value;
-	bool isNegative;
+	bool isNegative = false;
 	if (copy < 0)
 	{
 		isNegative = true;
@@ -210,18 +210,16 @@ template<typename T> const char* decToString(T value)
 char hexToStringOuput[128];
 template<typename T> const char* hexToString(T value, bool upper)
 {
-	pt::uint8_t size = sizeof(value) * 2 - 1;
+	const pt::uint8_t size = sizeof(value) * 2 - 1;
 	T* valuePtr = &value;
-	pt::uint8_t* ptr;
-	pt::uint8_t temp;
-	int offset = upper ? 55 : 87;
+	const int offset = upper ? 55 : 87;
 	if (value != 0)
 	{
 		for (int i = 0; i < size; i++)
 		{
-			ptr = ((pt::uint8_t*)valuePtr + i);
+			const pt::uint8_t *ptr = ((pt::uint8_t *) valuePtr + i);
 
-			temp = ((*ptr & 0xF0) >> 4);
+			pt::uint8_t temp = ((*ptr & 0xF0) >> 4);
 			hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? offset : 48);
 
 			temp = ((*ptr & 0x0F));
@@ -235,10 +233,7 @@ template<typename T> const char* hexToString(T value, bool upper)
 		}
 		return &hexToStringOuput[pos];
 	}
-	else
-	{
-		hexToStringOuput[0] = '0';
-		hexToStringOuput[1] = '\0';
-	}
+	hexToStringOuput[0] = '0';
+	hexToStringOuput[1] = '\0';
 	return &hexToStringOuput[0];
 }
