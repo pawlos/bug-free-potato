@@ -50,7 +50,7 @@ void keyboard_routine(const pt::uint8_t scancode)
 	if (scancode & 0x80)
 	{
 		//Key released
-		pt::uint8_t code = scancode & ~0x80;
+		const pt::uint8_t code = scancode & ~0x80;
 		if (code == L_SHIFT || code == R_SHIFT)
 		{
 			shiftPressed = false;
