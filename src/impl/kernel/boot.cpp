@@ -45,9 +45,8 @@ void BootInfo::log()
 	if (mmap != nullptr)
 	{
 		klog("[BOOT] Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
-		for (int i = 0; i<MEMORY_ENTRIES_LIMIT; i++)
+		for (auto entry : memory_entry)
 		{
-			auto entry = memory_entry[i];
 			if (entry == nullptr) break;
 			klog("\t[BT] Memory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
 		}
@@ -126,9 +125,9 @@ void BootInfo::parse(boot_info* boot_info)
 				mmap = (boot_memory_map *)ptr;
 				auto mem_current = (pt::uintptr_t)&mmap->entries;
 				const pt::uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(pt::uint32_t);
-				for (int i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
+				for (auto & map_entry : memory_entry)
 				{
-					memory_entry[i] = nullptr;
+					map_entry = nullptr;
 				}
 				int i = 0;
 				while (mem_current < mem_end)
