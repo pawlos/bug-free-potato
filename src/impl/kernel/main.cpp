@@ -15,12 +15,12 @@ static IDT idt;
 static Framebuffer fb = nullptr;
 VMM vmm = nullptr;
 
-void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos)
+void DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
 {
 	fb.DrawCursor(x_pos, y_pos);
 }
 
-void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos)
+void EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
 {
 	fb.EraseCursor(x_pos, y_pos);
 }
@@ -31,7 +31,7 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 
 	bi.parse(boot_info);
 
-	auto boot_fb = bi.get_framebuffer();
+	const auto boot_fb = bi.get_framebuffer();
 
 	init_mouse(boot_fb->framebuffer_width, boot_fb->framebuffer_height);
 	init_timer(50);
