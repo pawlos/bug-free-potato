@@ -45,4 +45,4 @@ clean:
 	-rm -f dist/x86_64/kernel.*
 
 run: all
-	$(QEMU) -cdrom dist/x86_64/kernel.iso -serial stdio
+	$(QEMU) -cdrom dist/x86_64/kernel.iso -serial stdio -m 512M
