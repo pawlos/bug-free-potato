@@ -49,5 +49,7 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 	terminal.print_str(Logo);
 
 	fb.Draw(PotatoLogo, 0, 0, 197, 197);
+	const auto c = static_cast<char *>(vmm.kmalloc(217));
+	vmm.kfree(c);
 	halt();
 }

@@ -37,15 +37,15 @@ public:
 		pt::uint64_t addr = 0;
 		for(pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
 		{
-			auto entry = mmap[i];
+			const auto entry = mmap[i];
 			if (entry == nullptr)
 				break;
 			if (entry->type == 1)
 			{
 				if (entry->length > top_size)
 				{
-					top_size = entry->length;
-					addr = entry->base_addr;
+					top_size = entry->length - (0x200000 - entry->base_addr);
+					addr = 0x200000;//entry->base_addr;
 				}
 			}
 		}
