@@ -17,6 +17,9 @@ start:
 
 	lgdt [gdt64.pointer]
 
+	;we will read page tables in the kernel_main
+	mov eax, page_table_l4
+	mov esi, eax
 	jmp gdt64.code_segment_kernel:long_mode_start
 
 	hlt
