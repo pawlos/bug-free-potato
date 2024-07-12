@@ -51,7 +51,7 @@ void TerminalPrinter::print_newline()
 	{
 		for (pt::size_t col = 0; col < NUM_COLS; col ++)
 		{
-			struct Char character = buffer[col + NUM_COLS * row];
+			const Char character = buffer[col + NUM_COLS * row];
 			buffer[col + NUM_COLS * (row - 1)] = character;
 		}
 	}
@@ -76,7 +76,7 @@ void TerminalPrinter::print_char(const char character)
 		col += 4 - col % 4;
 		for (pt::size_t i = backup; i < col; i++)
 		{
-			buffer[i + NUM_COLS * row] = (struct Char)
+			buffer[i + NUM_COLS * row] = (Char)
 			{
 				.character=(pt::uint8_t)' ',
 				.color=color,
@@ -91,7 +91,7 @@ void TerminalPrinter::print_char(const char character)
 	}
 
 
-	buffer[col + NUM_COLS * row] = (struct Char)
+	buffer[col + NUM_COLS * row] = (Char)
 	{
 		.character=(pt::uint8_t)character,
 		.color=color,
@@ -217,13 +217,13 @@ template<typename T> const char* hexToString(T value, bool upper)
 	{
 		for (int i = 0; i < size; i++)
 		{
-			const pt::uint8_t *ptr = ((pt::uint8_t *) valuePtr + i);
+			const pt::uint8_t *ptr = (pt::uint8_t *) valuePtr + i;
 
-			pt::uint8_t temp = ((*ptr & 0xF0) >> 4);
-			hexToStringOuput[size - ((i * 2 + 1))] = temp + (temp > 9 ? offset : 48);
+			pt::uint8_t temp = (*ptr & 0xF0) >> 4;
+			hexToStringOuput[size - (i * 2 + 1)] = temp + (temp > 9 ? offset : 48);
 
-			temp = ((*ptr & 0x0F));
-			hexToStringOuput[size - ((i * 2 + 0))] = temp + (temp > 9 ? offset : 48);
+			temp = *ptr & 0x0F;
+			hexToStringOuput[size - (i * 2 + 0)] = temp + (temp > 9 ? offset : 48);
 		}
 		hexToStringOuput[size + 1] = 0;
 		int pos = 0;

@@ -10,9 +10,9 @@ void Framebuffer::Draw(const pt::uint8_t* what,
         for (pt::uint32_t x = x_pos; x < x_pos + width ; x++)
         {
             const pt::uint32_t pos = y*3*width + x*3;
-            const pt::uint32_t c =  (what[pos] << 16)
-                        | (what[pos + 1] << 8)
-                        | (what[pos + 2]);
+            const pt::uint32_t c =  what[pos] << 16
+                        | what[pos + 1] << 8
+                        | what[pos + 2];
             this->PutPixel(x, y, c);
         }
     }
@@ -56,9 +56,9 @@ void Framebuffer::DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
     for (pt::uint8_t i = 0; i < cursor_width; i++) {
         for (pt::uint8_t j = 0; j < cursor_width; j++) {
             const int pos = i*cursor_width+j;
-            prevPixel[pos] = this->GetPixel((x_pos+j), (y_pos+i));
+            prevPixel[pos] = this->GetPixel(x_pos+j, y_pos+i);
             if (normal_cursor_mask[pos] != 0) {
-                this->PutPixel((x_pos+j), (y_pos+i), 0xff0000);
+                this->PutPixel(x_pos+j, y_pos+i, 0xff0000);
             }
         }
     }
@@ -77,9 +77,9 @@ void Framebuffer::EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos
 void Framebuffer::Clear(const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) const {
     const pt::uint32_t  fb_width  = this->m_width;
     const pt::uint32_t  fb_height  = this->m_height;
-    const pt::uint32_t c =  (r << 16)
-                | (g << 8)
-                | (b);
+    const pt::uint32_t c =  r << 16
+                | g << 8
+                | b;
 
     for (pt::uint32_t y = 0; y < fb_height; y++) {
         for (pt::uint32_t x = 0; x < fb_width ; x++) {

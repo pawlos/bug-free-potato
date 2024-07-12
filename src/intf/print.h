@@ -40,7 +40,7 @@ class TerminalPrinter
 	public:
 		void print_clear();
 		void freeze_rows(pt::size_t num);
-		void print_char(const char character);
+		void print_char(char character);
 		void print_str(const char *str, ...);
 		void print_set_color(pt::uint8_t foreground, pt::uint8_t background);
 		void set_cursor_position(pt::uint8_t posx, pt::uint8_t posy);

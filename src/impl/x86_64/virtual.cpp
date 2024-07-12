@@ -49,7 +49,7 @@ void* VMM::kmalloc(pt::size_t size)
 						(kMemoryRegion*)((pt::uint64_t) currentMemorySegment +
 										sizeof(kMemoryRegion) + size);
 				newMemoryRegion->free = true;
-				newMemoryRegion->length = ((pt::uint64_t)currentMemorySegment->length) - (sizeof(kMemoryRegion) + size);
+				newMemoryRegion->length = (pt::uint64_t)currentMemorySegment->length - (sizeof(kMemoryRegion) + size);
 				newMemoryRegion->nextFreeChunk = currentMemorySegment->nextFreeChunk;
 				newMemoryRegion->nextChunk = currentMemorySegment->nextChunk;
 				newMemoryRegion->prevChunk = currentMemorySegment;
@@ -83,7 +83,6 @@ void* VMM::kmalloc(pt::size_t size)
 		}
 		currentMemorySegment = currentMemorySegment->nextFreeChunk;
 	}
-	kernel_panic("Not able to allocate memory.", NotAbleToAllocateMemory);
 }
 
 void* VMM::kcalloc(const pt::size_t size)

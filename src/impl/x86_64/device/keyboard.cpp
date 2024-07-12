@@ -85,7 +85,7 @@ void keyboard_routine(const pt::uint8_t scancode)
 		}
 		else
 		{			
-			const char* current_layout = (shiftPressed || capsLockOn) ? layout_upper : layout;
+			const char* current_layout = shiftPressed || capsLockOn ? layout_upper : layout;
 			char key = current_layout[scancode];
 		}
 		if (ctrlPressed && shiftPressed && altPressed)

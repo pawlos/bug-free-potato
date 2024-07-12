@@ -25,7 +25,7 @@ ASMCALL void LoadIDT();
 void init_idt_entry(int irq_no, pt::uint64_t& irq)
 {
 	_idt[irq_no].zero = 0;
-	_idt[irq_no].offset_low  = (pt::uint16_t)(((pt::uint64_t)&irq & 0x000000000000FFFF));
+	_idt[irq_no].offset_low  = (pt::uint16_t)((pt::uint64_t)&irq & 0x000000000000FFFF);
 	_idt[irq_no].offset_mid  = (pt::uint16_t)(((pt::uint64_t)&irq & 0x00000000FFFF0000) >> 16);
 	_idt[irq_no].offset_high = (pt::uint32_t)(((pt::uint64_t)&irq & 0xFFFFFFFF00000000) >> 32);
 	_idt[irq_no].ist = 0;
