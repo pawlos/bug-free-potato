@@ -1,6 +1,6 @@
 #include "virtual.h"
 
-void memset(void* dst, pt::uint64_t value, pt::size_t size)
+void memset(void* dst, pt::uint64_t value, const pt::size_t size)
 {
 	if (size < 8)
 	{
