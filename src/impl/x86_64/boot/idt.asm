@@ -69,7 +69,7 @@ _syscall_stub:
 	PUSHALL
 	call syscall_handler
 	POPALL
-	sysretq
+	iretq
 GLOBAL _syscall_stub
 
 [extern isr14_handler]
