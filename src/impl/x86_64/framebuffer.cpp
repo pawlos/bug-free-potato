@@ -1,5 +1,16 @@
 #include "framebuffer.h"
 
+Framebuffer buffer;
+
+Framebuffer* Framebuffer::get_instance() {
+    return &buffer;
+}
+
+void Framebuffer::Init(const boot_framebuffer *fb) {
+    buffer = Framebuffer{fb};
+}
+
+
 void Framebuffer::Draw(const pt::uint8_t* what,
                        const pt::uint32_t x_pos,
                        const pt::uint32_t y_pos,

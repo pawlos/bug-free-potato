@@ -28,13 +28,17 @@ class Framebuffer
     [[nodiscard]] pt::uint32_t GetPixel(
         pt::uint32_t x, pt::uint32_t y) const;
 public:
+    Framebuffer()=default;
     Framebuffer(const boot_framebuffer *fb) : Framebuffer(
-                                             fb->framebuffer_addr,
-                                             fb->framebuffer_width,
-                                             fb->framebuffer_height,
-                                             fb->framebuffer_bpp,
-                                             fb->framebuffer_pitch)
+                                         fb->framebuffer_addr,
+                                         fb->framebuffer_width,
+                                         fb->framebuffer_height,
+                                         fb->framebuffer_bpp,
+                                         fb->framebuffer_pitch)
     {}
+
+    static void Init(const boot_framebuffer *fb);
+    static Framebuffer* get_instance();
 
     void Draw(const pt::uint8_t* what,
               pt::uint32_t x_pos, pt::uint32_t y_pos,

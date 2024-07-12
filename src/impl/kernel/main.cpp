@@ -12,18 +12,7 @@ extern const char Logo[];
 extern const unsigned char PotatoLogo[];
 static BootInfo bi;
 static IDT idt;
-static Framebuffer fb = nullptr;
 VMM vmm = nullptr;
-
-void DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
-{
-	fb.DrawCursor(x_pos, y_pos);
-}
-
-void EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
-{
-	fb.EraseCursor(x_pos, y_pos);
-}
 
 
 ASMCALL void kernel_main(boot_info* boot_info) {
@@ -40,7 +29,7 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 
 	vmm = VMM(bi.get_memory_maps());
 
-	fb = Framebuffer(boot_fb);
+	Framebuffer::Init(boot_fb);
 
 	TerminalPrinter terminal;
 
@@ -48,7 +37,7 @@ ASMCALL void kernel_main(boot_info* boot_info) {
 	terminal.print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
 	terminal.print_str(Logo);
 
-	fb.Draw(PotatoLogo, 0, 0, 197, 197);
+	Framebuffer::get_instance()->Draw(PotatoLogo, 0, 0, 197, 197);
 	const auto c = static_cast<char *>(vmm.kmalloc(217));
 	vmm.kfree(c);
 	halt();

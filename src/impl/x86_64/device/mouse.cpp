@@ -1,6 +1,18 @@
 #include "mouse.h"
 #include "io.h"
 #include "kernel.h"
+#include <framebuffer.h>
+
+
+void DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
+{
+    Framebuffer::get_instance()->DrawCursor(x_pos, y_pos);
+}
+
+void EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
+{
+    Framebuffer::get_instance()->EraseCursor(x_pos, y_pos);
+}
 
 void mouse_wait(const pt::uint8_t type)
 {
