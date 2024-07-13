@@ -1,5 +1,5 @@
 #pragma once
-#include "print.h"
+#include "defs.h"
 
 constexpr pt::uint32_t BOOT_CMDLINE = 1;
 constexpr pt::uint32_t BOOT_LOADER_NAME = 2;
@@ -141,8 +141,7 @@ struct boot_vbe_info
 #define MEMORY_ENTRIES_LIMIT 7
 
 class BootInfo
-{	
-	private:
+{
 		pt::size_t size;
 		boot_command_line* cmd_line;
 		boot_loader_name* loader_name;
@@ -159,6 +158,6 @@ class BootInfo
 		void log();
 	public:
 		void parse(boot_info *boot_info);
-		boot_framebuffer* get_framebuffer();
+		[[nodiscard]] boot_framebuffer* get_framebuffer() const;
 		memory_map_entry** get_memory_maps();
 };

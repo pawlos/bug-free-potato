@@ -7,8 +7,7 @@ int toEightByteDivisible(pt::uintptr_t addr) {
     return 8 - v;    
 }
 
-boot_framebuffer* BootInfo::get_framebuffer()
-{
+boot_framebuffer* BootInfo::get_framebuffer() const {
 	if (framebuffer == nullptr) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
 
 	return framebuffer;
@@ -86,18 +85,18 @@ void BootInfo::log()
 void BootInfo::parse(boot_info* boot_info)
 {
 	const auto start = reinterpret_cast<pt::uintptr_t>(boot_info);
-	size = boot_info->size;
+	this->size = boot_info->size;
 	const pt::uintptr_t end = start + size;
 	pt::uintptr_t ptr = start + 8;
 
 	while (ptr < end)
 	{
-		int padding_size = toEightByteDivisible(ptr);
+		const int padding_size = toEightByteDivisible(ptr);
 		if (padding_size != 0)
 		{
 			ptr += padding_size;
-		}		
-		auto* tag = reinterpret_cast<basic_tag *>(ptr);
+		}
+		const auto* tag = reinterpret_cast<basic_tag *>(ptr);
 		switch(tag->type)
 		{
 			case BOOT_CMDLINE:
