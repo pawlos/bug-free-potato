@@ -117,11 +117,11 @@ enable_paging:
 
 	mov ecx, 0xc0000080
 	rdmsr
-	or eax, 1 << 8
+	or eax, 1 << 8      ;set the LM-bit
 	wrmsr
 
 	mov eax, cr0
-	or eax, 1 << 31
+	or eax, 1 << 31     ;set the PG-bit
 	mov cr0, eax
 
 	ret
@@ -136,11 +136,11 @@ error:
 section .bss
 align 4096
 page_table_l4:
-	resb 4096
+	resb 1024 * 4
 page_table_l3:
-	resb 4096
+	resb 1024 * 4
 page_table_l2:
-	resb 4096 * 4
+	resb 1024 * 4 * 4
 
 stack_bottom:
 	resb 4096 * 4
