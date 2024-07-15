@@ -14,6 +14,7 @@ long_mode_start:
 	mov gs, ax
 
 	pop rdi
+	; rdi - pointer to boot_info; rsi - pointer to l4_page_table
 	call kernel_main
 
 	hlt
