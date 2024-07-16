@@ -4,6 +4,7 @@ extern kernel_main, _syscall_stub
 section .text
 bits 64
 long_mode_start:
+    ; do we need to remap page tables here for 64-bit?
 	cli
 	call enable_syscalls
 	mov ax, 0x10

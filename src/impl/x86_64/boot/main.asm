@@ -69,7 +69,10 @@ check_long_mode:
 	jmp error
 
 
-
+; we are setting up the page tables here
+; PT04 - 1024 entries; 4B
+; PT03 - 1024 entries; 4B
+; PT02 - 1024 entries; 8B
 setup_page_tables:
 	mov eax, page_table_l3
 	or eax, 0b11 ; present, writable
