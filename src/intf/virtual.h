@@ -31,7 +31,7 @@ public:
 		return &vmm;
 	}
 
-	VMM(memory_map_entry* mmap[])
+	VMM(memory_map_entry* mmap[], const long address = 0x200000)
 	{
 		pt::size_t top_size = 0;
 		pt::uint64_t addr = 0;
@@ -44,8 +44,8 @@ public:
 			{
 				if (entry->length > top_size)
 				{
-					top_size = entry->length - (0x200000 - entry->base_addr);
-					addr = 0x200000;//entry->base_addr;
+					top_size = entry->length - (address - entry->base_addr);
+					addr = address;//entry->base_addr;
 				}
 			}
 		}
