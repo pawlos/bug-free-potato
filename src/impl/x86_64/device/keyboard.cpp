@@ -45,6 +45,30 @@ bool altPressed = false;
 bool ctrlPressed = false;
 bool capsLockOn = false;
 
+static char keyboard_buffer[128] = {0};
+static int write_pos = 0;
+static int read_pos = 0;
+
+void keyboard_log(const char *str, ...) {
+#ifdef KEYBOARD_LOG
+	va_list arg_ptr;
+	va_start(arg_ptr, str);
+	debug.print_str(str, arg_ptr);
+	va_end(arg_ptr);
+#endif
+}
+
+char getChar() {
+	if (read_pos < write_pos) {
+
+		keyboard_log("Reading from %d\n", read_pos % 128);
+		const auto c = keyboard_buffer[read_pos%128];
+		read_pos += 1;
+		return c;
+	}
+	return -1;
+}
+
 void keyboard_routine(const pt::uint8_t scancode)
 {
 	if (scancode & 0x80)
@@ -86,7 +110,10 @@ void keyboard_routine(const pt::uint8_t scancode)
 		else
 		{			
 			const char* current_layout = shiftPressed || capsLockOn ? layout_upper : layout;
-			char key = current_layout[scancode];
+			const char key = current_layout[scancode];
+			keyboard_buffer[write_pos % 128] = key;
+			keyboard_log("Putting the '%c' into %d\n", key, write_pos % 128);
+			write_pos = write_pos + 1;
 		}
 		if (ctrlPressed && shiftPressed && altPressed)
 		{

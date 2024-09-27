@@ -63,7 +63,7 @@ ASMCALL void irq0_handler()
 
 ASMCALL void irq1_handler()
 {
-	pt::uint8_t c = IO::inb(0x60);
+	const pt::uint8_t c = IO::inb(0x60);
 	keyboard_routine(c);
 	PIC::irq_ack(1);
 }

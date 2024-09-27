@@ -45,7 +45,7 @@ public:
 				if (entry->length > top_size)
 				{
 					top_size = entry->length - (address - entry->base_addr);
-					addr = address;//entry->base_addr;
+					addr = address;
 				}
 			}
 		}

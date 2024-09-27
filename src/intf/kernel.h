@@ -17,10 +17,12 @@ extern pt::uint64_t ticks;
 
 void inline klog(const char *str, ...)
 {
+#ifdef KERNEL_LOG
 	va_list argptr;
 	va_start(argptr, str);
 	debug.print_str(str, argptr);
 	va_end(argptr);
+#endif
 }
 
 void inline halt()

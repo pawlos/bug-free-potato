@@ -25,7 +25,7 @@ void ComDevice::print_str(const char *str, ...)
 
 void ComDevice::print_str(const char *str, va_list args)
 {
-	for (pt::size_t i=0; 1; i++)
+	for (pt::size_t i=0; true; i++)
 	{
 		char character = (pt::uint8_t)str[i];
 
@@ -64,6 +64,13 @@ void ComDevice::print_str(const char *str, va_list args)
 				{
 					const char *a = va_arg(args, const char *);
 					print_str(a);
+					i+=1;
+					continue;
+				}
+				case 'c':
+				{
+					const char a = va_arg(args, int);
+					print_ch(a);
 					i+=1;
 					continue;
 				}
