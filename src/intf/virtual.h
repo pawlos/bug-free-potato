@@ -27,6 +27,8 @@ public:
 	void *kcalloc(pt::size_t size);
 	void kfree(void *);
 
+	pt::size_t memsize();
+
 	static VMM* Instance() {
 		return &vmm;
 	}

@@ -1,6 +1,7 @@
 #include "print.h"
 #include <cstdarg>
 
+
 pt::uint8_t color = PRINT_COLOR_WHITE | PRINT_COLOR_BLACK << 4;
 
 void TerminalPrinter::clear_row(pt::size_t row)
@@ -128,6 +129,13 @@ void TerminalPrinter::print_str(const char *str, ...)
 				case 'd':
 				{
 					int a = va_arg(ap, int);
+					print_str(decToString(a));
+					i += 1;
+					continue;
+				}
+				case 'l':
+				{
+					pt::uint64_t a = va_arg(ap, pt::uint64_t);
 					print_str(decToString(a));
 					i += 1;
 					continue;

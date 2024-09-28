@@ -30,6 +30,10 @@ void memset(void* dst, pt::uint64_t value, const pt::size_t size)
 	}
 }
 
+pt::size_t VMM::memsize() {
+	return this->firstFreeMemoryRegion->length;
+}
+
 void* VMM::kmalloc(pt::size_t size)
 {
 	klog("[VMM] Allocating %d bytes memory.\n", size);

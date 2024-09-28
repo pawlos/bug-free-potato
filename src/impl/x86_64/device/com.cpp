@@ -53,6 +53,13 @@ void ComDevice::print_str(const char *str, va_list args)
 					i += 1;
 					continue;
 				}
+				case 'l':
+				{
+					const pt::uint64_t a = va_arg(args, pt::uint64_t);
+					print_str(decToString(a));
+					i += 1;
+					continue;
+				}
 				case 'p':
 				{
 					pt::size_t ptr = va_arg(args, pt::size_t);

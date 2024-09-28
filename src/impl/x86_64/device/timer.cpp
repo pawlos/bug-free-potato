@@ -22,3 +22,7 @@ void timer_routine()
 {
 	ticks++;
 }
+
+pt::uint64_t get_ticks() {
+	return ticks;
+}
