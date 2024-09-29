@@ -33,6 +33,14 @@ bool memcmp(const void *src, const void *dst, const pt::size_t size) {
 	return true;
 }
 
+void* operator new(std::size_t n) {
+	return vmm.kcalloc(n);
+}
+
+void* operator new[](std::size_t n) {
+	return vmm.kcalloc(n);
+}
+
 ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
 
@@ -61,17 +69,20 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 	terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
 	char cmd[16] = {0};
 	int pos = 0;
+	const char mem_cmd[] = "mem";
+	const char ticks_cmd[] = "ticks";
+	const char alloc_cmd[] = "alloc";
 	while (true) {
 		const char input_char = getChar();
 		if (input_char == '\n') {
 			klog("\n");
-			if (memcmp(cmd, "mem", 3)) {
+			if (memcmp(cmd, mem_cmd, 3)) {
 				klog("Free memory: %l\n", vmm.memsize());
 			}
-			else if (memcmp(cmd, "ticks", 5)) {
+			else if (memcmp(cmd, ticks_cmd, 5)) {
 				klog("Ticks: %l\n", get_ticks());
 			}
-			else if (memcmp(cmd,"alloc", 5)) {
+			else if (memcmp(cmd, alloc_cmd, 5)) {
 				const auto ptr = vmm.kcalloc(256);
 				klog("Allocating 256 bytes: %x\n", ptr);
 			}
