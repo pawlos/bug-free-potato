@@ -21,6 +21,18 @@ void clear(pt::uintptr_t *ptr, const pt::size_t size) {
 	}
 }
 
+bool memcmp(const void *src, const void *dst, const pt::size_t size) {
+	for (pt::size_t i = 0; i < size; i++) {
+		const char src_char = *static_cast<const char *>(src);
+		if (const char dst_char = *static_cast<const char *>(dst); src_char != dst_char) {
+			return false;
+		}
+		src++;
+		dst++;
+	}
+	return true;
+}
+
 ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
 
@@ -53,13 +65,13 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 		const char input_char = getChar();
 		if (input_char == '\n') {
 			klog("\n");
-			if (cmd[0] == 'm' && cmd[1] == 'e' && cmd[2] == 'm' && cmd[3] == '\0') {
+			if (memcmp(cmd, "mem", 3)) {
 				klog("Free memory: %l\n", vmm.memsize());
 			}
-			else if (cmd[0] == 't' && cmd[1] == 'i' && cmd[2] == 'c' && cmd[3] == 'k' && cmd[4] == 's' && cmd[5] == '\0') {
+			else if (memcmp(cmd, "ticks", 5)) {
 				klog("Ticks: %l\n", get_ticks());
 			}
-			else if (cmd[0] == 'a' && cmd[1] == 'l' && cmd[2] == 'l' && cmd[3] == 'o' && cmd[4] == 'c' && cmd[5] == '\0') {
+			else if (memcmp(cmd,"alloc", 5)) {
 				const auto ptr = vmm.kcalloc(256);
 				klog("Allocating 256 bytes: %x\n", ptr);
 			}
