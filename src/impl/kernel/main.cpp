@@ -41,6 +41,15 @@ void* operator new[](std::size_t n) {
 	return vmm.kcalloc(n);
 }
 
+void operator delete(void* p) {
+	vmm.kfree(p);
+}
+
+void operator delete[](void* p) {
+	vmm.kfree(p);
+}
+
+
 ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
 
@@ -72,6 +81,9 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 	const char mem_cmd[] = "mem";
 	const char ticks_cmd[] = "ticks";
 	const char alloc_cmd[] = "alloc";
+	const char clear_blue[] = "blue";
+	const char clear_red[] = "red";
+	const char clear_green[] = "green";
 	while (true) {
 		const char input_char = getChar();
 		if (input_char == '\n') {
@@ -85,6 +97,15 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 			else if (memcmp(cmd, alloc_cmd, 5)) {
 				const auto ptr = vmm.kcalloc(256);
 				klog("Allocating 256 bytes: %x\n", ptr);
+			}
+			else if (memcmp(cmd, clear_blue, sizeof(clear_blue))) {
+				Framebuffer::get_instance()->Clear(0,0,255);
+			}
+			else if (memcmp(cmd, clear_green, sizeof(clear_green))) {
+				Framebuffer::get_instance()->Clear(0,255,0);
+			}
+			else if (memcmp(cmd, clear_red, sizeof(clear_red))) {
+				Framebuffer::get_instance()->Clear(255,0,0);
 			}
 			else {
 				klog("Invalid command\n");
