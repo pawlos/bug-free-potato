@@ -10,7 +10,7 @@
 
 extern const char Logo[];
 extern const unsigned char PotatoLogo[];
-extern char getChar();
+extern char get_char();
 static BootInfo bi;
 static IDT idt;
 VMM vmm = nullptr;
@@ -78,34 +78,40 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 	terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
 	char cmd[16] = {0};
 	int pos = 0;
-	const char mem_cmd[] = "mem";
-	const char ticks_cmd[] = "ticks";
-	const char alloc_cmd[] = "alloc";
-	const char clear_blue[] = "blue";
-	const char clear_red[] = "red";
-	const char clear_green[] = "green";
+	constexpr char mem_cmd[] = "mem";
+	constexpr char ticks_cmd[] = "ticks";
+	constexpr char alloc_cmd[] = "alloc";
+	constexpr char clear_blue_cmd[] = "blue";
+	constexpr char clear_red_cmd[] = "red";
+	constexpr char clear_green_cmd[] = "green";
+	constexpr char quit_cmd[] = "quit";
 	while (true) {
-		const char input_char = getChar();
+		const char input_char = get_char();
 		if (input_char == '\n') {
 			klog("\n");
-			if (memcmp(cmd, mem_cmd, 3)) {
+			if (memcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
 				klog("Free memory: %l\n", vmm.memsize());
 			}
-			else if (memcmp(cmd, ticks_cmd, 5)) {
+			else if (memcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
 				klog("Ticks: %l\n", get_ticks());
 			}
-			else if (memcmp(cmd, alloc_cmd, 5)) {
+			else if (memcmp(cmd, alloc_cmd, sizeof(alloc_cmd))) {
 				const auto ptr = vmm.kcalloc(256);
 				klog("Allocating 256 bytes: %x\n", ptr);
 			}
-			else if (memcmp(cmd, clear_blue, sizeof(clear_blue))) {
+			else if (memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
 				Framebuffer::get_instance()->Clear(0,0,255);
 			}
-			else if (memcmp(cmd, clear_green, sizeof(clear_green))) {
+			else if (memcmp(cmd, clear_green_cmd, sizeof(clear_green_cmd))) {
 				Framebuffer::get_instance()->Clear(0,255,0);
 			}
-			else if (memcmp(cmd, clear_red, sizeof(clear_red))) {
+			else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
 				Framebuffer::get_instance()->Clear(255,0,0);
+			}
+			else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
+			{
+				klog("bye bye ;)");
+				break;
 			}
 			else {
 				klog("Invalid command\n");
@@ -114,8 +120,16 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 			clear(reinterpret_cast<pt::uintptr_t*>(cmd), 16);
 		}
 		else if (input_char != -1) {
-			cmd[pos++] = input_char;
-			klog("%c", cmd[pos-1]);
+			if (input_char == '\b')
+			{
+				cmd[--pos] = '\0';
+				klog("\b \b");
+			}
+			else {
+				cmd[pos++] = input_char;
+				klog("%c", cmd[pos - 1]);
+			}
 		}
 	}
+	halt();
 }

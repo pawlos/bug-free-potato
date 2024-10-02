@@ -58,7 +58,7 @@ void keyboard_log(const char *str, ...) {
 #endif
 }
 
-char getChar() {
+char get_char() {
 	if (read_pos < write_pos) {
 
 		keyboard_log("Reading from %d\n", read_pos % 128);
@@ -108,7 +108,7 @@ void keyboard_routine(const pt::uint8_t scancode)
 			ctrlPressed = true;
 		}
 		else
-		{			
+		{
 			const char* current_layout = shiftPressed || capsLockOn ? layout_upper : layout;
 			const char key = current_layout[scancode];
 			keyboard_buffer[write_pos % 128] = key;
