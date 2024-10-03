@@ -58,7 +58,7 @@ constexpr char clear_green_cmd[] = "green";
 constexpr char quit_cmd[] = "quit";
 constexpr char paging_cmd[] = "paging";
 
-ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table) {
+ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
 
 	bi.parse(boot_info);
