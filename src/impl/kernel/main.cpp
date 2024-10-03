@@ -13,7 +13,7 @@ extern const unsigned char PotatoLogo[];
 extern char get_char();
 static BootInfo bi;
 static IDT idt;
-VMM vmm = nullptr;
+VMM vmm;
 
 void clear(pt::uintptr_t *ptr, const pt::size_t size) {
 	for (pt::size_t i = 0; i < size; i++) {
@@ -49,6 +49,14 @@ void operator delete[](void* p) {
 	vmm.kfree(p);
 }
 
+constexpr char mem_cmd[] = "mem";
+constexpr char ticks_cmd[] = "ticks";
+constexpr char alloc_cmd[] = "alloc";
+constexpr char clear_blue_cmd[] = "blue";
+constexpr char clear_red_cmd[] = "red";
+constexpr char clear_green_cmd[] = "green";
+constexpr char quit_cmd[] = "quit";
+constexpr char paging_cmd[] = "paging";
 
 ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
@@ -62,7 +70,7 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 
 	idt.initialize();
 
-	vmm = VMM(bi.get_memory_maps());
+	vmm = VMM(bi.get_memory_maps(), l4_page_table);
 
 	Framebuffer::Init(boot_fb);
 
@@ -78,13 +86,6 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 	terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
 	char cmd[16] = {0};
 	int pos = 0;
-	constexpr char mem_cmd[] = "mem";
-	constexpr char ticks_cmd[] = "ticks";
-	constexpr char alloc_cmd[] = "alloc";
-	constexpr char clear_blue_cmd[] = "blue";
-	constexpr char clear_red_cmd[] = "red";
-	constexpr char clear_green_cmd[] = "green";
-	constexpr char quit_cmd[] = "quit";
 	while (true) {
 		const char input_char = get_char();
 		if (input_char == '\n') {
@@ -107,6 +108,9 @@ ASMCALL [[noreturn]] void kernel_main(boot_info* boot_info, void* l4_page_table)
 			}
 			else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
 				Framebuffer::get_instance()->Clear(255,0,0);
+			}
+			else if (memcmp(cmd, paging_cmd, sizeof(paging_cmd))) {
+				klog("Paging struct at address: %x", vmm.GetPageTableL3());
 			}
 			else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
 			{

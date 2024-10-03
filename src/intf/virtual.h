@@ -17,10 +17,24 @@ struct kMemoryRegion
 	bool free;
 };
 
+
+struct PageTableL2 {
+	int address;
+};
+
+struct PageTableL3 {
+	PageTableL2* l2PageTable;
+};
+
+struct PageTableL4 {
+	PageTableL3* l3_pages[1024];
+};
+
 class VMM
 {
 private:
 	kMemoryRegion* firstFreeMemoryRegion;
+	PageTableL4* pageTables;
 
 public:
 	void *kmalloc(pt::size_t size);
@@ -33,8 +47,13 @@ public:
 		return &vmm;
 	}
 
-	VMM(memory_map_entry* mmap[], const long address = 0x200000)
+	[[nodiscard]] PageTableL4* GetPageTableL3() const { return pageTables; }
+
+	VMM() = default;
+
+	VMM(memory_map_entry* mmap[], void *l4_page_address, const long address = 0x200000)
 	{
+		this->pageTables = static_cast<PageTableL4 *>(l4_page_address);
 		pt::size_t top_size = 0;
 		pt::uint64_t addr = 0;
 		for(pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
@@ -56,7 +75,7 @@ public:
 			kernel_panic("Unable to find suitable memory region!", NoSuitableRegion);
 		}
 		klog("[VMM] Selected memory region %x, size: %x\n", addr, top_size);
-		firstFreeMemoryRegion = (kMemoryRegion *)addr;
+		firstFreeMemoryRegion = reinterpret_cast<kMemoryRegion *>(addr);
 		firstFreeMemoryRegion->length = top_size - sizeof(kMemoryRegion);
 		firstFreeMemoryRegion->nextChunk = nullptr;
 		firstFreeMemoryRegion->prevChunk = nullptr;
