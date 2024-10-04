@@ -7,6 +7,7 @@
 #include "virtual.h"
 #include "timer.h"
 #include "mouse.h"
+#include "pci.h"
 
 extern const char Logo[];
 extern const unsigned char PotatoLogo[];
@@ -57,6 +58,7 @@ constexpr char clear_red_cmd[] = "red";
 constexpr char clear_green_cmd[] = "green";
 constexpr char quit_cmd[] = "quit";
 constexpr char paging_cmd[] = "paging";
+constexpr char pci_cmd[] = "pci";
 
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
@@ -75,6 +77,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	Framebuffer::Init(boot_fb);
 
 	TerminalPrinter terminal;
+	pci bus;
 
 	terminal.print_clear();
 	terminal.print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
@@ -111,6 +114,19 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			}
 			else if (memcmp(cmd, paging_cmd, sizeof(paging_cmd))) {
 				klog("Paging struct at address: %x", vmm.GetPageTableL3());
+			}
+			else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
+				const auto devices = pci::enumerate();
+				auto device = devices;
+				while (device!=nullptr && device->vendor_id != 0xffff)
+				{
+					klog("PCI device: VendorId: %x\n", device->vendor_id);
+					klog("\t\tDeviceId: %x\n", device->device_id);
+					klog("\t\tClass: %x\n", device->class_code);
+					klog("\t\tSubclass: %x\n", device->subclass_code);
+					device += sizeof(pci_device);
+				}
+				vmm.kfree(devices);
 			}
 			else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
 			{

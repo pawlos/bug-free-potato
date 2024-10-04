@@ -12,9 +12,25 @@ public:
         asm volatile("out dx, ax" :: "a"(value), "d"(port));
     }
 
+    static inline void outd(pt::uint16_t port, pt::uint32_t value) {
+        asm volatile("out dx, eax" :: "a"(value), "d"(port));
+    }
+
     static inline pt::uint8_t inb(pt::uint16_t port) {
         pt::uint8_t ret;
         asm volatile("in al, dx" : "=a"(ret) : "d"(port));
+        return ret;
+    }
+
+    static inline pt::uint32_t ind(pt::uint16_t port) {
+        pt::uint32_t ret;
+        asm volatile("in eax, dx" : "=a"(ret) : "d"(port));
+        return ret;
+    }
+
+    static inline pt::uint16_t inw(pt::uint16_t port) {
+        pt::uint16_t ret;
+        asm volatile("in ax, dx" : "=a"(ret) : "d"(port));
         return ret;
     }
 
