@@ -38,6 +38,10 @@ public:
     {}
 
     static void Init(const boot_framebuffer *fb);
+    void Free() {
+        vmm.kfree(vga_font);
+        this->vga_font = nullptr;
+    }
     static Framebuffer* get_instance();
 
     void Draw(const pt::uint8_t* what,

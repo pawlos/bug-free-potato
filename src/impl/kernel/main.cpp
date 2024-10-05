@@ -77,7 +77,6 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	Framebuffer::Init(boot_fb);
 
 	TerminalPrinter terminal;
-	pci bus;
 
 	terminal.print_clear();
 	terminal.print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
@@ -130,7 +129,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			}
 			else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
 			{
-				klog("bye bye ;)");
+				klog("bye bye ;)\n");
 				break;
 			}
 			else {
@@ -151,5 +150,6 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			}
 		}
 	}
+	Framebuffer::get_instance()->Free();
 	halt();
 }
