@@ -101,6 +101,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			else if (memcmp(cmd, alloc_cmd, sizeof(alloc_cmd))) {
 				const auto ptr = vmm.kcalloc(256);
 				klog("Allocating 256 bytes: %x\n", ptr);
+				vmm.kfree(ptr);
 			}
 			else if (memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
 				Framebuffer::get_instance()->Clear(0,0,255);
@@ -119,7 +120,8 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 				auto device = devices;
 				while (device!=nullptr && device->vendor_id != 0xffff)
 				{
-					klog("PCI device: VendorId: %x\n", device->vendor_id);
+					klog("PCI device: \n");
+					klog("\t\tVendorId: %x\n", device->vendor_id);
 					klog("\t\tDeviceId: %x\n", device->device_id);
 					klog("\t\tClass: %x\n", device->class_code);
 					klog("\t\tSubclass: %x\n", device->subclass_code);
