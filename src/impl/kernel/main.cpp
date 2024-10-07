@@ -113,7 +113,13 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 				Framebuffer::get_instance()->Clear(255,0,0);
 			}
 			else if (memcmp(cmd, paging_cmd, sizeof(paging_cmd))) {
-				klog("Paging struct at address: %x", vmm.GetPageTableL3());
+				auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
+				klog("Paging struct at address: %x\n", pageTableL3);
+				for (int i = 0; i < 1024; i++) {
+					if (*(pageTableL3 + i) != 0x0) {
+						klog("Page table entry for index %d: %x\n", i, *(pageTableL3 + i));
+					}
+				}
 			}
 			else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
 				const auto devices = pci::enumerate();
