@@ -57,7 +57,7 @@ constexpr char clear_blue_cmd[] = "blue";
 constexpr char clear_red_cmd[] = "red";
 constexpr char clear_green_cmd[] = "green";
 constexpr char quit_cmd[] = "quit";
-constexpr char paging_cmd[] = "paging";
+constexpr char vmm_cmd[] = "vmm";
 constexpr char pci_cmd[] = "pci";
 
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
@@ -112,7 +112,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
 				Framebuffer::get_instance()->Clear(255,0,0);
 			}
-			else if (memcmp(cmd, paging_cmd, sizeof(paging_cmd))) {
+			else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
 				auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
 				klog("Paging struct at address: %x\n", pageTableL3);
 				for (int i = 0; i < 1024; i++) {
