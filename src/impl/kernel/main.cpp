@@ -124,7 +124,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
 				const auto devices = pci::enumerate();
 				auto device = devices;
-				while (device!=nullptr && device->vendor_id != 0xffff)
+				while (device != nullptr && device->vendor_id != 0xffff)
 				{
 					klog("PCI device: \n");
 					klog("\t\tVendorId: %x\n", device->vendor_id);
