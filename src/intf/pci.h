@@ -1,5 +1,4 @@
-#ifndef PCI_H
-#define PCI_H
+#pragma once
 #include "defs.h"
 #include "io.h"
 #include "virtual.h"
@@ -22,7 +21,3 @@ class pci {
   public:
     static pci_device* enumerate();
 };
-
-
-
-#endif //PCI_H

@@ -1,6 +1,4 @@
-#ifndef _FRAMEBUFFER_H_
-#define _FRAMEBUFFER_H_
-
+#pragma once
 #include "defs.h"
 #include "boot.h"
 #include "virtual.h"
@@ -53,4 +51,3 @@ public:
     void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos) const;
     void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos) const;
 };
-#endif
