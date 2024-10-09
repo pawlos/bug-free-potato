@@ -1,7 +1,7 @@
 #include "boot.h"
 #include "kernel.h"
 
-int toEightByteDivisible(pt::uintptr_t addr) {
+int toEightByteDivisible(const pt::uintptr_t addr) {
     int v = (addr % 8);
     if (v == 0) return 0;
     return 8 - v;    
@@ -26,11 +26,11 @@ void BootInfo::log()
 
 	if (cmd_line != nullptr)
 	{
-		klog("[BOOT] Boot command line: %s\n", (const char *)&cmd_line->cmd);
+		klog("[BOOT] Boot command line: %s\n", reinterpret_cast<const char *>(&cmd_line->cmd));
 	}
 	if (loader_name != nullptr)
 	{
-		klog("[BOOT] Boot loader name: %s\n", (const char *)&loader_name->name);
+		klog("[BOOT] Boot loader name: %s\n", reinterpret_cast<const char *>(&loader_name->name));
 	}
 	if (basic_mem != nullptr)
 	{
