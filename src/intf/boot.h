@@ -131,8 +131,8 @@ struct boot_vbe_info
 	pt::uint32_t type;
 	pt::uint32_t size;
 	pt::uint16_t vbe_mode;
-	pt::uint16_t vbe_infterface_seg;
-	pt::uint16_t vbe_infterface_off;
+	pt::uint16_t vbe_interface_seg;
+	pt::uint16_t vbe_interface_off;
 	pt::uint16_t vbe_interface_len;
 	pt::uint8_t  vbe_control_info[512];
 	pt::uint8_t  vbe_mode_info[256];

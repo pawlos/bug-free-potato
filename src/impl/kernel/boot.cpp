@@ -2,7 +2,7 @@
 #include "kernel.h"
 
 int toEightByteDivisible(const pt::uintptr_t addr) {
-    int v = (addr % 8);
+    const pt::uint8_t v = addr % 8;
     if (v == 0) return 0;
     return 8 - v;    
 }
@@ -44,7 +44,7 @@ void BootInfo::log()
 	if (mmap != nullptr)
 	{
 		klog("[BOOT] Memory map - Entry size: %x, Entry version: %x\n", mmap->entry_size, mmap->entry_version);
-		for (auto entry : memory_entry)
+		for (const auto entry : memory_entry)
 		{
 			if (entry == nullptr) break;
 			klog("\t[BT] Memory base: %x, len: %x, type: %x\n", entry->base_addr, entry->length, entry->type);
