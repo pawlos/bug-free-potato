@@ -139,7 +139,6 @@ struct boot_vbe_info
 } __attribute__((packed));
 
 #define MEMORY_ENTRIES_LIMIT 7
-
 class BootInfo
 {
 		pt::size_t size;
@@ -154,10 +153,11 @@ class BootInfo
 		boot_apm_table* apm_table;
 		boot_acpi* acpi;
 		boot_loader_physical_address* physical;
-		memory_map_entry* memory_entry[MEMORY_ENTRIES_LIMIT];
+		memory_map_entry* memory_entry[MEMORY_ENTRIES_LIMIT]{};
 		void log();
+		BootInfo() = default;
 	public:
-		void parse(boot_info *boot_info);
+		explicit BootInfo(boot_info *boot_info);
 		[[nodiscard]] boot_framebuffer* get_framebuffer() const;
 		memory_map_entry** get_memory_maps();
 };

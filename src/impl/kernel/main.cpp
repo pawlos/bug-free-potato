@@ -12,7 +12,6 @@
 extern const char Logo[];
 extern const unsigned char PotatoLogo[];
 extern char get_char();
-static BootInfo bi;
 static IDT idt;
 VMM vmm;
 
@@ -63,7 +62,7 @@ constexpr char pci_cmd[] = "pci";
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
 
-	bi.parse(boot_info);
+	auto bi = BootInfo(boot_info);
 
 	const auto boot_fb = bi.get_framebuffer();
 

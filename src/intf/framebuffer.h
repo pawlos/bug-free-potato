@@ -27,7 +27,7 @@ class Framebuffer
         pt::uint32_t x, pt::uint32_t y) const;
 public:
     Framebuffer()=default;
-    Framebuffer(const boot_framebuffer *fb) : Framebuffer(
+    explicit Framebuffer(const boot_framebuffer *fb) : Framebuffer(
                                          fb->framebuffer_addr,
                                          fb->framebuffer_width,
                                          fb->framebuffer_height,

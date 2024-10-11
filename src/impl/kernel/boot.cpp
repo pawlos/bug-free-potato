@@ -15,8 +15,6 @@ boot_framebuffer* BootInfo::get_framebuffer() const {
 
 memory_map_entry** BootInfo::get_memory_maps()
 {
-	if (memory_entry == nullptr) kernel_panic("BootInfo not parsed!", BootInfoNotParsed);
-
 	return memory_entry;
 }
 
@@ -82,11 +80,11 @@ void BootInfo::log()
 	}
 }
 
-void BootInfo::parse(boot_info* boot_info)
+BootInfo::BootInfo(boot_info* boot_info)
 {
 	const auto start = reinterpret_cast<pt::uintptr_t>(boot_info);
 	this->size = boot_info->size;
-	const pt::uintptr_t end = start + size;
+	const pt::uintptr_t end = start + this->size;
 	pt::uintptr_t ptr = start + 8;
 
 	while (ptr < end)
@@ -101,30 +99,30 @@ void BootInfo::parse(boot_info* boot_info)
 		{
 			case BOOT_CMDLINE:
 			{
-				cmd_line = reinterpret_cast<boot_command_line *>(ptr);
+				this->cmd_line = reinterpret_cast<boot_command_line *>(ptr);
 				break;
 			}
 			case BOOT_LOADER_NAME:
 			{
-				loader_name = reinterpret_cast<boot_loader_name *>(ptr);
+				this->loader_name = reinterpret_cast<boot_loader_name *>(ptr);
 				break;
 			}
 			case BOOT_BASIC_MEM:
 			{
-				basic_mem = reinterpret_cast<boot_basic_memory *>(ptr);
+				this->basic_mem = reinterpret_cast<boot_basic_memory *>(ptr);
 				break;
 			}
 			case BOOT_BIOS:
 			{
-				bios = reinterpret_cast<boot_bios_device *>(ptr);
+				this->bios = reinterpret_cast<boot_bios_device *>(ptr);
 				break;
 			}
 			case BOOT_MMAP:
 			{
-				mmap = reinterpret_cast<boot_memory_map *>(ptr);
+				this->mmap = reinterpret_cast<boot_memory_map *>(ptr);
 				auto mem_current = reinterpret_cast<pt::uintptr_t>(&mmap->entries);
 				const pt::uintptr_t mem_end   = mem_current + mmap->size - 4*sizeof(pt::uint32_t);
-				for (auto & map_entry : memory_entry)
+				for (auto & map_entry : this->memory_entry)
 				{
 					map_entry = nullptr;
 				}
@@ -133,7 +131,7 @@ void BootInfo::parse(boot_info* boot_info)
 				{
 					if (i >= MEMORY_ENTRIES_LIMIT) kernel_panic("Memory entries limit reached", MemEntriesLimitReached);
 					auto* entry = reinterpret_cast<memory_map_entry *>(mem_current);
-					memory_entry[i] = entry;
+					this->memory_entry[i] = entry;
 					i++;
 					mem_current += mmap->entry_size;
 				}
