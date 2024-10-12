@@ -21,10 +21,10 @@ void clear(pt::uintptr_t *ptr, const pt::size_t size) {
 	}
 }
 
-bool memcmp(const void *src, const void *dst, const pt::size_t size) {
+bool memcmp(const char *src, const char *dst, const pt::size_t size) {
 	for (pt::size_t i = 0; i < size; i++) {
-		const char src_char = *static_cast<const char *>(src);
-		if (const char dst_char = *static_cast<const char *>(dst); src_char != dst_char) {
+		const char src_char = *src;
+		if (const char dst_char = *dst; src_char != dst_char) {
 			return false;
 		}
 		src++;
@@ -58,6 +58,7 @@ constexpr char clear_green_cmd[] = "green";
 constexpr char quit_cmd[] = "quit";
 constexpr char vmm_cmd[] = "vmm";
 constexpr char pci_cmd[] = "pci";
+constexpr char map_cmd[] = "map";
 
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 	klog("[MAIN] Welcome to 64-bit potat OS\n");
@@ -110,6 +111,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			}
 			else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
 				Framebuffer::get_instance()->Clear(255,0,0);
+			}
+			else if (memcmp(cmd, map_cmd, sizeof(map_cmd))) {
+				vmm.map_address(0xdeadbeef);
 			}
 			else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
 				auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());

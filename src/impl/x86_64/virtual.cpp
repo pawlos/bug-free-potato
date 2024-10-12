@@ -161,3 +161,12 @@ void VMM::kfree(void *address)
 			combineFreeSegments(currentMemorySegment, currentMemorySegment->prevChunk);
 	}
 }
+
+void VMM::map_address(const pt::uintptr_t addr){
+	auto pageDirectoryIndex = addr >> 22;
+	auto pageTableIndex = addr >> 12 & 0x03ff;
+	if (pageTables->l3_pages[pageDirectoryIndex] == nullptr) {
+		auto l3Page = pageTables->l3_pages[pageTableIndex];
+		l3Page->l2PageTable[pageDirectoryIndex].address = (addr & 0xfff) | 0b11;
+	}
+}

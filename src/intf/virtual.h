@@ -18,16 +18,21 @@ struct kMemoryRegion
 };
 
 
+// 4k Pages - offset into page bits 11-0 of the address
 struct PageTableL2 {
-	int address;
+	pt::uintptr_t address;
 };
 
+// PageTables - bits 21-12 of the address
 struct PageTableL3 {
 	PageTableL2* l2PageTable;
+	pt::uintptr_t flags;
 };
 
+// PageDirectory - bits 31-22 of the address
 struct PageTableL4 {
 	PageTableL3* l3_pages[1024];
+	pt::uint8_t flags;
 };
 
 class VMM
@@ -40,6 +45,7 @@ public:
 	void *kmalloc(pt::size_t size);
 	void *kcalloc(pt::size_t size);
 	void kfree(void *);
+	void map_address(pt::uintptr_t addr);
 
 	pt::size_t memsize();
 
@@ -82,5 +88,8 @@ public:
 		firstFreeMemoryRegion->nextFreeChunk = nullptr;
 		firstFreeMemoryRegion->prevFreeChunk = nullptr;
 		firstFreeMemoryRegion->free = true;
+
+		pageTables = static_cast<PageTableL4*>(kcalloc(sizeof(PageTableL4*)));
+
 	}
 };
