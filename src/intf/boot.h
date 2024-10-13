@@ -153,7 +153,7 @@ class BootInfo
 		boot_apm_table* apm_table;
 		boot_acpi* acpi;
 		boot_loader_physical_address* physical;
-		memory_map_entry* memory_entry[MEMORY_ENTRIES_LIMIT]{};
+		memory_map_entry* memory_entry[MEMORY_ENTRIES_LIMIT];
 		void log();
 		BootInfo() = default;
 	public:
