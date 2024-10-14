@@ -60,7 +60,6 @@ void keyboard_log(const char *str, ...) {
 
 char get_char() {
 	if (read_pos < write_pos) {
-
 		keyboard_log("Reading from %d\n", read_pos % 128);
 		const auto c = keyboard_buffer[read_pos%128];
 		read_pos += 1;

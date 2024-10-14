@@ -92,7 +92,6 @@ void* VMM::kmalloc(pt::size_t size)
 void* VMM::kcalloc(const pt::size_t size)
 {
 	klog("[VMM] Callocing %d bytes memory.\n", size);
-	pt::uint64_t remainder = size % 8;
 	void* ptr = kmalloc(size);
 	memset(ptr, '\0', size);
 	return ptr;
