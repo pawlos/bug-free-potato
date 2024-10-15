@@ -1,15 +1,13 @@
-#include "pci.h"
+#include "../../../intf/pci.h"
 
 pt::uint32_t pciConfigReadDWord(pt::uint8_t bus, pt::uint8_t slot, pt::uint8_t func, pt::uint8_t offset) {
-  pt::uint32_t address;
   pt::uint32_t lbus  = (pt::uint32_t)bus;
   pt::uint32_t lslot = (pt::uint32_t)slot;
   pt::uint32_t lfunc = (pt::uint32_t)func;
-  pt::uint16_t tmp = 0;
 
   // Create configuration address as per Figure 1
-  address = (pt::uint32_t)((lbus << 16) | (lslot << 11) |
-            (lfunc << 8) | (offset & 0xFC) | ((pt::uint32_t)0x80000000));
+  const pt::uint32_t address = (pt::uint32_t) ((lbus << 16) | (lslot << 11) |
+                                         (lfunc << 8) | (offset & 0xFC) | ((pt::uint32_t) 0x80000000));
 
   // Write out the address
   IO::outd(0xCF8, address);
