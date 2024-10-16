@@ -4,10 +4,10 @@
 #include "virtual.h"
 
 struct pci_device {
-  int vendor_id;
-  int device_id;
-  int class_code;
-  int subclass_code;
+  pt::uint32_t vendor_id;
+  pt::uint32_t device_id;
+  pt::uint32_t class_code;
+  pt::uint32_t subclass_code;
 };
 
 struct pci_query {
