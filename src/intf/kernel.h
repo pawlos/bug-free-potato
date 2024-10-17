@@ -44,7 +44,7 @@ void inline enable_interrupts()
 
 void inline kernel_panic(const char *str, int reason)
 {
-	pt::uint64_t rax, rbx, rcx, rdx, rsi, rdi;
+	pt::uint64_t rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp;
 	pt::uint64_t r8, r9, r10, r11, r12;
 	pt::uint64_t r13, r14, r15, rip;
 
@@ -54,6 +54,8 @@ void inline kernel_panic(const char *str, int reason)
 	asm __volatile__("mov %0, rdx" : "=r"(rdx));
 	asm __volatile__("mov %0, rsi" : "=r"(rsi));
 	asm __volatile__("mov %0, rdi" : "=r"(rdi));
+	asm __volatile__("mov %0, rbp" : "=r"(rbp));
+	asm __volatile__("mov %0, rsp" : "=r"(rsp));
 	asm __volatile__("mov %0, r8"  : "=r"(r8));
 	asm __volatile__("mov %0, r9"  : "=r"(r9));
 	asm __volatile__("mov %0, r10" : "=r"(r10));
@@ -67,8 +69,8 @@ void inline kernel_panic(const char *str, int reason)
 	klog("[PANIC] Kernel_panic: %s - %x\n", str, reason);
 	klog("RAX: %x\tRBX: %x\n", rax, rbx);
 	klog("RCX: %x\tRDX: %x\n", rcx, rdx);
-	klog("RDX: %x\n", rdx);
 	klog("RSI: %x\tRDI: %x\n", rsi, rdi);
+	klog("RSP: %x\tRBP: %x\n", rsp, rbp);
 	klog(" R8: %x\t R9: %x\n",  r8,  r9);
 	klog("R10: %x\tR11: %x\n", r10, r11);
 	klog("R12: %x\tR13: %x\n", r12, r13);
