@@ -124,8 +124,13 @@ void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
 
 void VMM::kfree(void *address)
 {
+	if (address == nullptr) {
+		kernel_panic("Address should not be null", NullRefNotExpected);
+	}
+
 	kMemoryRegion* currentMemorySegment = static_cast<kMemoryRegion *>(address) - 1;
 	currentMemorySegment->free = true;
+
 
 	klog("[VMM] Freeing bytes memory at %p.\n", address);
 	if (currentMemorySegment < firstFreeMemoryRegion)

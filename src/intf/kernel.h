@@ -8,6 +8,7 @@ constexpr pt::uint8_t BootInfoNotParsed = 253;
 constexpr pt::uint8_t NoSuitableRegion = 252;
 constexpr pt::uint8_t NotAbleToAllocateMemory = 251;
 constexpr pt::uint8_t MouseNotAcked	= 250;
+constexpr pt::uint8_t NullRefNotExpected = 249;
 
 
 #define ASMCALL extern "C"
