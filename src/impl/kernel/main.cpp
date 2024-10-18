@@ -75,6 +75,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 		const char input_char = get_char();
 		if (input_char == '\n') {
 			klog("\n");
+			if (cmd[0] == '\0') {
+				continue;
+			}
 			if (memcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
 				klog("Free memory: %l\n", vmm.memsize());
 			}
