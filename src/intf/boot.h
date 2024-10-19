@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 
+constexpr pt::uint32_t BOOT_TERMINATOR = 0;
 constexpr pt::uint32_t BOOT_CMDLINE = 1;
 constexpr pt::uint32_t BOOT_LOADER_NAME = 2;
 constexpr pt::uint32_t BOOT_BASIC_MEM = 4;

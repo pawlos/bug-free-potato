@@ -166,7 +166,10 @@ BootInfo::BootInfo(boot_info* boot_info)
 			{
 				physical = reinterpret_cast<boot_loader_physical_address *>(ptr);
 				break;
-			}	
+			}
+			case BOOT_TERMINATOR:
+				/* we skip the terminator tag */
+				break;
 			default:
 				klog("[BOOT] No parser for %d\n", tag->type);
 				break;
