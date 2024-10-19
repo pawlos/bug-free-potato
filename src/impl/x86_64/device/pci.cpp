@@ -35,16 +35,14 @@ bool pci::check_device(pci_device* ptr, const pci_query query)
 
 pci_device* pci::enumerate()
 {
-  auto vmm = VMM::Instance();
-  pci_device* device_instance = (pci_device *)vmm->kmalloc(sizeof(pci_device)*8192);
-  pt::uint16_t bus;
-  pt::uint8_t device;
+  const auto vmm = VMM::Instance();
+  auto* device_instance = static_cast<pci_device *>(vmm->kmalloc(sizeof(pci_device) * 8192));
 
   int offset = 0;
-  for (bus = 0; bus < 256; bus++) {
-    for (device = 0; device < 32; device++) {
-      pci_query query = {bus, device};
-      pci::check_device(device_instance + offset, query);
+  for (pt::uint16_t bus = 0; bus < 256; bus++) {
+    for (pt::uint8_t device = 0; device < 32; device++) {
+      const pci_query query = {bus, device};
+      check_device(device_instance + offset, query);
       offset += sizeof(pci_device);
     }
   }
