@@ -1,6 +1,5 @@
 #pragma once
 #include "com.h"
-#include <cstdarg>
 
 constexpr pt::uint8_t HolyTrinity = 255;
 constexpr pt::uint8_t MemEntriesLimitReached = 254;
