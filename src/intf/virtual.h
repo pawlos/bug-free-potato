@@ -37,7 +37,6 @@ struct PageTableL4 {
 
 class VMM
 {
-private:
 	kMemoryRegion* firstFreeMemoryRegion;
 	PageTableL4* pageTables;
 
@@ -45,7 +44,6 @@ public:
 	void *kmalloc(pt::size_t size);
 	void *kcalloc(pt::size_t size);
 	void kfree(void *);
-	void map_address(pt::uintptr_t addr);
 
 	pt::size_t memsize();
 

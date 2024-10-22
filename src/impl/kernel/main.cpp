@@ -99,7 +99,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 				Framebuffer::get_instance()->Clear(255,0,0);
 			}
 			else if (memcmp(cmd, map_cmd, sizeof(map_cmd))) {
-				vmm.map_address(0xdeadbeef);
+				// TODO: implement map command
 			}
 			else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
 				auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
