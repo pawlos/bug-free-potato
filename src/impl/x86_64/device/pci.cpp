@@ -1,4 +1,6 @@
 #include "../../../intf/pci.h"
+#include "../../../intf/io.h"
+#include "../../../intf/virtual.h"
 
 pt::uint32_t pciConfigReadDWord(const pt::uint8_t bus, const pt::uint8_t slot, const pt::uint8_t func, const pt::uint8_t offset) {
   const auto address = bus << 16 | slot << 11 |
