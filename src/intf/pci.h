@@ -1,7 +1,5 @@
 #pragma once
 #include "defs.h"
-#include "io.h"
-#include "virtual.h"
 
 struct pci_device {
   pt::uint32_t vendor_id;
