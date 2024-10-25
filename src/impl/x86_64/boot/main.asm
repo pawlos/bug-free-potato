@@ -115,7 +115,7 @@ enable_paging:
 	mov cr3, eax
 
 	mov eax, cr4
-	or eax, 1 << 5
+	or eax, 1 << 5 ; enable PAE - Physical Address Extension
 	mov cr4, eax
 
 	mov ecx, 0xc0000080
