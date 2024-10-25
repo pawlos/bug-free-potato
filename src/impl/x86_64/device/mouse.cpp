@@ -37,10 +37,10 @@ void mouse_wait(const pt::uint8_t type)
     }
 }
 
-static pt::uint16_t _x = 0;
-static pt::uint16_t _y = 0;
+static pt::int16_t screen_max_x = 0;
+static pt::int16_t screen_max_y = 0;
 
-void init_mouse(pt::uint16_t max_x, pt::uint16_t max_y)
+void init_mouse(const pt::int16_t max_x, const pt::int16_t max_y)
 {
     klog("[MOUSE] Init mouse\n");
 
@@ -59,7 +59,7 @@ void init_mouse(pt::uint16_t max_x, pt::uint16_t max_y)
     klog("[MOUSE] Enabled IRQ\n");
 
     mouse_wait(0);
-    pt::uint8_t status = IO::inb(0x60) | 2;
+    const pt::uint8_t status = IO::inb(0x60) | 2;
 
     mouse_wait(1);
     IO::outb(0x64, 0x60);
@@ -87,8 +87,8 @@ void init_mouse(pt::uint16_t max_x, pt::uint16_t max_y)
         kernel_panic("Mouse did not ACKed enable!", MouseNotAcked);
 
 
-    _x = max_x;
-    _y = max_y;
+    screen_max_x = max_x;
+    screen_max_y = max_y;
     klog("[MOUSE] Initialized\n");
 }
 
@@ -98,9 +98,6 @@ mouse_state mouse {
     .left_button_pressed = false,
     .right_button_pressed = false
 };
-
-extern void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos);
-extern void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos);
 
 void mouse_routine(const pt::int8_t mouse_byte[])
 {
@@ -113,16 +110,16 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     pt::int16_t newPosX = mouse.pos_x + mouse_x;
     if (newPosX < 0)
         newPosX = 0;
-    if (newPosX > _x)
-        newPosX = _x;
+    if (newPosX > screen_max_x)
+        newPosX = screen_max_x;
 
     mouse.pos_x = newPosX;
 
     pt::int16_t newPosY = mouse.pos_y - mouse_y;
     if (newPosY <0)
         newPosY = 0;
-    if (newPosY > _y)
-        newPosY = _y;
+    if (newPosY > screen_max_y)
+        newPosY = screen_max_y;
 
     mouse.pos_y = newPosY;
     mouse.left_button_pressed = left_button_pressed;

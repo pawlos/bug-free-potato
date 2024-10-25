@@ -11,9 +11,9 @@ class Framebuffer
     pt::uint32_t  m_bpp;
     pt::uint32_t  m_stride;
     pt::uintptr_t *vga_font;
-    Framebuffer(pt::uintptr_t addr, pt::uint32_t width,
-                pt::uint32_t height, pt::uint32_t bpp,
-                pt::uint32_t stride) : m_addr(addr), m_width(width),
+    Framebuffer(const pt::uintptr_t addr, const pt::uint32_t width,
+                const pt::uint32_t height, const pt::uint32_t bpp,
+                const pt::uint32_t stride) : m_addr(addr), m_width(width),
                                    m_height(height), m_bpp(bpp),
                                    m_stride(stride)
     {

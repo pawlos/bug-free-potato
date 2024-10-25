@@ -1,13 +1,8 @@
 #include "../../../intf/pci.h"
 
 pt::uint32_t pciConfigReadDWord(const pt::uint8_t bus, const pt::uint8_t slot, const pt::uint8_t func, const pt::uint8_t offset) {
-  const pt::uint32_t lbus  = bus;
-  const pt::uint32_t lslot = slot;
-  const pt::uint32_t lfunc = func;
-
-  // Create configuration address as per Figure 1
-  const auto address = lbus << 16 | lslot << 11 |
-                       lfunc << 8 | offset & 0xFC | 0x80000000;
+  const auto address = bus << 16 | slot << 11 |
+                       func << 8 | offset & 0xFC | 0x80000000;
 
   // Write out the address
   IO::outd(0xCF8, address);

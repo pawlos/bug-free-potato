@@ -27,7 +27,7 @@ void ComDevice::print_str(const char *str, va_list args)
 {
 	for (pt::size_t i=0; true; i++)
 	{
-		char character = (pt::uint8_t)str[i];
+		const char character = (pt::uint8_t)str[i];
 
 		if (character == '\0') 
 		{
