@@ -1,4 +1,4 @@
-#include "stdlib.h"
+#include "../../../intf/stdlib.h"
 
 void clear(pt::uintptr_t *ptr, const pt::size_t size) {
     for (pt::size_t i = 0; i < size; i++) {
@@ -16,4 +16,12 @@ bool memcmp(const char *src, const char *dst, const pt::size_t size) {
         dst++;
     }
     return true;
+}
+
+void kmemcpy(pt::uint8_t *dst, const pt::uint8_t *src, const pt::size_t size) {
+    for (pt::size_t i = 0; i < size; i++) {
+        *dst = *src;
+        src++;
+        dst++;
+    }
 }

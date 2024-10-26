@@ -1,11 +1,16 @@
 #pragma once
 #include "defs.h"
 
+constexpr int SoundCardClass = 0x04;
+
 struct pci_device {
-  pt::uint32_t vendor_id;
-  pt::uint32_t device_id;
-  pt::uint32_t class_code;
-  pt::uint32_t subclass_code;
+  pt::uint16_t vendor_id;
+  pt::uint16_t device_id;
+  pt::uint16_t class_code;
+  pt::uint16_t subclass_code;
+  pt::uint16_t command;
+  pt::uint32_t base_address_0;
+  pt::uint32_t base_address_1;
 };
 
 struct pci_query {
