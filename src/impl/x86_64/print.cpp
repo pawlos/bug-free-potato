@@ -257,9 +257,11 @@ constexpr char binDigits[16][5] = {
 };
 
 extern void kmemcpy(pt::uint8_t *dst, const pt::uint8_t *src, pt::size_t size);
+extern void kclear(pt::uint8_t *dst, pt::size_t size);
 char binToStringOutput[256];
 template<typename T> const char *binToString(T value)
 {
+	kclear(reinterpret_cast<pt::uint8_t *>(&binToStringOutput), 256);
 	const pt::uint8_t size = sizeof(value) * 8 - 4;
 	T* valuePtr = &value;
 	if (value != 0)
@@ -270,11 +272,9 @@ template<typename T> const char *binToString(T value)
 
 			pt::uint8_t temp = (*ptr & 0xF0) >> 4;
 			kmemcpy(reinterpret_cast<pt::uint8_t *>(&binToStringOutput[size - (i + 4)]), (pt::uint8_t*)(&binDigits[temp]), 4);
-			//binToStringOutput[size - (i * 8 + 4)] = binDigits[temp];
 
 			temp = *ptr & 0x0F;
 			kmemcpy(reinterpret_cast<pt::uint8_t *>(&binToStringOutput[size - (i + 0)]), (pt::uint8_t*)(&binDigits[temp]), 4);
-			//binToStringOutput[size - (i * 8 + 0)] = temp[temp];
 		}
 		binToStringOutput[size + 5] = 0;
 		int pos = 0;
@@ -282,6 +282,7 @@ template<typename T> const char *binToString(T value)
 		{
 			if (binToStringOutput[i] != '0') break;
 		}
+		pos -= pos % 8;
 		return &binToStringOutput[pos];
 	}
 	binToStringOutput[0] = '0';
