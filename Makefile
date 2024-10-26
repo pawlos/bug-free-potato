@@ -12,7 +12,7 @@ CPPFLAGS=-DKERNEL_LOG
 QEMU=/mnt/c/Program\ Files/qemu/qemu-system-x86_64.exe
 NASM=nasm
 LD=ld
-QEMU_OPTIONS=-m 512M
+QEMU_OPTIONS=-m 512M -audio driver=sdl,model=ac97
 
 x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
@@ -47,6 +47,7 @@ clean:
 	-rm -f build/x86_64/*.o
 	-rm -f build/x86_64/boot/*.o
 	-rm -f build/x86_64/device/*.o
+	-rm -f build/x86_64/libs/*.o
 	-rm -f dist/x86_64/kernel.*
 
 run: all

@@ -1,7 +1,6 @@
 #include "print.h"
 #include <cstdarg>
 
-
 pt::uint8_t color = PRINT_COLOR_WHITE | PRINT_COLOR_BLACK << 4;
 
 void TerminalPrinter::clear_row(pt::size_t row)
@@ -100,7 +99,6 @@ void TerminalPrinter::print_char(const char character)
 	col++;
 }
 
-template<typename T> const char* hexToString(T value, bool upper);
 void TerminalPrinter::print_str(const char *str, ...)
 {
 	va_list ap;
@@ -151,6 +149,13 @@ void TerminalPrinter::print_str(const char *str, ...)
 				{
 					pt::size_t ptr = va_arg(ap, pt::size_t);
 					print_str("0x%s", hexToString(ptr, false));
+					i+=1;
+					continue;
+				}
+				case 'b':
+				{
+					pt::uint64_t a = va_arg(ap, pt::uint64_t);
+					print_str("0b%s", binToString(a));
 					i+=1;
 					continue;
 				}
@@ -215,7 +220,7 @@ template<typename T> const char* decToString(T value)
 	return &decToStringOutput[0];
 }
 
-char hexToStringOuput[128];
+char hexToStringOutput[128];
 template<typename T> const char* hexToString(T value, bool upper)
 {
 	const pt::uint8_t size = sizeof(value) * 2 - 1;
@@ -228,20 +233,58 @@ template<typename T> const char* hexToString(T value, bool upper)
 			const pt::uint8_t *ptr = (pt::uint8_t *) valuePtr + i;
 
 			pt::uint8_t temp = (*ptr & 0xF0) >> 4;
-			hexToStringOuput[size - (i * 2 + 1)] = temp + (temp > 9 ? offset : 48);
+			hexToStringOutput[size - (i * 2 + 1)] = temp + (temp > 9 ? offset : 48);
 
 			temp = *ptr & 0x0F;
-			hexToStringOuput[size - (i * 2 + 0)] = temp + (temp > 9 ? offset : 48);
+			hexToStringOutput[size - (i * 2 + 0)] = temp + (temp > 9 ? offset : 48);
 		}
-		hexToStringOuput[size + 1] = 0;
+		hexToStringOutput[size + 1] = 0;
 		int pos = 0;
 		for (int i = 0; i < size * 2; i++, pos++)
 		{
-			if (hexToStringOuput[i] != '0') break;
+			if (hexToStringOutput[i] != '0') break;
 		}
-		return &hexToStringOuput[pos];
+		return &hexToStringOutput[pos];
 	}
-	hexToStringOuput[0] = '0';
-	hexToStringOuput[1] = '\0';
-	return &hexToStringOuput[0];
+	hexToStringOutput[0] = '0';
+	hexToStringOutput[1] = '\0';
+	return &hexToStringOutput[0];
+}
+
+constexpr char binDigits[16][5] = {
+	"0000","0001","0010","0011","0100","0101","0110","0111",
+	"1000","1001","1010","1011","1100","1101","1110","1111",
+};
+
+extern void kmemcpy(pt::uint8_t *dst, const pt::uint8_t *src, pt::size_t size);
+char binToStringOutput[256];
+template<typename T> const char *binToString(T value)
+{
+	const pt::uint8_t size = sizeof(value) * 8 - 4;
+	T* valuePtr = &value;
+	if (value != 0)
+	{
+		for (int i = 0, b = 0; i < size; i+=8, b++)
+		{
+			const pt::uint8_t *ptr = (pt::uint8_t *) valuePtr + b;
+
+			pt::uint8_t temp = (*ptr & 0xF0) >> 4;
+			kmemcpy(reinterpret_cast<pt::uint8_t *>(&binToStringOutput[size - (i + 4)]), (pt::uint8_t*)(&binDigits[temp]), 4);
+			//binToStringOutput[size - (i * 8 + 4)] = binDigits[temp];
+
+			temp = *ptr & 0x0F;
+			kmemcpy(reinterpret_cast<pt::uint8_t *>(&binToStringOutput[size - (i + 0)]), (pt::uint8_t*)(&binDigits[temp]), 4);
+			//binToStringOutput[size - (i * 8 + 0)] = temp[temp];
+		}
+		binToStringOutput[size + 5] = 0;
+		int pos = 0;
+		for (int i = 0; i < size * 8; i++, pos++)
+		{
+			if (binToStringOutput[i] != '0') break;
+		}
+		return &binToStringOutput[pos];
+	}
+	binToStringOutput[0] = '0';
+	binToStringOutput[1] = '\0';
+	return &hexToStringOutput[0];
 }

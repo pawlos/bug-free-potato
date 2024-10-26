@@ -88,6 +88,13 @@ void ComDevice::print_str(const char *str, va_list args)
 					i+=1;
 					continue;
 				}
+				case 'b':
+				{
+					pt::uint64_t a = va_arg(args, pt::uint64_t);
+					print_str("0b%s", binToString(a));
+					i+=1;
+					continue;
+				}
 				case 'X':
 				{
 					pt::uint64_t a = va_arg(args, pt::uint64_t);

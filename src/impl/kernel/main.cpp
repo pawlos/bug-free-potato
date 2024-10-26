@@ -1,4 +1,4 @@
-#include "./libs/stdlib.h"
+#include "stdlib.h"
 #include "print.h"
 #include "com.h"
 #include "boot.h"
@@ -30,6 +30,21 @@ void operator delete(void* p) {
 
 void operator delete[](void* p) {
 	vmm.kfree(p);
+}
+
+void print_pci_device(const pci_device* devicePtr) {
+	while (devicePtr != nullptr && devicePtr->vendor_id != 0xffff)
+	{
+		klog("PCI device: \n");
+		klog("\t\tVendorId: %x\n", devicePtr->vendor_id);
+		klog("\t\tDeviceId: %x\n", devicePtr->device_id);
+		klog("\t\tClass: %x\n", devicePtr->class_code);
+		klog("\t\tSubclass: %x\n", devicePtr->subclass_code);
+		klog("\t\tCommand: %b\n", devicePtr->command);
+		klog("\t\tBAR0: %x\n", devicePtr->base_address_0);
+		klog("\t\tBAR1: %x\n", devicePtr->base_address_1);
+		devicePtr += 1;
+	}
 }
 
 constexpr char mem_cmd[] = "mem";
@@ -112,16 +127,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			}
 			else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
 				const auto devices = pci::enumerate();
-				auto device = devices;
-				while (device != nullptr && device->vendor_id != 0xffff)
-				{
-					klog("PCI device: \n");
-					klog("\t\tVendorId: %x\n", device->vendor_id);
-					klog("\t\tDeviceId: %x\n", device->device_id);
-					klog("\t\tClass: %x\n", device->class_code);
-					klog("\t\tSubclass: %x\n", device->subclass_code);
-					device += sizeof(pci_device);
-				}
+				print_pci_device(devices);
 				vmm.kfree(devices);
 			}
 			else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
