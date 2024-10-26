@@ -93,30 +93,30 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 			if (cmd[0] == '\0') {
 				continue;
 			}
-			if (memcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
+			if (kmemcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
 				klog("Free memory: %l\n", vmm.memsize());
 			}
-			else if (memcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
+			else if (kmemcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
 				klog("Ticks: %l\n", get_ticks());
 			}
-			else if (memcmp(cmd, alloc_cmd, sizeof(alloc_cmd))) {
+			else if (kmemcmp(cmd, alloc_cmd, sizeof(alloc_cmd))) {
 				const auto ptr = vmm.kcalloc(256);
 				klog("Allocating 256 bytes: %x\n", ptr);
 				vmm.kfree(ptr);
 			}
-			else if (memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
+			else if (kmemcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
 				Framebuffer::get_instance()->Clear(0,0,255);
 			}
-			else if (memcmp(cmd, clear_green_cmd, sizeof(clear_green_cmd))) {
+			else if (kmemcmp(cmd, clear_green_cmd, sizeof(clear_green_cmd))) {
 				Framebuffer::get_instance()->Clear(0,255,0);
 			}
-			else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
+			else if (kmemcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
 				Framebuffer::get_instance()->Clear(255,0,0);
 			}
-			else if (memcmp(cmd, map_cmd, sizeof(map_cmd))) {
+			else if (kmemcmp(cmd, map_cmd, sizeof(map_cmd))) {
 				// TODO: implement map command
 			}
-			else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
+			else if (kmemcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
 				auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
 				klog("Paging struct at address: %x\n", pageTableL3);
 				for (int i = 0; i < 1024; i++) {
@@ -125,12 +125,12 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 					}
 				}
 			}
-			else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
+			else if (kmemcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
 				const auto devices = pci::enumerate();
 				print_pci_device(devices);
 				vmm.kfree(devices);
 			}
-			else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
+			else if (kmemcmp(cmd, quit_cmd, sizeof(quit_cmd)))
 			{
 				klog("bye bye ;)\n");
 				break;
@@ -139,7 +139,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 				klog("Invalid command\n");
 			}
 			pos = 0;
-			clear(reinterpret_cast<pt::uintptr_t*>(cmd), 16);
+			kclear(reinterpret_cast<pt::uint8_t*>(cmd), 16);
 		}
 		else if (input_char != -1) {
 			if (input_char == '\b')
