@@ -115,7 +115,7 @@ void TerminalPrinter::print_str(const char *str, ...)
 
 		if (character == '%')
 		{
-			char next = (pt::uint8_t)str[i+1];
+			const char next = (pt::uint8_t)str[i+1];
 			switch(next)
 			{
 				case '%':
