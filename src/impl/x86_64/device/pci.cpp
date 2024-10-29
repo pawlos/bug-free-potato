@@ -6,7 +6,6 @@ pt::uint32_t pciConfigReadDWord(const pt::uint8_t bus, const pt::uint8_t slot, c
   const auto address = bus << 16 | slot << 11 |
                        func << 8 | offset & 0xFC | 0x80000000;
 
-  // Write out the address
   IO::outd(0xCF8, address);
   return IO::ind(0xCFC);
 }
