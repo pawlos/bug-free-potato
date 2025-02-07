@@ -15,9 +15,9 @@ constexpr pt::uint8_t ICW1_ICW4	= 0x01;
 constexpr pt::uint8_t ICW4_8086	= 0x01;
 
 class PIC
-{	
+{
 public:
-	static void Remap();
-	static void Mask();
-	static void irq_ack(pt::uint8_t irq);
+    static void Remap();
+    static void Mask();
+    static void irq_ack(pt::uint8_t irq);
 };
