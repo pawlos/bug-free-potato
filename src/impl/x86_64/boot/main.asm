@@ -70,44 +70,45 @@ check_long_mode:
 
 
 ; we are setting up the page tables here
-; PT04 - 1024 entries; 4B
-; PT03 - 1024 entries; 4B
-; PT02 - 1024 entries; 8B
 setup_page_tables:
-    mov eax, page_table_l3
-    or eax, 0b11 ; present, writable
-    mov [page_table_l4], eax
+    mov ebx, page_table_l2_0    ; ebx = dest base for PD 0
+    mov esi, 0                  ; pdpt_chunk = 0..3
+.fill_pdpt_chunks:
+    ; for each chunk (0..3), fill 512 entries
+    mov ecx, 0
+.fill_pd_loop_chunk:
+    ; physical address = ((esi<<9) + ecx) << 21
+    ; czyli phys = ((esi * 512) + ecx) * 2MiB
+    mov eax, esi
+    shl eax, 9                  ; eax = esi * 512
+    add eax, ecx                ; eax = block_index = esi*512 + ecx
+    shl eax, 21                 ; eax = phys = block_index * 2MiB
+    or  eax, 0x83               ; present | rw | PS (2MiB)
+    ; write 64-bit entry: low dword = eax, high dword = 0
+    mov [ebx + ecx*8 + 0], eax
+    mov dword [ebx + ecx*8 + 4], 0
 
-    mov esi, page_table_l2
-    mov ebx, page_table_l3
-    mov edi, 0
-    mov ecx, 0
-.loop_l3:
-    push ecx
-    push esi
-    or esi, 0b11; present, writable
-    mov [ebx], esi
-    pop esi
-    mov ecx, 0
-.loop_l2:
-    push ecx
-    mov eax, 0x200000
-    add ecx, edi
-    mul ecx
-    or eax, 0b10000011
-    pop ecx
-    mov [esi + ecx*8], eax
     inc ecx
     cmp ecx, 512
-    jne .loop_l2
-    add edi, 512
-    add ebx, 8
+    jne .fill_pd_loop_chunk
 
-    add esi, 512 * 8
-    pop ecx
-    inc ecx
-    cmp ecx, 4
-    jne .loop_l3
+    ; set PDPT entry for this chunk: page_table_l3[esi] = EBX | 0x03
+    mov eax, ebx
+    or  eax, 0x03
+    mov [page_table_l3 + esi*8 + 0], eax
+    mov dword [page_table_l3 + esi*8 + 4], 0
+
+    ; advance EBX to next PD (each PD = 4096)
+    add ebx, 4096
+    inc esi
+    cmp esi, 4
+    jne .fill_pdpt_chunks
+
+; finally set PML4[0] -> page_table_l3 (PDPT)
+    mov eax, page_table_l3
+    or  eax, 0x03
+    mov [page_table_l4 + 0], eax
+    mov dword [page_table_l4 + 4], 0
     ret
 
 enable_paging:
@@ -124,7 +125,7 @@ enable_paging:
     wrmsr
 
     mov eax, cr0
-    or eax, 1 << 31     ;set the PG-bit
+    or eax, 1 << 31 | 1    ;set the PG-bit | PE
     mov cr0, eax
 
     ret
@@ -138,12 +139,17 @@ error:
 
 section .bss
 align 4096
-page_table_l4:
-    resb 1024 * 4
-page_table_l3:
-    resb 1024 * 4
-page_table_l2:
-    resb 1024 * 4 * 4
+page_table_l4:  resb 4096
+align 4096
+page_table_l3:  resb 4096
+align 4096
+page_table_l2_0: resb 4096
+align 4096
+page_table_l2_1: resb 4096
+align 4096
+page_table_l2_2: resb 4096
+align 4096
+page_table_l2_3: resb 4096
 
 stack_bottom:
     resb 4096 * 4
@@ -164,7 +170,7 @@ gdt64:
     dw 0
     db 0
     db 10011010b
-    db 10101111b
+    db 00100000b
     db 0
 .data_segment_kernel: equ $ - gdt64
     dw 0
