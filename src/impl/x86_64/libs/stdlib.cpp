@@ -3,6 +3,7 @@
 void clear(pt::uintptr_t *ptr, const pt::size_t size) {
     for (pt::size_t i = 0; i < size; i++) {
         *ptr = 0;
+        ptr++;
     }
 }
 
