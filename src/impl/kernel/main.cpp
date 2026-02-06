@@ -141,8 +141,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
                 cmd[--pos] = '\0';
                 klog("\b \b");
             }
-            else {
+            else if (pos < 15) {
                 cmd[pos++] = input_char;
+                cmd[pos] = '\0';
                 klog("%c", cmd[pos - 1]);
             }
         }
