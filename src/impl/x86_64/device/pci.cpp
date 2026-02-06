@@ -39,10 +39,12 @@ pci_device* pci::enumerate()
   for (pt::uint16_t bus = 0; bus < 256; bus++) {
     for (pt::uint8_t device = 0; device < 32; device++) {
       const pci_query query = {bus, device};
-      check_device(device_instance + offset, query);
-      offset += sizeof(pci_device);
+      if (check_device(device_instance + offset, query)) {
+        offset++;
+      }
     }
   }
+  device_instance[offset].vendor_id = 0xFFFF;
   return device_instance;
 }
 

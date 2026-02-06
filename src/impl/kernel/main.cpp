@@ -120,7 +120,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
                     klog("\t\tDeviceId: %x\n", device->device_id);
                     klog("\t\tClass: %x\n", device->class_code);
                     klog("\t\tSubclass: %x\n", device->subclass_code);
-                    device += sizeof(pci_device);
+                    device++;
                 }
                 vmm.kfree(devices);
             }
