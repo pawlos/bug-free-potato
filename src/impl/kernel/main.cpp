@@ -136,7 +136,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
             clear(reinterpret_cast<pt::uintptr_t*>(cmd), 16);
         }
         else if (input_char != -1) {
-            if (input_char == '\b')
+            if (input_char == '\b' && pos > 0)
             {
                 cmd[--pos] = '\0';
                 klog("\b \b");
