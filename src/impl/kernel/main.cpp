@@ -65,7 +65,11 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     terminal.print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
     terminal.print_str(Logo);
 
-    Framebuffer::get_instance()->Draw(PotatoLogo, 0, 0, 197, 197);
+    const pt::uint32_t img_width = 197;
+    const pt::uint32_t img_height = 197;
+    const pt::uint32_t center_x = (boot_fb->framebuffer_width - img_width) / 2;
+    const pt::uint32_t center_y = (boot_fb->framebuffer_height - img_height) / 2;
+    Framebuffer::get_instance()->Draw(PotatoLogo, center_x, center_y, img_width, img_height);
     const auto c = static_cast<char *>(vmm.kmalloc(217));
     vmm.kfree(c);
     terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);

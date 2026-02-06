@@ -20,7 +20,9 @@ void Framebuffer::Draw(const pt::uint8_t* what,
     {
         for (pt::uint32_t x = x_pos; x < x_pos + width ; x++)
         {
-            const pt::uint32_t pos = y*3*width + x*3;
+            const pt::uint32_t src_x = x - x_pos;
+            const pt::uint32_t src_y = y - y_pos;
+            const pt::uint32_t pos = src_y * 3 * width + src_x * 3;
             const pt::uint32_t c =  what[pos] << 16
                         | what[pos + 1] << 8
                         | what[pos + 2];
