@@ -108,18 +108,18 @@ void mouse_routine(const pt::int8_t mouse_byte[])
 
     EraseCursor(mouse.pos_x, mouse.pos_y);
     pt::int16_t newPosX = mouse.pos_x + mouse_x;
-    if (newPosX < 0)
-        newPosX = 0;
-    if (newPosX >= screen_max_x)
-        newPosX = screen_max_x;
+    if (newPosX < -(CURSOR_WIDTH - MIN_CURSOR_VISIBLE))
+        newPosX = -(CURSOR_WIDTH - MIN_CURSOR_VISIBLE);
+    if (newPosX >= screen_max_x - MIN_CURSOR_VISIBLE)
+        newPosX = screen_max_x - MIN_CURSOR_VISIBLE;
 
     mouse.pos_x = newPosX;
 
     pt::int16_t newPosY = mouse.pos_y - mouse_y;
-    if (newPosY < 0)
-        newPosY = 0;
-    if (newPosY >= screen_max_y)
-        newPosY = screen_max_y;
+    if (newPosY < -(CURSOR_HEIGHT - MIN_CURSOR_VISIBLE))
+        newPosY = -(CURSOR_HEIGHT - MIN_CURSOR_VISIBLE);
+    if (newPosY >= screen_max_y - MIN_CURSOR_VISIBLE)
+        newPosY = screen_max_y - MIN_CURSOR_VISIBLE;
 
     mouse.pos_y = newPosY;
     mouse.left_button_pressed = left_button_pressed;
