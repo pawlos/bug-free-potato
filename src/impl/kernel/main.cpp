@@ -36,6 +36,11 @@ void operator delete[](void* p) {
 
 pt::uint64_t old_ticks = 0;
 
+void five_minute_callback(void* data) {
+    (void)data;
+    klog("[TIMER] 5 minutes has elapsed\n");
+}
+
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     klog("[MAIN] Welcome to 64-bit potat OS\n");
 
@@ -49,6 +54,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     idt.initialize();
 
     vmm = VMM(bi.get_memory_maps(), l4_page_table);
+
+    constexpr pt::uint64_t five_minutes_in_ticks = 5 * 60 * 50;
+    timer_create(five_minutes_in_ticks, true, five_minute_callback, nullptr);
 
     Framebuffer::Init(boot_fb);
 
