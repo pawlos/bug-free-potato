@@ -18,22 +18,6 @@ extern char get_char();
 static IDT idt;
 VMM vmm;
 
-void* operator new(std::size_t n) {
-    return vmm.kcalloc(n);
-}
-
-void* operator new[](std::size_t n) {
-    return vmm.kcalloc(n);
-}
-
-void operator delete(void* p) {
-    vmm.kfree(p);
-}
-
-void operator delete[](void* p) {
-    vmm.kfree(p);
-}
-
 pt::uint64_t old_ticks = 0;
 
 void five_minute_callback(void* data) {
