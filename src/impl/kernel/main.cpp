@@ -25,6 +25,11 @@ void five_minute_callback(void* data) {
     klog("[TIMER] 5 minutes has elapsed\n");
 }
 
+void thirty_minute_callback(void* data) {
+    (void)data;
+    klog("[TIMER] 30 mintues has elapsed\n");
+}
+
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     klog("[MAIN] Welcome to 64-bit potat OS\n");
 
@@ -40,7 +45,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     vmm = VMM(bi.get_memory_maps(), l4_page_table);
 
     constexpr pt::uint64_t five_minutes_in_ticks = 5 * 60 * 50;
+    constexpr pt::uint64_t thirty_minutes_in_ticks = 30 * 60 * 50;
     timer_create(five_minutes_in_ticks, true, five_minute_callback, nullptr);
+    timer_create(thirty_minutes_in_ticks, true, thirty_minute_callback, nullptr);
 
     Framebuffer::Init(boot_fb);
 
@@ -70,13 +77,6 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
                 }
             }
             reader.clear();
-        }
-
-        pt::uint64_t temp_ticks = get_ticks();
-        if (temp_ticks - old_ticks > 50)
-        {
-            old_ticks = temp_ticks;
-            klog("Seconds: %d\n", old_ticks/50);
         }
     }
     Framebuffer::get_instance()->Free();
