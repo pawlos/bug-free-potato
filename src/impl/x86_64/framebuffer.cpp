@@ -50,17 +50,26 @@ pt::uint32_t Framebuffer::GetPixel(
         return *reinterpret_cast<pt::uint32_t *>(fb_addr + x * fb_bytes + y * fb_stride);
 }
 
-constexpr pt::uint8_t cursor_size = 64;
-constexpr pt::uint8_t cursor_width = 8;
-constexpr pt::uint8_t normal_cursor_mask[cursor_size] =
-                            {0,0,0,0,0,0,0,0,
-                             0,1,1,1,1,1,0,0,
-                             0,1,1,1,0,0,0,0,
-                             0,1,1,1,0,0,0,0,
-                             0,1,0,0,1,0,0,0,
-                             0,1,0,0,0,1,0,0,
-                             0,0,0,0,0,0,0,0,
-                             0,0,0,0,0,0,0,0};
+constexpr pt::uint16_t cursor_size = 256;
+constexpr pt::uint8_t cursor_width = 16;
+constexpr pt::uint8_t normal_cursor_mask[cursor_size] = {
+    1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,
+    1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,
+    1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,
+    1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
+    1,1,1,1,0,1,1,1,1,1,1,0,0,0,0,0,
+    1,1,1,0,0,0,1,1,1,1,1,1,0,0,0,0,
+    1,1,0,0,0,0,0,1,1,1,1,1,1,0,0,0,
+    1,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,
+    0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,
+    0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0
+};
 static bool captured = false;
 static pt::uint64_t prevPixel[cursor_size] = {};
 void Framebuffer::DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos) const {
@@ -73,7 +82,7 @@ void Framebuffer::DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
             const int pos = i*cursor_width+j;
             prevPixel[pos] = this->GetPixel(x_pos+j, y_pos+i);
             if (normal_cursor_mask[pos] != 0) {
-                this->PutPixel(x_pos+j, y_pos+i, 0xff0000);
+                this->PutPixel(x_pos+j, y_pos+i, 0xffffff);
             }
         }
     }
