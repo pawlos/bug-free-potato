@@ -68,6 +68,8 @@ void Framebuffer::DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
 
     for (pt::uint8_t i = 0; i < cursor_width; i++) {
         for (pt::uint8_t j = 0; j < cursor_width; j++) {
+            if (y_pos + i >= this->m_height) { continue; }
+            if (x_pos + j >= this->m_width) { continue; }
             const int pos = i*cursor_width+j;
             prevPixel[pos] = this->GetPixel(x_pos+j, y_pos+i);
             if (normal_cursor_mask[pos] != 0) {

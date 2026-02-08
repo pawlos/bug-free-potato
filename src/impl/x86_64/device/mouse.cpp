@@ -110,15 +110,15 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     pt::int16_t newPosX = mouse.pos_x + mouse_x;
     if (newPosX < 0)
         newPosX = 0;
-    if (newPosX > screen_max_x)
+    if (newPosX >= screen_max_x)
         newPosX = screen_max_x;
 
     mouse.pos_x = newPosX;
 
     pt::int16_t newPosY = mouse.pos_y - mouse_y;
-    if (newPosY <0)
+    if (newPosY < 0)
         newPosY = 0;
-    if (newPosY > screen_max_y)
+    if (newPosY >= screen_max_y)
         newPosY = screen_max_y;
 
     mouse.pos_y = newPosY;
