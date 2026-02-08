@@ -10,6 +10,7 @@
 #include "mouse.h"
 #include "pci.h"
 #include "shell.h"
+#include "line_reader.h"
 
 extern const char Logo[];
 extern const unsigned char PotatoLogo[];
@@ -32,6 +33,8 @@ void operator delete(void* p) {
 void operator delete[](void* p) {
     vmm.kfree(p);
 }
+
+pt::uint64_t old_ticks = 0;
 
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     klog("[MAIN] Welcome to 64-bit potat OS\n");
@@ -63,32 +66,25 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     const auto c = static_cast<char *>(vmm.kmalloc(217));
     vmm.kfree(c);
     terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
-    char cmd[16] = {0};
-    int pos = 0;
+    LineReader reader;
     while (true) {
-        const char input_char = get_char();
-        if (input_char == '\n') {
-            klog("\n");
-            if (cmd[0] == '\0') {
-                continue;
+        reader.process(get_char());
+
+        if (reader.has_line()) {
+            const char* line = reader.get_line();
+            if (line[0] != '\0') {
+                if (!shell.execute(line)) {
+                    break;
+                }
             }
-            if (!shell.execute(cmd)) {
-                break;
-            }
-            pos = 0;
-            clear(reinterpret_cast<pt::uintptr_t*>(cmd), 16);
+            reader.clear();
         }
-        else if (input_char != -1) {
-            if (input_char == '\b' && pos > 0)
-            {
-                cmd[--pos] = '\0';
-                klog("\b \b");
-            }
-            else if (pos < 15) {
-                cmd[pos++] = input_char;
-                cmd[pos] = '\0';
-                klog("%c", cmd[pos - 1]);
-            }
+
+        pt::uint64_t temp_ticks = get_ticks();
+        if (temp_ticks - old_ticks > 50)
+        {
+            old_ticks = temp_ticks;
+            klog("Seconds: %d\n", old_ticks/50);
         }
     }
     Framebuffer::get_instance()->Free();
