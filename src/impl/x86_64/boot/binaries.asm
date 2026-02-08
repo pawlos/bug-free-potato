@@ -7,5 +7,6 @@
     %1_size: dq %1_size - %1
 %endmacro
 
-IncBin Logo, "src/impl/x86_64/bins/potato.txt"
-IncBin PotatoLogo, "src/impl/x86_64/bins/potato.raw"
+; Logo and PotatoLogo are now loaded from FAT12 disk
+; IncBin Logo, "src/impl/x86_64/bins/potato.txt"
+; IncBin PotatoLogo, "src/impl/x86_64/bins/potato.raw"

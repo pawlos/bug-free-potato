@@ -48,6 +48,22 @@ irq12:
     iretq
 GLOBAL irq12
 
+[extern irq14_handler]
+irq14:
+    PUSHALL
+    call irq14_handler
+    POPALL
+    iretq
+GLOBAL irq14
+
+[extern irq15_handler]
+irq15:
+    PUSHALL
+    call irq15_handler
+    POPALL
+    iretq
+GLOBAL irq15
+
 [extern irq1_handler]
 irq1:
     PUSHALL
@@ -79,6 +95,14 @@ isr14:
     POPALL
     iretq
 GLOBAL isr14
+
+[extern isr13_handler]
+isr13:
+    PUSHALL
+    call isr13_handler
+    POPALL
+    iretq
+GLOBAL isr13
 
 [extern isr8_handler]
 isr8:

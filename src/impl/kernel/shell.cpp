@@ -5,6 +5,8 @@
 #include "virtual.h"
 #include "timer.h"
 #include "pci.h"
+#include "disk.h"
+#include "fat12.h"
 #include "./libs/stdlib.h"
 
 constexpr char mem_cmd[] = "mem";
@@ -18,6 +20,9 @@ constexpr char vmm_cmd[] = "vmm";
 constexpr char pci_cmd[] = "pci";
 constexpr char map_cmd[] = "map";
 constexpr char history_cmd[] = "history";
+constexpr char ls_cmd[] = "ls";
+constexpr char cat_cmd[] = "cat ";
+constexpr char disk_cmd[] = "disk";
 
 Shell::Shell() : history_count(0), history_index(0) {
     for (int i = 0; i < MAX_HISTORY; i++) {
@@ -118,6 +123,40 @@ bool Shell::execute(const char* cmd) {
     else if (memcmp(cmd, history_cmd, sizeof(history_cmd))) {
         print_history();
     }
+    else if (memcmp(cmd, ls_cmd, sizeof(ls_cmd))) {
+        FAT12::list_root_directory();
+    }
+    else if (memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {
+        if (Disk::is_present()) {
+            klog("Disk present: %d sectors (%d MB)\n", 
+                 Disk::get_sector_count(), 
+                 (Disk::get_sector_count() * 512) / (1024 * 1024));
+        } else {
+            klog("No disk present\n");
+        }
+    }    
+    else if (memcmp(cmd, cat_cmd, 4)) {
+        // Cat command - cmd starts with "cat "
+        const char* filename = cmd + 4; // Skip "cat "
+        if (filename[0] == '\0') {
+            klog("Usage: cat <filename>\n");
+        } else {
+            FAT12_File file;
+            if (FAT12::open_file(filename, &file)) {
+                klog("File: %s (%d bytes)\n", file.filename, file.file_size);
+                char* buffer = (char*)vmm.kmalloc(file.file_size + 1);
+                if (buffer) {
+                    pt::uint32_t bytes_read = FAT12::read_file(&file, buffer, file.file_size);
+                    buffer[bytes_read] = '\0';
+                    klog("Contents:\n%s\n", buffer);
+                    vmm.kfree(buffer);
+                }
+                FAT12::close_file(&file);
+            } else {
+                klog("File not found: %s\n", filename);
+            }
+        }
+    }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {
         klog("bye bye ;)\n");
@@ -126,7 +165,7 @@ bool Shell::execute(const char* cmd) {
     else {
         klog("Invalid command\n");
     }
-    
+
     return true;
 }
 

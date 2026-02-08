@@ -39,15 +39,40 @@ build-x86_64: clean $(kernel_object_files) $(x86_64_object_files)
 	mkdir -p dist/x86_64 && \
 	$(LD) -n -o dist/x86_64/kernel.bin -T target/x86_64/linker.ld $(kernel_object_files) $(x86_64_object_files)
 
-gdb: all
-	$(QEMU) -cdrom dist/x86_64/kernel.iso -serial stdio $(QEMU_OPTIONS) -s
+gdb: all disk.img
+	$(QEMU) -cdrom dist/x86_64/kernel.iso -drive file=disk.img,format=raw,if=ide,media=disk -boot order=d -serial stdio $(QEMU_OPTIONS) -s -S
 
 clean:
 	-rm -f build/kernel/*.o
 	-rm -f build/x86_64/*.o
 	-rm -f build/x86_64/boot/*.o
 	-rm -f build/x86_64/device/*.o
+	-rm -f build/x86_64/filesystem/*.o
 	-rm -f dist/x86_64/kernel.*
+	-rm -f disk.img
 
-run: all
-	$(QEMU) -cdrom dist/x86_64/kernel.iso -serial stdio $(QEMU_OPTIONS)
+# Files to copy to disk image from bins folder
+BIN_FILES := $(wildcard src/impl/x86_64/bins/*)
+
+# Create FAT12 disk image with test files from bins folder
+disk.img: $(BIN_FILES)
+	@echo "Creating FAT12 disk image..."
+	@# Create 10MB disk image (large enough for testing)
+	dd if=/dev/zero of=disk.img bs=512 count=20480 2>/dev/null
+	@# Format as FAT12 (1.44MB floppy geometry)
+	mkfs.vfat -F 12 -n "POTATDISK" disk.img
+	@# Copy all files from bins folder
+	@for file in $(BIN_FILES); do \
+		filename=$$(basename $$file); \
+		uppername=$$(echo $$filename | tr '[:lower:]' '[:upper:]'); \
+		echo "  Copying $$filename -> $$uppername"; \
+		mcopy -i disk.img $$file ::$$uppername; \
+	done
+	@echo "Disk image created with files:"
+	@mdir -i disk.img ::
+
+run: all disk.img
+	$(QEMU) -cdrom dist/x86_64/kernel.iso -drive file=disk.img,format=raw,if=ide,media=disk -boot order=d -serial stdio $(QEMU_OPTIONS)
+
+rundisk: build-x86_64 disk.img
+	$(QEMU) -kernel dist/x86_64/kernel.bin -drive file=disk.img,format=raw,if=ide,media=disk -serial stdio $(QEMU_OPTIONS)

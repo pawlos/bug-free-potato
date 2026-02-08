@@ -30,6 +30,17 @@ void memset(void* dst, pt::uint64_t value, const pt::size_t size)
     }
 }
 
+void* memcpy(void* dest, const void* src, pt::size_t n) {
+    pt::uint8_t* d = (pt::uint8_t*)dest;
+    const pt::uint8_t* s = (const pt::uint8_t*)src;
+    
+    while (n--) {
+        *d++ = *s++;
+    }
+    
+    return dest;
+}
+
 pt::size_t VMM::memsize() {
     return this->firstFreeMemoryRegion->length;
 }

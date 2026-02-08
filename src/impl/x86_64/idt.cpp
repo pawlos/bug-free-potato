@@ -12,10 +12,13 @@ extern pt::uint64_t isr4;
 extern pt::uint64_t isr5;
 extern pt::uint64_t isr6;
 extern pt::uint64_t isr8;
+extern pt::uint64_t isr13;
 extern pt::uint64_t isr14;
 extern pt::uint64_t irq0;
 extern pt::uint64_t irq1;
 extern pt::uint64_t irq12;
+extern pt::uint64_t irq14;
+extern pt::uint64_t irq15;
 
 extern void keyboard_routine(pt::uint8_t scancode);
 extern void mouse_routine(const pt::int8_t mouse[]);
@@ -45,11 +48,14 @@ void IDT::initialize()
 	init_idt_entry(5, isr5);
 	init_idt_entry(6, isr6);
 	init_idt_entry(8, isr8);
+	init_idt_entry(13, isr13);
 	init_idt_entry(14, isr14);
 
 	init_idt_entry(32, irq0);
 	init_idt_entry(33, irq1);
 	init_idt_entry(44, irq12);
+	init_idt_entry(46, irq14);
+	init_idt_entry(47, irq15);
 
 	PIC::Mask();
 	LoadIDT();
@@ -92,6 +98,20 @@ ASMCALL void irq12_handler()
 	PIC::irq_ack(12);
 }
 
+ASMCALL void irq14_handler()
+{
+	// IDE primary channel interrupt - just acknowledge it
+	// We're using polling, so we don't need to do anything here
+	PIC::irq_ack(14);
+}
+
+ASMCALL void irq15_handler()
+{
+	// IDE secondary channel interrupt - just acknowledge it
+	// We're using polling, so we don't need to do anything here
+	PIC::irq_ack(15);
+}
+
 ASMCALL void isr0_handler()
 {
 	kernel_panic("Divide by zero", 0);
@@ -130,6 +150,11 @@ ASMCALL void isr6_handler()
 ASMCALL void isr8_handler()
 {
 	kernel_panic("Double fault", 8);
+}
+
+ASMCALL void isr13_handler()
+{
+	kernel_panic("General protection fault", 13);
 }
 
 ASMCALL void isr14_handler()

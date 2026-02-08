@@ -3,6 +3,10 @@
 #include "boot.h"
 #include "kernel.h"
 
+// Memory utility functions
+void memset(void* dst, pt::uint64_t value, const pt::size_t size);
+void* memcpy(void* dest, const void* src, pt::size_t n);
+
 class VMM;
 
 extern VMM vmm;
