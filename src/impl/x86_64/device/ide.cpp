@@ -68,6 +68,32 @@ static void ide_software_reset() {
     ide_reset_delay();
 }
 
+// Get sector count from IDENTIFY DEVICE command
+// Returns sector count from words 60-61 (LBA28), or 0 on failure
+static pt::uint32_t ide_get_sector_count() {
+    // Issue IDENTIFY DEVICE command (0xEC)
+    IO::outb(IDE_PRIMARY_COMMAND, 0xEC);
+
+    // Wait for data ready
+    if (!ide_wait_drq()) {
+        klog("[IDE] IDENTIFY DEVICE: no DRQ\n");
+        return 0;
+    }
+
+    // Read 256 words (512 bytes) from the data port
+    pt::uint16_t identify[256];
+    for (int i = 0; i < 256; i++) {
+        identify[i] = IO::inw(IDE_PRIMARY_DATA);
+    }
+
+    // Words 60-61 contain LBA28 sector count (little-endian)
+    // Word 60 = low 16 bits, Word 61 = high 16 bits
+    pt::uint32_t sector_count = identify[60] | (identify[61] << 16);
+
+    klog("[IDE] Sector count from IDENTIFY: %d\n", sector_count);
+    return sector_count;
+}
+
 void IDE::initialize() {
     if (initialized) return;
     
@@ -96,15 +122,23 @@ void IDE::initialize() {
     if (status != 0xFF && status != 0x00) {
         drives[0].present = true;
         drives[0].is_master = true;
-        drives[0].sector_count = 20480;
-        
+
+        // Get real sector count from IDENTIFY DEVICE
+        pt::uint32_t sector_count = ide_get_sector_count();
+        if (sector_count == 0) {
+            // Fallback if IDENTIFY fails
+            klog("[IDE] IDENTIFY failed, using default sector count\n");
+            sector_count = 20480;
+        }
+        drives[0].sector_count = sector_count;
+
         const char* model = "QEMU HARDDISK";
         for (int i = 0; i < 40 && model[i]; i++) {
             drives[0].model[i] = model[i];
         }
         drives[0].model[40] = '\0';
-        
-        klog("[IDE] Master drive detected\n");
+
+        klog("[IDE] Master drive detected (%d sectors)\n", sector_count);
     } else {
         klog("[IDE] No master drive detected\n");
     }

@@ -1,1 +1,16 @@
+# Build artifacts
+build/
+dist/
 target/x86_64/iso/boot/kernel.bin
+
+# Generated files
+disk.img
+*.iso
+
+# IDE and debug
+.idea/
+.gdb_history
+
+# OS-specific
+.DS_Store
+Thumbs.db

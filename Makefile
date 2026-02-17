@@ -23,11 +23,11 @@ x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
 $(kernel_object_files): build/kernel/%.o : src/impl/kernel/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/intf -I src/impl/x86_64 -g -masm=intel -ffreestanding $(CPPFLAGS) $(patsubst build/kernel/%.o, src/impl/kernel/%.cpp, $@) -o $@
+	$(CPP) -c -I src/intf -I src/impl/x86_64 -g -masm=intel -ffreestanding -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/impl/kernel/%.cpp, $@) -o $@
 
 $(x86_64_cpp_object_files): build/x86_64/%.o : src/impl/x86_64/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/intf -g -masm=intel -ffreestanding $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/impl/x86_64/%.cpp, $@) -o $@
+	$(CPP) -c -I src/intf -g -masm=intel -ffreestanding -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/impl/x86_64/%.cpp, $@) -o $@
 
 
 $(x86_64_asm_object_files): build/x86_64/%.o : src/impl/x86_64/%.asm
@@ -40,7 +40,7 @@ build-cd: build-x86_64
 	cp dist/x86_64/kernel.bin target/x86_64/iso/boot/kernel.bin && \
 	grub-mkrescue /usr/lib/grub/i386-pc -o dist/x86_64/kernel.iso target/x86_64/iso
 
-build-x86_64: clean $(kernel_object_files) $(x86_64_object_files)
+build-x86_64: $(kernel_object_files) $(x86_64_object_files)
 	mkdir -p dist/x86_64 && \
 	$(LD) -n -o dist/x86_64/kernel.bin -T target/x86_64/linker.ld $(kernel_object_files) $(x86_64_object_files)
 

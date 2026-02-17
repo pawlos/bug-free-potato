@@ -25,6 +25,26 @@ constexpr char ls_cmd[] = "ls";
 constexpr char cat_cmd[] = "cat ";
 constexpr char play_cmd[] = "play ";
 constexpr char disk_cmd[] = "disk";
+constexpr char help_cmd[] = "help";
+constexpr char echo_cmd[] = "echo ";
+constexpr char clear_cmd[] = "clear";
+
+void print_help() {
+    klog("Available commands:\n");
+    klog("  mem              - Display free memory\n");
+    klog("  vmm              - Show page table entries\n");
+    klog("  ticks            - Display system ticks\n");
+    klog("  alloc [size]     - Allocate and free memory (default 256 bytes)\n");
+    klog("  disk             - Show disk info\n");
+    klog("  ls               - List files on disk\n");
+    klog("  cat <filename>   - Read and display file\n");
+    klog("  play <filename>  - Play audio file (AC97)\n");
+    klog("  pci              - Enumerate PCI devices\n");
+    klog("  blue/red/green   - Clear screen with color\n");
+    klog("  history          - Show command history\n");
+    klog("  help             - Show this help\n");
+    klog("  quit             - Exit kernel\n");
+}
 
 Shell::Shell() : history_count(0), history_index(0) {
     for (int i = 0; i < MAX_HISTORY; i++) {
@@ -191,6 +211,18 @@ bool Shell::execute(const char* cmd) {
                 klog("File not found: %s\n", filename);
             }
         }
+    }
+    else if (memcmp(cmd, help_cmd, sizeof(help_cmd))) {
+        print_help();
+    }
+    else if (memcmp(cmd, echo_cmd, 5)) {
+        // Echo command - print everything after "echo "
+        const char* text = cmd + 5;
+        klog("%s\n", text);
+    }
+    else if (memcmp(cmd, clear_cmd, sizeof(clear_cmd))) {
+        // Clear command - clear the screen to black
+        Framebuffer::get_instance()->Clear(0, 0, 0);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

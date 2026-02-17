@@ -228,6 +228,9 @@ ASMCALL void isr13_handler()
 
 ASMCALL void isr14_handler()
 {
+	pt::uintptr_t cr2;
+	asm __volatile__("mov %%cr2, %0" : "=r"(cr2));
+	klog("[PAGE FAULT] Faulting address: %x\n", cr2);
 	kernel_panic("Page fault", 14);
 }
 
