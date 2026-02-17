@@ -18,7 +18,7 @@ public:
     void clear();
 
 private:
-    static constexpr int BUFFER_SIZE = 16;
+    static constexpr int BUFFER_SIZE = 128;
     char buffer[BUFFER_SIZE];
     int pos;
     bool line_ready;

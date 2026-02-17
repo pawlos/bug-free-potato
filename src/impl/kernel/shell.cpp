@@ -98,151 +98,219 @@ void Shell::print_history() {
     }
 }
 
+void Shell::execute_mem(const char* cmd) {
+    klog("Free memory: %l\n", vmm.memsize());
+}
+
+void Shell::execute_ticks(const char* cmd) {
+    klog("Ticks: %l\n", get_ticks());
+}
+
+void Shell::execute_alloc(const char* cmd) {
+    // Parse size from command: "alloc" or "alloc <size>"
+    const char* size_str = cmd + 5;  // Skip "alloc"
+    pt::size_t size = parse_decimal(size_str);
+
+    if (size == 0) {
+        size = 256;  // Default to 256 if not specified or 0
+    }
+
+    const auto ptr = vmm.kcalloc(size);
+    klog("Allocated %d bytes at %x\n", size, ptr);
+    vmm.kfree(ptr);
+    klog("Freed successfully\n");
+}
+
+void Shell::execute_clear_color(const char* cmd, pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) {
+    Framebuffer::get_instance()->Clear(r, g, b);
+}
+
+void Shell::execute_vmm(const char* cmd) {
+    auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
+    klog("Paging struct at address: %x\n", pageTableL3);
+    for (int i = 0; i < 1024; i+=4) {
+        if (*(pageTableL3 + i) != 0x0) {
+            klog("Page table entry for index %d: %x\n", i/4, *(pageTableL3 + i));
+        }
+    }
+}
+
+void Shell::execute_pci(const char* cmd) {
+    const auto devices = pci::enumerate();
+    auto device = devices;
+    while (device != nullptr && device->vendor_id != 0xffff)
+    {
+        klog("PCI device: \n");
+        klog("\t\tVendorId: %x\n", device->vendor_id);
+        klog("\t\tDeviceId: %x\n", device->device_id);
+        klog("\t\tClass: %x\n", device->class_code);
+        klog("\t\tSubclass: %x\n", device->subclass_code);
+        device++;
+    }
+    vmm.kfree(devices);
+}
+
+void Shell::execute_map(const char* cmd) {
+    // TODO: implement map command
+}
+
+void Shell::execute_history(const char* cmd) {
+    print_history();
+}
+
+void Shell::execute_ls(const char* cmd) {
+    FAT12::list_root_directory();
+}
+
+void Shell::execute_disk(const char* cmd) {
+    if (Disk::is_present()) {
+        klog("Disk present: %d sectors (%d MB)\n",
+             Disk::get_sector_count(),
+             (Disk::get_sector_count() * 512) / (1024 * 1024));
+    } else {
+        klog("No disk present\n");
+    }
+}
+
+void Shell::execute_play(const char* cmd) {
+    const char* filename = cmd + 5;
+    if (filename[0] == '\0') {
+        klog("Usage: play <filename>\n");
+    } else if (!AC97::is_present()) {
+        klog("AC97 audio not available\n");
+    } else {
+        FAT12_File file;
+        if (FAT12::open_file(filename, &file)) {
+            klog("Playing: %s (%d bytes)\n", file.filename, file.file_size);
+            pt::uint8_t* buf = (pt::uint8_t*)vmm.kmalloc(file.file_size);
+            if (buf) {
+                pt::uint32_t bytes_read = FAT12::read_file(&file, buf, file.file_size);
+                AC97::play_pcm(buf, bytes_read, 48000);
+                // Wait for DMA to finish before freeing the buffer
+                while (AC97::is_playing()) { /* spin */ }
+                vmm.kfree(buf);
+            }
+            FAT12::close_file(&file);
+        } else {
+            klog("File not found: %s\n", filename);
+        }
+    }
+}
+
+void Shell::execute_cat(const char* cmd) {
+    // Cat command - cmd starts with "cat "
+    const char* filename = cmd + 4; // Skip "cat "
+    if (filename[0] == '\0') {
+        klog("Usage: cat <filename>\n");
+    } else {
+        FAT12_File file;
+        if (FAT12::open_file(filename, &file)) {
+            klog("File: %s (%d bytes)\n", file.filename, file.file_size);
+            char* buffer = (char*)vmm.kmalloc(file.file_size + 1);
+            if (buffer) {
+                pt::uint32_t bytes_read = FAT12::read_file(&file, buffer, file.file_size);
+                buffer[bytes_read] = '\0';
+                klog("Contents:\n%s\n", buffer);
+                vmm.kfree(buffer);
+            }
+            FAT12::close_file(&file);
+        } else {
+            klog("File not found: %s\n", filename);
+        }
+    }
+}
+
+void Shell::execute_help(const char* cmd) {
+    print_help();
+}
+
+void Shell::execute_echo(const char* cmd) {
+    // Echo command - print everything after "echo "
+    const char* text = cmd + 5;
+    klog("%s\n", text);
+}
+
+void Shell::execute_clear(const char* cmd) {
+    // Clear command - clear the screen to black
+    Framebuffer::get_instance()->Clear(0, 0, 0);
+}
+
+void Shell::execute_timers(const char* cmd) {
+    // Timers command - list all active timers
+    timer_list_all();
+}
+
+void Shell::execute_cancel(const char* cmd) {
+    // Cancel command - cancel a timer by ID
+    const char* id_str = cmd + 7;  // Skip "cancel "
+    pt::uint64_t timer_id = parse_decimal(id_str);
+    if (timer_id == 0) {
+        klog("Usage: cancel <timer_id>\n");
+    } else {
+        timer_cancel(timer_id);
+    }
+}
+
 bool Shell::execute(const char* cmd) {
     // Add to history first
     add_to_history(cmd);
-    
+
     if (memcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
-        klog("Free memory: %l\n", vmm.memsize());
+        execute_mem(cmd);
     }
     else if (memcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
-        klog("Ticks: %l\n", get_ticks());
+        execute_ticks(cmd);
     }
     else if (memcmp(cmd, "alloc", 5)) {
-        // Parse size from command: "alloc" or "alloc <size>"
-        const char* size_str = cmd + 5;  // Skip "alloc"
-        pt::size_t size = parse_decimal(size_str);
-
-        if (size == 0) {
-            size = 256;  // Default to 256 if not specified or 0
-        }
-
-        const auto ptr = vmm.kcalloc(size);
-        klog("Allocated %d bytes at %x\n", size, ptr);
-        vmm.kfree(ptr);
-        klog("Freed successfully\n");
+        execute_alloc(cmd);
     }
     else if (memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
-        Framebuffer::get_instance()->Clear(0,0,255);
+        execute_clear_color(cmd, 0, 0, 255);
     }
     else if (memcmp(cmd, clear_green_cmd, sizeof(clear_green_cmd))) {
-        Framebuffer::get_instance()->Clear(0,255,0);
+        execute_clear_color(cmd, 0, 255, 0);
     }
     else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
-        Framebuffer::get_instance()->Clear(255,0,0);
+        execute_clear_color(cmd, 255, 0, 0);
     }
     else if (memcmp(cmd, map_cmd, sizeof(map_cmd))) {
-        // TODO: implement map command
+        execute_map(cmd);
     }
     else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
-        auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
-        klog("Paging struct at address: %x\n", pageTableL3);
-        for (int i = 0; i < 1024; i+=4) {
-            if (*(pageTableL3 + i) != 0x0) {
-                klog("Page table entry for index %d: %x\n", i/4, *(pageTableL3 + i));
-            }
-        }
+        execute_vmm(cmd);
     }
     else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
-        const auto devices = pci::enumerate();
-        auto device = devices;
-        while (device != nullptr && device->vendor_id != 0xffff)
-        {
-            klog("PCI device: \n");
-            klog("\t\tVendorId: %x\n", device->vendor_id);
-            klog("\t\tDeviceId: %x\n", device->device_id);
-            klog("\t\tClass: %x\n", device->class_code);
-            klog("\t\tSubclass: %x\n", device->subclass_code);
-            device++;
-        }
-        vmm.kfree(devices);
+        execute_pci(cmd);
     }
     else if (memcmp(cmd, history_cmd, sizeof(history_cmd))) {
-        print_history();
+        execute_history(cmd);
     }
     else if (memcmp(cmd, ls_cmd, sizeof(ls_cmd))) {
-        FAT12::list_root_directory();
+        execute_ls(cmd);
     }
     else if (memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {
-        if (Disk::is_present()) {
-            klog("Disk present: %d sectors (%d MB)\n",
-                 Disk::get_sector_count(),
-                 (Disk::get_sector_count() * 512) / (1024 * 1024));
-        } else {
-            klog("No disk present\n");
-        }
+        execute_disk(cmd);
     }
     else if (memcmp(cmd, play_cmd, 5)) {
-        const char* filename = cmd + 5;
-        if (filename[0] == '\0') {
-            klog("Usage: play <filename>\n");
-        } else if (!AC97::is_present()) {
-            klog("AC97 audio not available\n");
-        } else {
-            FAT12_File file;
-            if (FAT12::open_file(filename, &file)) {
-                klog("Playing: %s (%d bytes)\n", file.filename, file.file_size);
-                pt::uint8_t* buf = (pt::uint8_t*)vmm.kmalloc(file.file_size);
-                if (buf) {
-                    pt::uint32_t bytes_read = FAT12::read_file(&file, buf, file.file_size);
-                    AC97::play_pcm(buf, bytes_read, 48000);
-                    // Wait for DMA to finish before freeing the buffer
-                    while (AC97::is_playing()) { /* spin */ }
-                    vmm.kfree(buf);
-                }
-                FAT12::close_file(&file);
-            } else {
-                klog("File not found: %s\n", filename);
-            }
-        }
+        execute_play(cmd);
     }
     else if (memcmp(cmd, cat_cmd, 4)) {
-        // Cat command - cmd starts with "cat "
-        const char* filename = cmd + 4; // Skip "cat "
-        if (filename[0] == '\0') {
-            klog("Usage: cat <filename>\n");
-        } else {
-            FAT12_File file;
-            if (FAT12::open_file(filename, &file)) {
-                klog("File: %s (%d bytes)\n", file.filename, file.file_size);
-                char* buffer = (char*)vmm.kmalloc(file.file_size + 1);
-                if (buffer) {
-                    pt::uint32_t bytes_read = FAT12::read_file(&file, buffer, file.file_size);
-                    buffer[bytes_read] = '\0';
-                    klog("Contents:\n%s\n", buffer);
-                    vmm.kfree(buffer);
-                }
-                FAT12::close_file(&file);
-            } else {
-                klog("File not found: %s\n", filename);
-            }
-        }
+        execute_cat(cmd);
     }
     else if (memcmp(cmd, help_cmd, sizeof(help_cmd))) {
-        print_help();
+        execute_help(cmd);
     }
     else if (memcmp(cmd, echo_cmd, 5)) {
-        // Echo command - print everything after "echo "
-        const char* text = cmd + 5;
-        klog("%s\n", text);
+        execute_echo(cmd);
     }
     else if (memcmp(cmd, clear_cmd, sizeof(clear_cmd))) {
-        // Clear command - clear the screen to black
-        Framebuffer::get_instance()->Clear(0, 0, 0);
+        execute_clear(cmd);
     }
     else if (memcmp(cmd, timers_cmd, sizeof(timers_cmd))) {
-        // Timers command - list all active timers
-        timer_list_all();
+        execute_timers(cmd);
     }
     else if (memcmp(cmd, cancel_cmd, 7)) {
-        // Cancel command - cancel a timer by ID
-        const char* id_str = cmd + 7;  // Skip "cancel "
-        pt::uint64_t timer_id = parse_decimal(id_str);
-        if (timer_id == 0) {
-            klog("Usage: cancel <timer_id>\n");
-        } else {
-            timer_cancel(timer_id);
-        }
+        execute_cancel(cmd);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {
