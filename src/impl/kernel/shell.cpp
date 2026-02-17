@@ -28,6 +28,8 @@ constexpr char disk_cmd[] = "disk";
 constexpr char help_cmd[] = "help";
 constexpr char echo_cmd[] = "echo ";
 constexpr char clear_cmd[] = "clear";
+constexpr char timers_cmd[] = "timers";
+constexpr char cancel_cmd[] = "cancel ";
 
 void print_help() {
     klog("Available commands:\n");
@@ -41,6 +43,10 @@ void print_help() {
     klog("  play <filename>  - Play audio file (AC97)\n");
     klog("  pci              - Enumerate PCI devices\n");
     klog("  blue/red/green   - Clear screen with color\n");
+    klog("  echo <text>      - Print text to screen\n");
+    klog("  clear            - Clear screen to black\n");
+    klog("  timers           - List all active timers\n");
+    klog("  cancel <id>      - Cancel a timer by ID\n");
     klog("  history          - Show command history\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
@@ -223,6 +229,20 @@ bool Shell::execute(const char* cmd) {
     else if (memcmp(cmd, clear_cmd, sizeof(clear_cmd))) {
         // Clear command - clear the screen to black
         Framebuffer::get_instance()->Clear(0, 0, 0);
+    }
+    else if (memcmp(cmd, timers_cmd, sizeof(timers_cmd))) {
+        // Timers command - list all active timers
+        timer_list_all();
+    }
+    else if (memcmp(cmd, cancel_cmd, 7)) {
+        // Cancel command - cancel a timer by ID
+        const char* id_str = cmd + 7;  // Skip "cancel "
+        pt::uint64_t timer_id = parse_decimal(id_str);
+        if (timer_id == 0) {
+            klog("Usage: cancel <timer_id>\n");
+        } else {
+            timer_cancel(timer_id);
+        }
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

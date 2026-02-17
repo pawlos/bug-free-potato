@@ -57,8 +57,14 @@ void timer_cancel(pt::uint64_t timer_id)
 
 	while (current != nullptr) {
 		if (current->id == timer_id) {
-			current->active = false;
-			klog("[TIMER] Cancelled timer ID %d\n", timer_id);
+			// Remove from list and free memory
+			if (prev == nullptr) {
+				timer_list = current->next;
+			} else {
+				prev->next = current->next;
+			}
+			vmm.kfree(current);
+			klog("[TIMER] Cancelled and freed timer ID %d\n", timer_id);
 			return;
 		}
 		prev = current;
@@ -69,6 +75,7 @@ void timer_cancel(pt::uint64_t timer_id)
 void check_timers()
 {
 	Timer* current = timer_list;
+	Timer* prev = nullptr;
 
 	while (current != nullptr) {
 		if (current->active && ticks >= current->deadline_ticks) {
@@ -78,11 +85,23 @@ void check_timers()
 
 			if (current->periodic) {
 				current->deadline_ticks = ticks + current->interval;
+				prev = current;
+				current = current->next;
 			} else {
-				current->active = false;
+				// Non-periodic timer expired - remove and free it
+				Timer* to_delete = current;
+				current = current->next;
+				if (prev == nullptr) {
+					timer_list = current;
+				} else {
+					prev->next = current;
+				}
+				vmm.kfree(to_delete);
 			}
+		} else {
+			prev = current;
+			current = current->next;
 		}
-		current = current->next;
 	}
 }
 
@@ -90,4 +109,38 @@ void timer_routine()
 {
 	ticks++;
 	check_timers();
+}
+
+void timer_list_all()
+{
+	Timer* current = timer_list;
+	int count = 0;
+
+	if (current == nullptr) {
+		klog("[TIMER] No active timers\n");
+		return;
+	}
+
+	klog("[TIMER] Active timers:\n");
+	klog("  ID  | Active | Periodic | Deadline    | Interval  | Callback\n");
+	klog("------|--------|----------|-------------|-----------|----------\n");
+
+	while (current != nullptr) {
+		pt::uint64_t ticks_remaining = current->active && current->deadline_ticks > ticks ?
+			current->deadline_ticks - ticks : 0;
+
+		klog("  %d  |   %c   |    %c     | %d (%d) | %d     | %x\n",
+			(int)current->id,
+			current->active ? 'Y' : 'N',
+			current->periodic ? 'Y' : 'N',
+			(int)current->deadline_ticks,
+			(int)ticks_remaining,
+			(int)current->interval,
+			(pt::uintptr_t)current->callback);
+
+		count++;
+		current = current->next;
+	}
+
+	klog("[TIMER] Total: %d timer(s)\n", count);
 }

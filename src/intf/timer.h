@@ -21,3 +21,4 @@ pt::uint64_t get_ticks();
 pt::uint64_t timer_create(pt::uint64_t delay_ticks, bool periodic, void (*callback)(void*), void* data);
 void timer_cancel(pt::uint64_t timer_id);
 void check_timers();
+void timer_list_all();

@@ -108,6 +108,34 @@ void* VMM::kcalloc(const pt::size_t size)
     return ptr;
 }
 
+void* VMM::krealloc(void *ptr, const pt::size_t old_size, const pt::size_t new_size)
+{
+    if (ptr == nullptr) {
+        return kmalloc(new_size);
+    }
+
+    if (new_size == 0) {
+        kfree(ptr);
+        return nullptr;
+    }
+
+    // Allocate new block
+    void* new_ptr = kmalloc(new_size);
+    if (new_ptr == nullptr) {
+        return nullptr;
+    }
+
+    // Copy data (copy the smaller of old_size and new_size)
+    pt::size_t copy_size = old_size < new_size ? old_size : new_size;
+    memcpy(new_ptr, ptr, copy_size);
+
+    // Free old block
+    kfree(ptr);
+
+    klog("[VMM] Realloced %d -> %d bytes\n", old_size, new_size);
+    return new_ptr;
+}
+
 void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
 {
     if (a == nullptr) return;

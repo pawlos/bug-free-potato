@@ -47,6 +47,7 @@ class VMM
 public:
     void *kmalloc(pt::size_t size);
     void *kcalloc(pt::size_t size);
+    void *krealloc(void *ptr, pt::size_t old_size, pt::size_t new_size);
     void kfree(void *);
 
     pt::size_t memsize();
