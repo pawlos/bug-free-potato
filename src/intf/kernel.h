@@ -12,7 +12,7 @@ constexpr pt::uint8_t NullRefNotExpected = 249;
 
 #define ASMCALL extern "C"
 
-static ComDevice debug;
+extern ComDevice debug;
 extern pt::uint64_t ticks;
 
 void inline klog(const char *str, ...)

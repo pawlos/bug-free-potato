@@ -98,7 +98,5 @@ public:
         firstFreeMemoryRegion->prevFreeChunk = nullptr;
         firstFreeMemoryRegion->free = true;
 
-        pageTables = static_cast<PageTableL4*>(kcalloc(sizeof(PageTableL4*)));
-
     }
 };

@@ -87,7 +87,7 @@ void TerminalPrinter::print_char(const char character)
         return;
     }
 
-    if (col > NUM_COLS) {
+    if (col >= NUM_COLS) {
         print_newline();
     }
 

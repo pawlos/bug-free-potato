@@ -18,6 +18,6 @@ class PIC
 {
 public:
     static void Remap();
-    static void Mask();
+    static void UnmaskAll();
     static void irq_ack(pt::uint8_t irq);
 };

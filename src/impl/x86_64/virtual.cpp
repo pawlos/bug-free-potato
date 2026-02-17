@@ -118,18 +118,30 @@ void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
         a->length += b->length + sizeof(kMemoryRegion);
         a->nextChunk = b->nextChunk;
         a->nextFreeChunk = b->nextFreeChunk;
-        b->nextChunk->prevChunk = a;
-        b->nextChunk->prevFreeChunk = a;
-        b->nextFreeChunk->prevFreeChunk = a;
+        if (b->nextChunk != nullptr) {
+            b->nextChunk->prevChunk = a;
+        }
+        if (b->nextChunk != nullptr) {
+            b->nextChunk->prevFreeChunk = a;
+        }
+        if (b->nextFreeChunk != nullptr) {
+            b->nextFreeChunk->prevFreeChunk = a;
+        }
     }
     else
     {
         b->length += a->length + sizeof(kMemoryRegion);
         b->nextChunk = a->nextChunk;
         b->nextFreeChunk = a->nextFreeChunk;
-        a->nextChunk->prevChunk = b;
-        a->nextChunk->prevFreeChunk = b;
-        a->nextFreeChunk->prevFreeChunk = b;
+        if (a->nextChunk != nullptr) {
+            a->nextChunk->prevChunk = b;
+        }
+        if (a->nextChunk != nullptr) {
+            a->nextChunk->prevFreeChunk = b;
+        }
+        if (a->nextFreeChunk != nullptr) {
+            a->nextFreeChunk->prevFreeChunk = b;
+        }
     }
 }
 

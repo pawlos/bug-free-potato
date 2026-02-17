@@ -141,9 +141,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     if (PotatoLogo) {
         Framebuffer::get_instance()->Draw(PotatoLogo, center_x, center_y, img_width, img_height);
     }
-    
-    const auto c = static_cast<char *>(vmm.kmalloc(217));
-    vmm.kfree(c);
+
     terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
     LineReader reader;
     while (true) {

@@ -22,7 +22,7 @@ void PIC::Remap()
 	IO::io_wait();
 }
 
-void PIC::Mask()
+void PIC::UnmaskAll()
 {
 	IO::outb(0x21, 0);
 	IO::outb(0xa1, 0);

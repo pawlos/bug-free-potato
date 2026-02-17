@@ -119,6 +119,8 @@ ComDevice::ComDevice()
 	}
 
 	IO::outb(COM1 + 4, 0x0F);
-	
+
 	print_str("Serial Port initialized\n");
 }
+
+ComDevice debug;

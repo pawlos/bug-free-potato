@@ -82,10 +82,19 @@ bool Shell::execute(const char* cmd) {
     else if (memcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
         klog("Ticks: %l\n", get_ticks());
     }
-    else if (memcmp(cmd, alloc_cmd, sizeof(alloc_cmd))) {
-        const auto ptr = vmm.kcalloc(256);
-        klog("Allocating 256 bytes: %x\n", ptr);
+    else if (memcmp(cmd, "alloc", 5)) {
+        // Parse size from command: "alloc" or "alloc <size>"
+        const char* size_str = cmd + 5;  // Skip "alloc"
+        pt::size_t size = parse_decimal(size_str);
+
+        if (size == 0) {
+            size = 256;  // Default to 256 if not specified or 0
+        }
+
+        const auto ptr = vmm.kcalloc(size);
+        klog("Allocated %d bytes at %x\n", size, ptr);
         vmm.kfree(ptr);
+        klog("Freed successfully\n");
     }
     else if (memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
         Framebuffer::get_instance()->Clear(0,0,255);
