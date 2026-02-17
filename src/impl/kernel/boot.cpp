@@ -135,6 +135,7 @@ BootInfo::BootInfo(boot_info* boot_info)
                     i++;
                     mem_current += mmap->entry_size;
                 }
+                klog("[BOOT] Found %d memory map entries\n", i);
                 break;
             }
             case BOOT_VBE_INFO:

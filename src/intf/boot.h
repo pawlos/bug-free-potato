@@ -139,7 +139,7 @@ struct boot_vbe_info
     pt::uint8_t  vbe_mode_info[256];
 } __attribute__((packed));
 
-#define MEMORY_ENTRIES_LIMIT 7
+#define MEMORY_ENTRIES_LIMIT 32
 class BootInfo
 {
         pt::size_t size;
