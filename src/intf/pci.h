@@ -6,6 +6,8 @@ struct pci_device {
   pt::uint32_t device_id;
   pt::uint32_t class_code;
   pt::uint32_t subclass_code;
+  pt::uint16_t bus;
+  pt::uint8_t  device;
 };
 
 struct pci_query {
