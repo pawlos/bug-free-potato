@@ -57,6 +57,13 @@ public:
 
     [[nodiscard]] PageTableL4* GetPageTableL3() const { return pageTables; }
 
+    // Convert virtual address to physical address.
+    // Since the kernel uses identity mapping (loaded at 1MB, paged 1:1),
+    // virtual == physical for all kernel allocations.
+    static pt::uintptr_t virt_to_phys(void* virt_addr) {
+        return reinterpret_cast<pt::uintptr_t>(virt_addr);
+    }
+
     VMM() = default;
 
     VMM(memory_map_entry* mmap[], void *l4_page_address, const long address = 0x200000)

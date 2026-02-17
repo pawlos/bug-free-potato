@@ -7,6 +7,7 @@
 #include "pci.h"
 #include "disk.h"
 #include "fat12.h"
+#include "ac97.h"
 #include "./libs/stdlib.h"
 
 constexpr char mem_cmd[] = "mem";
@@ -22,6 +23,7 @@ constexpr char map_cmd[] = "map";
 constexpr char history_cmd[] = "history";
 constexpr char ls_cmd[] = "ls";
 constexpr char cat_cmd[] = "cat ";
+constexpr char play_cmd[] = "play ";
 constexpr char disk_cmd[] = "disk";
 
 Shell::Shell() : history_count(0), history_index(0) {
@@ -128,13 +130,37 @@ bool Shell::execute(const char* cmd) {
     }
     else if (memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {
         if (Disk::is_present()) {
-            klog("Disk present: %d sectors (%d MB)\n", 
-                 Disk::get_sector_count(), 
+            klog("Disk present: %d sectors (%d MB)\n",
+                 Disk::get_sector_count(),
                  (Disk::get_sector_count() * 512) / (1024 * 1024));
         } else {
             klog("No disk present\n");
         }
-    }    
+    }
+    else if (memcmp(cmd, play_cmd, 5)) {
+        const char* filename = cmd + 5;
+        if (filename[0] == '\0') {
+            klog("Usage: play <filename>\n");
+        } else if (!AC97::is_present()) {
+            klog("AC97 audio not available\n");
+        } else {
+            FAT12_File file;
+            if (FAT12::open_file(filename, &file)) {
+                klog("Playing: %s (%d bytes)\n", file.filename, file.file_size);
+                pt::uint8_t* buf = (pt::uint8_t*)vmm.kmalloc(file.file_size);
+                if (buf) {
+                    pt::uint32_t bytes_read = FAT12::read_file(&file, buf, file.file_size);
+                    AC97::play_pcm(buf, bytes_read, 48000);
+                    // Wait for DMA to finish before freeing the buffer
+                    while (AC97::is_playing()) { /* spin */ }
+                    vmm.kfree(buf);
+                }
+                FAT12::close_file(&file);
+            } else {
+                klog("File not found: %s\n", filename);
+            }
+        }
+    }
     else if (memcmp(cmd, cat_cmd, 4)) {
         // Cat command - cmd starts with "cat "
         const char* filename = cmd + 4; // Skip "cat "

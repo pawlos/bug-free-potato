@@ -11,6 +11,13 @@ pt::uint32_t pciConfigReadDWord(const pt::uint8_t bus, const pt::uint8_t slot, c
   return IO::ind(0xCFC);
 }
 
+void pciConfigWriteDWord(const pt::uint8_t bus, const pt::uint8_t slot, const pt::uint8_t func, const pt::uint8_t offset, pt::uint32_t value) {
+  const auto address = bus << 16 | slot << 11 |
+                       func << 8 | offset & 0xFC | 0x80000000;
+  IO::outd(0xCF8, address);
+  IO::outd(0xCFC, value);
+}
+
 bool pci::check_device(pci_device* ptr, const pci_query query)
 {
   const auto config_word = pciConfigReadDWord(query.bus, query.device, 0, 0);
@@ -27,6 +34,8 @@ bool pci::check_device(pci_device* ptr, const pci_query query)
   ptr->device_id = device_id;
   ptr->class_code = class_code;
   ptr->subclass_code = subclass_code;
+  ptr->bus = query.bus;
+  ptr->device = query.device;
   return true;
 }
 

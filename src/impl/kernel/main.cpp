@@ -14,10 +14,13 @@
 #include "disk.h"
 #include "fat12.h"
 #include "ide.h"
+#include "ac97.h"
 
 // These will be loaded from FAT12 disk
 const char* Logo = nullptr;
 const unsigned char* PotatoLogo = nullptr;
+pt::uint8_t* BootSound = nullptr;
+pt::uint32_t BootSoundSize = 0;
 
 extern char get_char();
 static IDT idt;
@@ -83,6 +86,32 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
             FAT12::close_file(&raw_file);
         } else {
             klog("[MAIN] Warning: potato.raw not found on disk\n");
+        }
+
+        // Load boot sound from boot.raw (16-bit signed LE stereo PCM, 48 kHz)
+        FAT12_File sound_file;
+        if (FAT12::open_file("boot.raw", &sound_file)) {
+            BootSound = (pt::uint8_t*)vmm.kmalloc(sound_file.file_size);
+            if (BootSound) {
+                BootSoundSize = FAT12::read_file(&sound_file, BootSound, sound_file.file_size);
+                klog("[MAIN] Loaded boot sound from boot.raw (%d bytes)\n", BootSoundSize);
+            }
+            FAT12::close_file(&sound_file);
+        } else {
+            klog("[MAIN] Warning: boot.raw not found on disk\n");
+        }
+    }
+
+    // Initialize AC97 audio controller
+    if (AC97::initialize()) {
+        if (BootSound && BootSoundSize > 0) {
+            // Play the boot sound loaded from disk
+            klog("[MAIN] Playing boot sound (%d bytes)...\n", BootSoundSize);
+            AC97::play_pcm(BootSound, BootSoundSize, 48000);
+        } else {
+            // No boot sound file - play a short beep to confirm audio is working
+            klog("[MAIN] Playing startup beep...\n");
+            AC97::play_beep(880, 300);
         }
     }
 
