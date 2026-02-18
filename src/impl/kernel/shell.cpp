@@ -36,6 +36,7 @@ constexpr char shutdown_cmd[] = "shutdown";
 constexpr char reboot_cmd[] = "reboot";
 constexpr char task_cmd[] = "task";
 constexpr char write_cmd[] = "write ";
+constexpr char rm_cmd[] = "rm ";
 
 void print_help() {
     klog("Available commands:\n");
@@ -59,6 +60,7 @@ void print_help() {
     klog("  reboot           - Reboot system\n");
     klog("  task [create]    - Show tasks or create test task\n");
     klog("  write <file> <text> - Create a new file with text content\n");
+    klog("  rm <file>        - Delete a file\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -411,6 +413,19 @@ void Shell::execute_write(const char* cmd) {
     }
 }
 
+void Shell::execute_rm(const char* cmd) {
+    const char* filename = cmd + 3;  // Skip "rm "
+    if (filename[0] == '\0') {
+        klog("Usage: rm <filename>\n");
+        return;
+    }
+    if (FAT12::delete_file(filename)) {
+        klog("Deleted '%s'\n", filename);
+    } else {
+        klog("Error: file not found or delete failed\n");
+    }
+}
+
 void Shell::execute_echo(const char* cmd) {
     // Echo command - print everything after "echo "
     const char* text = cmd + 5;
@@ -510,6 +525,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (memcmp(cmd, write_cmd, 6)) {
         execute_write(cmd);
+    }
+    else if (memcmp(cmd, rm_cmd, 3)) {
+        execute_rm(cmd);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

@@ -65,6 +65,7 @@ public:
     static bool file_exists(const char* filename);
     static void list_root_directory();
     static bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size);
+    static bool delete_file(const char* filename);
 
     // Filesystem info getters
     static pt::uint32_t get_bytes_per_cluster();

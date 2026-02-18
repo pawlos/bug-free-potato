@@ -494,6 +494,63 @@ bool FAT12::create_file(const char* filename, const pt::uint8_t* data, pt::uint3
     return false;
 }
 
+bool FAT12::delete_file(const char* filename) {
+    if (!mounted) {
+        klog("[FAT12] delete_file: not mounted\n");
+        return false;
+    }
+
+    pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+
+    for (pt::uint32_t s = 0; s < root_dir_sectors; s++) {
+        if (!Disk::read_sector(root_dir_start_sector + s, sector_buffer)) {
+            continue;
+        }
+
+        FAT12_DirEntry* entries = (FAT12_DirEntry*)sector_buffer;
+
+        for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+            if (entries[e].filename[0] == 0x00) {
+                klog("[FAT12] delete_file: '%s' not found\n", filename);
+                return false;
+            }
+            if (entries[e].filename[0] == 0xE5) continue;
+            if (entries[e].attributes & 0x08) continue;  // Volume label
+            if (entries[e].attributes & 0x10) continue;  // Directory
+
+            if (compare_filename(&entries[e], filename)) {
+                pt::uint16_t first_cluster = entries[e].first_cluster_low;
+
+                // Mark directory entry as deleted
+                entries[e].filename[0] = 0xE5;
+                if (!Disk::write_sector(root_dir_start_sector + s, sector_buffer)) {
+                    klog("[FAT12] delete_file: failed to write directory sector\n");
+                    return false;
+                }
+
+                // Free cluster chain
+                pt::uint16_t cluster = first_cluster;
+                while (cluster >= 2 && cluster < 0xFF8) {
+                    pt::uint16_t next = get_next_cluster(cluster);
+                    set_fat_entry(cluster, 0x000);
+                    cluster = next;
+                }
+
+                if (!flush_fat()) {
+                    klog("[FAT12] delete_file: flush_fat failed\n");
+                    return false;
+                }
+
+                klog("[FAT12] Deleted file '%s'\n", filename);
+                return true;
+            }
+        }
+    }
+
+    klog("[FAT12] delete_file: '%s' not found\n", filename);
+    return false;
+}
+
 pt::uint32_t FAT12::get_bytes_per_cluster() {
     if (!mounted) return 0;
     return bpb.sectors_per_cluster * bpb.bytes_per_sector;
