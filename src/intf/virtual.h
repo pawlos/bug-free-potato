@@ -75,13 +75,6 @@ public:
     void free_frame(pt::uintptr_t frame);
     void initialize_frame_allocator(memory_map_entry* mmap[]);
 
-private:
-    // Frame allocator state - lazy initialized
-    pt::uint8_t* frame_bitmap;
-    pt::size_t frame_bitmap_size;
-    bool frame_allocator_ready;
-    memory_map_entry** cached_mmap;
-
     VMM() = default;
 
     VMM(memory_map_entry* mmap[], void *l4_page_address, const long address = 0x200000)
@@ -121,4 +114,11 @@ private:
         firstFreeMemoryRegion->prevFreeChunk = nullptr;
         firstFreeMemoryRegion->free = true;
     }
+
+private:
+    // Frame allocator state - lazy initialized
+    pt::uint8_t* frame_bitmap;
+    pt::size_t frame_bitmap_size;
+    bool frame_allocator_ready;
+    memory_map_entry** cached_mmap;
 };
