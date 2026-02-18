@@ -35,6 +35,7 @@ constexpr char cancel_cmd[] = "cancel ";
 constexpr char shutdown_cmd[] = "shutdown";
 constexpr char reboot_cmd[] = "reboot";
 constexpr char task_cmd[] = "task";
+constexpr char write_cmd[] = "write ";
 
 void print_help() {
     klog("Available commands:\n");
@@ -57,6 +58,7 @@ void print_help() {
     klog("  shutdown         - Shutdown system (ACPI or PS/2)\n");
     klog("  reboot           - Reboot system\n");
     klog("  task [create]    - Show tasks or create test task\n");
+    klog("  write <file> <text> - Create a new file with text content\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -373,6 +375,42 @@ void Shell::execute_help(const char* cmd) {
     print_help();
 }
 
+void Shell::execute_write(const char* cmd) {
+    // Skip "write " prefix (6 chars)
+    const char* args = cmd + 6;
+
+    // Parse filename (first whitespace-delimited token, max 12 chars)
+    char filename[13];
+    int fn_len = 0;
+    while (args[fn_len] && args[fn_len] != ' ' && fn_len < 12) {
+        filename[fn_len] = args[fn_len];
+        fn_len++;
+    }
+    filename[fn_len] = '\0';
+
+    if (fn_len == 0) {
+        klog("Usage: write <filename> <content>\n");
+        return;
+    }
+
+    // Content is everything after the filename and space
+    const char* content = args + fn_len;
+    if (*content == ' ') content++;
+
+    pt::uint32_t len = 0;
+    while (content[len]) len++;
+
+    if (FAT12::create_file(filename, (const pt::uint8_t*)content, len)) {
+        klog("Created file '%s' (%d bytes)\n", filename, len);
+    } else {
+        if (FAT12::file_exists(filename)) {
+            klog("Error: file already exists\n");
+        } else {
+            klog("Error: disk full or write failed\n");
+        }
+    }
+}
+
 void Shell::execute_echo(const char* cmd) {
     // Echo command - print everything after "echo "
     const char* text = cmd + 5;
@@ -469,6 +507,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (memcmp(cmd, task_cmd, 4)) {
         execute_task(cmd);
+    }
+    else if (memcmp(cmd, write_cmd, 6)) {
+        execute_write(cmd);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

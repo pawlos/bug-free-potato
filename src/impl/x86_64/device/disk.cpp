@@ -46,6 +46,13 @@ bool Disk::read_sectors(pt::uint32_t lba, pt::uint8_t count, void* buffer) {
     return false;
 }
 
+bool Disk::write_sector(pt::uint32_t lba, const void* buffer) {
+    if (!present) {
+        return false;
+    }
+    return IDE::write_sectors(0, lba, 1, buffer);
+}
+
 pt::uint32_t Disk::get_sector_count() {
     return sector_count;
 }

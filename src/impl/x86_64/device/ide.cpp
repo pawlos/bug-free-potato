@@ -219,6 +219,76 @@ bool IDE::read_sectors(pt::uint8_t drive, pt::uint32_t lba, pt::uint8_t sector_c
     return true;
 }
 
+bool IDE::write_sectors(pt::uint8_t drive, pt::uint32_t lba, pt::uint8_t sector_count, const void* buffer) {
+    if (drive >= 2 || !drives[drive].present) {
+        return false;
+    }
+
+    if (sector_count == 0 || buffer == nullptr) {
+        return false;
+    }
+
+    const pt::uint8_t* byte_buffer = static_cast<const pt::uint8_t*>(buffer);
+
+    for (pt::uint8_t s = 0; s < sector_count; s++) {
+        pt::uint32_t current_lba = lba + s;
+
+        disable_interrupts();
+
+        if (!ide_wait_ready(true)) {
+            klog("[IDE] Drive not ready before write command\n");
+            enable_interrupts();
+            return false;
+        }
+
+        pt::uint8_t drive_select = 0xE0 | ((current_lba >> 24) & 0x0F);
+        IO::outb(IDE_PRIMARY_DRIVE_SELECT, drive_select);
+        ide_delay();
+
+        if (!ide_wait_ready(false)) {
+            klog("[IDE] Drive busy after select (write)\n");
+            enable_interrupts();
+            return false;
+        }
+
+        IO::outb(IDE_PRIMARY_SECTOR_COUNT, 1);
+        ide_delay();
+
+        IO::outb(IDE_PRIMARY_LBA_LOW,  current_lba & 0xFF);
+        IO::outb(IDE_PRIMARY_LBA_MID,  (current_lba >> 8) & 0xFF);
+        IO::outb(IDE_PRIMARY_LBA_HIGH, (current_lba >> 16) & 0xFF);
+        ide_delay();
+
+        IO::outb(IDE_PRIMARY_COMMAND, IDE_CMD_WRITE_SECTORS);
+
+        if (!ide_wait_drq()) {
+            pt::uint8_t status = IO::inb(IDE_PRIMARY_STATUS);
+            pt::uint8_t error  = IO::inb(IDE_PRIMARY_ERROR);
+            klog("[IDE] Write DRQ timeout: status=0x%x error=0x%x\n", status, error);
+            enable_interrupts();
+            return false;
+        }
+
+        // Write 256 words (512 bytes)
+        const pt::uint16_t* word_ptr = reinterpret_cast<const pt::uint16_t*>(byte_buffer + s * 512);
+        for (int i = 0; i < 256; i++) {
+            IO::outw(IDE_PRIMARY_DATA, word_ptr[i]);
+        }
+
+        // Cache flush
+        IO::outb(IDE_PRIMARY_COMMAND, 0xE7);
+        if (!ide_wait_ready(false)) {
+            klog("[IDE] Cache flush wait failed\n");
+            enable_interrupts();
+            return false;
+        }
+
+        enable_interrupts();
+    }
+
+    return true;
+}
+
 bool IDE::is_drive_present(pt::uint8_t drive) {
     if (!initialized) initialize();
     return (drive < 2) ? drives[drive].present : false;

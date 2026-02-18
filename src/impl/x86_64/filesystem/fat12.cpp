@@ -363,6 +363,137 @@ void FAT12::list_root_directory() {
     }
 }
 
+pt::uint16_t FAT12::find_free_cluster(pt::uint16_t start_from) {
+    if (!mounted || !fat_table) return 0;
+    pt::uint16_t start = (start_from < 2) ? 2 : start_from;
+    for (pt::uint16_t c = start; c < (pt::uint16_t)(total_clusters + 2); c++) {
+        pt::uint32_t fat_offset = c + (c / 2);
+        pt::uint16_t fat_value = *(pt::uint16_t*)(fat_table + fat_offset);
+        pt::uint16_t entry = (c & 1) ? (fat_value >> 4) : (fat_value & 0x0FFF);
+        if (entry == 0) return c;
+    }
+    return 0;  // Disk full
+}
+
+void FAT12::set_fat_entry(pt::uint16_t cluster, pt::uint16_t value) {
+    if (!fat_table) return;
+    pt::uint32_t fat_offset = cluster + (cluster / 2);
+    pt::uint16_t* ptr = (pt::uint16_t*)(fat_table + fat_offset);
+    if (cluster & 1) {
+        *ptr = (*ptr & 0x000F) | ((value & 0x0FFF) << 4);
+    } else {
+        *ptr = (*ptr & 0xF000) | (value & 0x0FFF);
+    }
+}
+
+bool FAT12::flush_fat() {
+    for (pt::uint8_t copy = 0; copy < bpb.fat_count; copy++) {
+        pt::uint32_t start = fat_start_sector + copy * bpb.sectors_per_fat;
+        for (pt::uint32_t i = 0; i < bpb.sectors_per_fat; i++) {
+            if (!Disk::write_sector(start + i, fat_table + i * bpb.bytes_per_sector)) {
+                klog("[FAT12] flush_fat: failed to write FAT copy %d sector %d\n", copy, i);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool FAT12::create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) {
+    if (!mounted) {
+        klog("[FAT12] create_file: not mounted\n");
+        return false;
+    }
+    if (file_exists(filename)) {
+        klog("[FAT12] create_file: '%s' already exists\n", filename);
+        return false;
+    }
+
+    pt::uint32_t bytes_per_cluster = bpb.sectors_per_cluster * bpb.bytes_per_sector;
+    pt::uint32_t clusters_needed = (size == 0) ? 0 : (size + bytes_per_cluster - 1) / bytes_per_cluster;
+
+    // Allocate cluster chain
+    pt::uint16_t first_cluster = 0;
+    pt::uint16_t prev_cluster = 0;
+    pt::uint16_t search_from = 2;
+
+    for (pt::uint32_t i = 0; i < clusters_needed; i++) {
+        pt::uint16_t cluster = find_free_cluster(search_from);
+        if (cluster == 0) {
+            klog("[FAT12] create_file: disk full\n");
+            return false;
+        }
+        set_fat_entry(cluster, 0xFFF);  // Mark as end-of-chain
+        if (prev_cluster != 0) {
+            set_fat_entry(prev_cluster, cluster);  // Link previous to this
+        } else {
+            first_cluster = cluster;
+        }
+        prev_cluster = cluster;
+        search_from = cluster + 1;
+    }
+
+    // Write data clusters
+    for (pt::uint32_t i = 0; i < clusters_needed; i++) {
+        // Walk to cluster i in chain
+        pt::uint16_t c = first_cluster;
+        for (pt::uint32_t j = 0; j < i; j++) {
+            c = get_next_cluster(c);
+        }
+        pt::uint32_t sector = cluster_to_sector(c);
+        pt::uint8_t buf[512];
+        // Zero-fill then copy up to 512 bytes of data
+        for (int b = 0; b < 512; b++) buf[b] = 0;
+        pt::uint32_t offset = i * bytes_per_cluster;
+        pt::uint32_t to_copy = size - offset;
+        if (to_copy > 512) to_copy = 512;
+        for (pt::uint32_t b = 0; b < to_copy; b++) buf[b] = data[offset + b];
+        if (!Disk::write_sector(sector, buf)) {
+            klog("[FAT12] create_file: failed to write data cluster %d\n", i);
+            return false;
+        }
+    }
+
+    // Flush FAT to disk
+    if (!flush_fat()) {
+        klog("[FAT12] create_file: flush_fat failed\n");
+        return false;
+    }
+
+    // Write directory entry
+    pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+    for (pt::uint32_t s = 0; s < root_dir_sectors; s++) {
+        if (!Disk::read_sector(root_dir_start_sector + s, sector_buffer)) {
+            continue;
+        }
+        FAT12_DirEntry* entries = (FAT12_DirEntry*)sector_buffer;
+        for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+            if (entries[e].filename[0] == 0x00 || entries[e].filename[0] == 0xE5) {
+                // Zero the entry
+                pt::uint8_t* raw = (pt::uint8_t*)&entries[e];
+                for (int b = 0; b < 32; b++) raw[b] = 0;
+                // Fill name fields
+                char formatted[12];
+                format_filename(filename, formatted);
+                for (int b = 0; b < 8; b++) entries[e].filename[b]  = (pt::uint8_t)formatted[b];
+                for (int b = 0; b < 3; b++) entries[e].extension[b] = (pt::uint8_t)formatted[8 + b];
+                entries[e].attributes        = 0x20;  // Archive
+                entries[e].first_cluster_low = first_cluster;
+                entries[e].file_size         = size;
+                if (!Disk::write_sector(root_dir_start_sector + s, sector_buffer)) {
+                    klog("[FAT12] create_file: failed to write directory sector\n");
+                    return false;
+                }
+                klog("[FAT12] Created file '%s' (%d bytes)\n", filename, size);
+                return true;
+            }
+        }
+    }
+
+    klog("[FAT12] create_file: root directory full\n");
+    return false;
+}
+
 pt::uint32_t FAT12::get_bytes_per_cluster() {
     if (!mounted) return 0;
     return bpb.sectors_per_cluster * bpb.bytes_per_sector;

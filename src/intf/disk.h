@@ -10,6 +10,7 @@ public:
     static void initialize();
     static bool read_sector(pt::uint32_t lba, void* buffer);
     static bool read_sectors(pt::uint32_t lba, pt::uint8_t count, void* buffer);
+    static bool write_sector(pt::uint32_t lba, const void* buffer);
     static pt::uint32_t get_sector_count();
     static bool is_present();
 

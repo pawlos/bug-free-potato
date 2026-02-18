@@ -18,6 +18,7 @@ constexpr pt::uint16_t IDE_PRIMARY_CONTROL = 0x3F6;
 
 // IDE Commands
 constexpr pt::uint8_t IDE_CMD_READ_SECTORS = 0x20;
+constexpr pt::uint8_t IDE_CMD_WRITE_SECTORS = 0x30;
 constexpr pt::uint8_t IDE_CMD_IDENTIFY = 0xEC;
 
 // Drive selection bits
@@ -43,6 +44,7 @@ class IDE {
 public:
     static void initialize();
     static bool read_sectors(pt::uint8_t drive, pt::uint32_t lba, pt::uint8_t sector_count, void* buffer);
+    static bool write_sectors(pt::uint8_t drive, pt::uint32_t lba, pt::uint8_t sector_count, const void* buffer);
     static bool identify_drive(pt::uint8_t drive, IDEDevice* device);
     static bool is_drive_present(pt::uint8_t drive);
     static pt::uint32_t get_sector_count(pt::uint8_t drive);

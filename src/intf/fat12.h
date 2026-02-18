@@ -64,6 +64,7 @@ public:
     static void close_file(FAT12_File* file);
     static bool file_exists(const char* filename);
     static void list_root_directory();
+    static bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size);
 
     // Filesystem info getters
     static pt::uint32_t get_bytes_per_cluster();
@@ -77,6 +78,9 @@ private:
     static pt::uint32_t cluster_to_sector(pt::uint16_t cluster);
     static bool compare_filename(const FAT12_DirEntry* entry, const char* filename);
     static void format_filename(const char* input, char* output);
+    static pt::uint16_t find_free_cluster(pt::uint16_t start_from);
+    static void set_fat_entry(pt::uint16_t cluster, pt::uint16_t value);
+    static bool flush_fat();
     
     static FAT12_BPB bpb;
     static pt::uint8_t* fat_table;
