@@ -216,3 +216,95 @@ void VMM::kfree(void *address)
             combineFreeSegments(currentMemorySegment, currentMemorySegment->prevChunk);
     }
 }
+
+void VMM::map_page(pt::uintptr_t virt, pt::uintptr_t phys, pt::uint64_t flags)
+{
+    // Extract indices from virtual address
+    pt::size_t l4_idx = (virt >> 39) & 0x1FF;
+    pt::size_t l3_idx = (virt >> 30) & 0x1FF;
+    pt::size_t l2_idx = (virt >> 21) & 0x1FF;
+
+    // Get or allocate L3 table
+    if (pageTables->l3_pages[l4_idx] == nullptr)
+    {
+        klog("[VMM] L3 table not present at index %d, cannot map page\n", l4_idx);
+        return;
+    }
+
+    PageTableL3* l3_table = pageTables->l3_pages[l4_idx];
+
+    // Get L2 table
+    if (l3_table[l3_idx].l2PageTable == nullptr)
+    {
+        klog("[VMM] L2 table not present at L3[%d], cannot map page\n", l3_idx);
+        return;
+    }
+
+    // Set the page table entry
+    PageTableL2* l2_table = l3_table[l3_idx].l2PageTable;
+    l2_table[l2_idx].address = phys | flags | 0x01;
+
+    klog("[VMM] Mapped virt %x to phys %x\n", virt, phys);
+}
+
+void VMM::unmap_page(pt::uintptr_t virt)
+{
+    // Extract indices from virtual address
+    pt::size_t l4_idx = (virt >> 39) & 0x1FF;
+    pt::size_t l3_idx = (virt >> 30) & 0x1FF;
+    pt::size_t l2_idx = (virt >> 21) & 0x1FF;
+
+    if (pageTables->l3_pages[l4_idx] == nullptr)
+    {
+        klog("[VMM] L3 table not found for virt %x\n", virt);
+        return;
+    }
+
+    PageTableL3* l3_table = pageTables->l3_pages[l4_idx];
+
+    if (l3_table[l3_idx].l2PageTable == nullptr)
+    {
+        klog("[VMM] L2 table not found for virt %x\n", virt);
+        return;
+    }
+
+    // Clear the page table entry
+    PageTableL2* l2_table = l3_table[l3_idx].l2PageTable;
+    l2_table[l2_idx].address = 0;
+
+    // Flush TLB entry using invlpg instruction
+    asm volatile("invlpg [%0]" : : "r"(virt));
+
+    klog("[VMM] Unmapped virt %x\n", virt);
+}
+
+pt::uintptr_t VMM::virt_to_phys_walk(pt::uintptr_t virt) const
+{
+    // Extract indices from virtual address
+    pt::size_t l4_idx = (virt >> 39) & 0x1FF;
+    pt::size_t l3_idx = (virt >> 30) & 0x1FF;
+    pt::size_t l2_idx = (virt >> 21) & 0x1FF;
+    pt::size_t offset = virt & 0xFFF;
+
+    if (pageTables->l3_pages[l4_idx] == nullptr)
+    {
+        return 0;
+    }
+
+    PageTableL3* l3_table = pageTables->l3_pages[l4_idx];
+
+    if (l3_table[l3_idx].l2PageTable == nullptr)
+    {
+        return 0;
+    }
+
+    PageTableL2* l2_table = l3_table[l3_idx].l2PageTable;
+    pt::uintptr_t phys = l2_table[l2_idx].address & ~0xFFF;
+
+    if (phys == 0)
+    {
+        return 0;
+    }
+
+    return phys | offset;
+}

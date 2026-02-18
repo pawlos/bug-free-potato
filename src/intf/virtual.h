@@ -65,11 +65,17 @@ public:
         return reinterpret_cast<pt::uintptr_t>(virt_addr);
     }
 
+    // Page mapping operations
+    void map_page(pt::uintptr_t virt, pt::uintptr_t phys, pt::uint64_t flags);
+    void unmap_page(pt::uintptr_t virt);
+    pt::uintptr_t virt_to_phys_walk(pt::uintptr_t virt) const;
+
     VMM() = default;
 
     VMM(memory_map_entry* mmap[], void *l4_page_address, const long address = 0x200000)
     {
         this->pageTables = static_cast<PageTableL4 *>(l4_page_address);
+
         pt::size_t top_size = 0;
         pt::uint64_t addr = 0;
         for(pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
@@ -98,6 +104,5 @@ public:
         firstFreeMemoryRegion->nextFreeChunk = nullptr;
         firstFreeMemoryRegion->prevFreeChunk = nullptr;
         firstFreeMemoryRegion->free = true;
-
     }
 };

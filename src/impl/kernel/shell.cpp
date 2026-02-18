@@ -151,7 +151,44 @@ void Shell::execute_pci(const char* cmd) {
 }
 
 void Shell::execute_map(const char* cmd) {
-    // TODO: implement map command
+    // Parse command: "map" to show current mappings, or query/set mappings
+    const char* args = cmd + 3;  // Skip "map"
+
+    // Skip whitespace
+    while (*args == ' ' || *args == '\t') args++;
+
+    if (*args == '\0')
+    {
+        // Display current page table mappings
+        auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
+        klog("Page table root at %x\n", pageTableL3);
+        for (int i = 0; i < 10; i++)
+        {
+            if (*(pageTableL3 + i) != 0x0)
+            {
+                klog("  L4[%d]: %x\n", i, *(pageTableL3 + i));
+            }
+        }
+        return;
+    }
+
+    // Query mapping: "map <virt_addr>"
+    pt::uintptr_t virt = 0;
+    const char* ptr = args;
+    while (*ptr >= '0' && *ptr <= '9') {
+        virt = virt * 10 + (*ptr - '0');
+        ptr++;
+    }
+
+    pt::uintptr_t phys = vmm.virt_to_phys_walk(virt);
+    if (phys != 0)
+    {
+        klog("Virt %x -> Phys %x\n", virt, phys);
+    }
+    else
+    {
+        klog("Virt %x not mapped\n", virt);
+    }
 }
 
 void Shell::execute_history(const char* cmd) {
