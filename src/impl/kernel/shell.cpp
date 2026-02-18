@@ -8,6 +8,7 @@
 #include "disk.h"
 #include "fat12.h"
 #include "ac97.h"
+#include "acpi.h"
 #include "./libs/stdlib.h"
 
 constexpr char mem_cmd[] = "mem";
@@ -30,6 +31,8 @@ constexpr char echo_cmd[] = "echo ";
 constexpr char clear_cmd[] = "clear";
 constexpr char timers_cmd[] = "timers";
 constexpr char cancel_cmd[] = "cancel ";
+constexpr char shutdown_cmd[] = "shutdown";
+constexpr char reboot_cmd[] = "reboot";
 
 void print_help() {
     klog("Available commands:\n");
@@ -41,6 +44,7 @@ void print_help() {
     klog("  ls               - List files on disk\n");
     klog("  cat <filename>   - Read and display file\n");
     klog("  play <filename>  - Play audio file (AC97)\n");
+    klog("  map [test]       - Show page table or test dynamic mapping (test)\n");
     klog("  pci              - Enumerate PCI devices\n");
     klog("  blue/red/green   - Clear screen with color\n");
     klog("  echo <text>      - Print text to screen\n");
@@ -48,6 +52,8 @@ void print_help() {
     klog("  timers           - List all active timers\n");
     klog("  cancel <id>      - Cancel a timer by ID\n");
     klog("  history          - Show command history\n");
+    klog("  shutdown         - Shutdown system (ACPI or PS/2)\n");
+    klog("  reboot           - Reboot system\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -151,7 +157,7 @@ void Shell::execute_pci(const char* cmd) {
 }
 
 void Shell::execute_map(const char* cmd) {
-    // Parse command: "map" to show current mappings, or query/set mappings
+    // Parse command: "map" to show current mappings, "map test" to test allocation
     const char* args = cmd + 3;  // Skip "map"
 
     // Skip whitespace
@@ -169,6 +175,45 @@ void Shell::execute_map(const char* cmd) {
                 klog("  L4[%d]: %x\n", i, *(pageTableL3 + i));
             }
         }
+        return;
+    }
+
+    // Check for "map test" command
+    if (args[0] == 't' && args[1] == 'e' && args[2] == 's' && args[3] == 't')
+    {
+        klog("[MAP TEST] Testing dynamic page allocation and mapping...\n");
+
+        // Test 1: Allocate some pages
+        klog("[MAP TEST] Test 1: Allocating and mapping high virtual address...\n");
+        pt::uintptr_t test_virt = 0x10000000;  // High virtual address
+        pt::uintptr_t test_phys = vmm.allocate_frame();  // Get physical frame
+        klog("[MAP TEST] Got physical frame at %x\n", test_phys);
+
+        // Map the page
+        vmm.map_page(test_virt, test_phys, 0x03);  // RW flags
+        klog("[MAP TEST] Mapped virt %x to phys %x\n", test_virt, test_phys);
+
+        // Verify the mapping
+        pt::uintptr_t verify = vmm.virt_to_phys_walk(test_virt);
+        if (verify == test_phys)
+        {
+            klog("[MAP TEST] ✓ Verification passed: %x -> %x\n", test_virt, verify);
+        }
+        else
+        {
+            klog("[MAP TEST] ✗ Verification FAILED: expected %x, got %x\n", test_phys, verify);
+        }
+
+        // Test 2: Multiple allocations
+        klog("[MAP TEST] Test 2: Allocating multiple frames...\n");
+        pt::uintptr_t frames[5];
+        for (int i = 0; i < 5; i++)
+        {
+            frames[i] = vmm.allocate_frame();
+            klog("[MAP TEST]   Frame %d: %x\n", i, frames[i]);
+        }
+
+        klog("[MAP TEST] All tests completed!\n");
         return;
     }
 
@@ -255,6 +300,20 @@ void Shell::execute_cat(const char* cmd) {
             klog("File not found: %s\n", filename);
         }
     }
+}
+
+void Shell::execute_shutdown(const char* cmd) {
+    klog("Shutting down...\n");
+    ACPI::shutdown();
+    // If we reach here, the system didn't shut down
+    klog("Shutdown failed\n");
+}
+
+void Shell::execute_reboot(const char* cmd) {
+    klog("Rebooting...\n");
+    ACPI::reboot();
+    // If we reach here, the system didn't reboot
+    klog("Reboot failed\n");
 }
 
 void Shell::execute_help(const char* cmd) {
@@ -348,6 +407,12 @@ bool Shell::execute(const char* cmd) {
     }
     else if (memcmp(cmd, cancel_cmd, 7)) {
         execute_cancel(cmd);
+    }
+    else if (memcmp(cmd, shutdown_cmd, sizeof(shutdown_cmd))) {
+        execute_shutdown(cmd);
+    }
+    else if (memcmp(cmd, reboot_cmd, sizeof(reboot_cmd))) {
+        execute_reboot(cmd);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

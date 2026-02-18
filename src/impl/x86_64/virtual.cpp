@@ -227,17 +227,39 @@ void VMM::map_page(pt::uintptr_t virt, pt::uintptr_t phys, pt::uint64_t flags)
     // Get or allocate L3 table
     if (pageTables->l3_pages[l4_idx] == nullptr)
     {
-        klog("[VMM] L3 table not present at index %d, cannot map page\n", l4_idx);
-        return;
+        // Allocate new L3 table
+        pt::uintptr_t l3_frame = allocate_frame();
+        PageTableL3* l3_table = (PageTableL3*)l3_frame;  // Identity mapping
+
+        // Zero the table
+        for (int i = 0; i < 1024; i++)
+        {
+            l3_table[i].l2PageTable = nullptr;
+            l3_table[i].flags = 0;
+        }
+
+        pageTables->l3_pages[l4_idx] = l3_table;
+        klog("[VMM] Allocated L3 table at phys %x for virt %x\n", l3_frame, virt);
     }
 
     PageTableL3* l3_table = pageTables->l3_pages[l4_idx];
 
-    // Get L2 table
+    // Get or allocate L2 table
     if (l3_table[l3_idx].l2PageTable == nullptr)
     {
-        klog("[VMM] L2 table not present at L3[%d], cannot map page\n", l3_idx);
-        return;
+        // Allocate new L2 table
+        pt::uintptr_t l2_frame = allocate_frame();
+        PageTableL2* l2_table = (PageTableL2*)l2_frame;  // Identity mapping
+
+        // Zero the table
+        for (int i = 0; i < 512; i++)  // L2 has 512 entries (4K pages)
+        {
+            l2_table[i].address = 0;
+        }
+
+        l3_table[l3_idx].l2PageTable = l2_table;
+        l3_table[l3_idx].flags = flags | 0x01;  // Present + inherit flags
+        klog("[VMM] Allocated L2 table at phys %x for virt %x\n", l2_frame, virt);
     }
 
     // Set the page table entry
@@ -307,4 +329,101 @@ pt::uintptr_t VMM::virt_to_phys_walk(pt::uintptr_t virt) const
     }
 
     return phys | offset;
+}
+
+void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
+{
+    if (frame_allocator_ready) return;
+
+    // Calculate total memory
+    pt::size_t total_memory = 0;
+    for (pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
+    {
+        if (mmap[i] == nullptr) break;
+        if (mmap[i]->type == 1)  // Free memory
+        {
+            total_memory += mmap[i]->length;
+        }
+    }
+
+    // Calculate bitmap size (1 bit per 4KB frame)
+    pt::size_t num_frames = total_memory / 4096;
+    frame_bitmap_size = (num_frames + 7) / 8;
+
+    // Allocate bitmap from heap
+    frame_bitmap = (pt::uint8_t*)kmalloc(frame_bitmap_size);
+    if (frame_bitmap == nullptr)
+    {
+        kernel_panic("Failed to allocate frame bitmap", NotAbleToAllocateMemory);
+    }
+
+    // Initialize bitmap - all frames free
+    for (pt::size_t i = 0; i < frame_bitmap_size; i++) {
+        frame_bitmap[i] = 0;
+    }
+
+    // Mark kernel memory (0-2MB) as used
+    pt::size_t kernel_frames = (2 * 1024 * 1024) / 4096;
+    for (pt::size_t i = 0; i < kernel_frames; i++)
+    {
+        pt::size_t byte_idx = i / 8;
+        pt::uint8_t bit_idx = i % 8;
+        if (byte_idx < frame_bitmap_size)
+        {
+            frame_bitmap[byte_idx] |= (1 << bit_idx);
+        }
+    }
+
+    frame_allocator_ready = true;
+    klog("[VMM] Frame allocator ready: %d frames, %d bytes bitmap\n", num_frames, frame_bitmap_size);
+}
+
+pt::uintptr_t VMM::allocate_frame()
+{
+    // Lazy initialize if needed
+    if (!frame_allocator_ready)
+    {
+        initialize_frame_allocator(cached_mmap);
+    }
+
+    if (!frame_allocator_ready || frame_bitmap == nullptr)
+    {
+        kernel_panic("Frame allocator initialization failed", NotAbleToAllocateMemory);
+    }
+
+    // Find first free frame
+    for (pt::size_t byte_idx = 0; byte_idx < frame_bitmap_size; byte_idx++)
+    {
+        if (frame_bitmap[byte_idx] != 0xFF)
+        {
+            // Found byte with free bits
+            for (pt::uint8_t bit_idx = 0; bit_idx < 8; bit_idx++)
+            {
+                if (!(frame_bitmap[byte_idx] & (1 << bit_idx)))
+                {
+                    // Mark frame as used
+                    frame_bitmap[byte_idx] |= (1 << bit_idx);
+                    pt::size_t frame_num = byte_idx * 8 + bit_idx;
+                    return frame_num * 4096;
+                }
+            }
+        }
+    }
+
+    kernel_panic("No free physical frames", NotAbleToAllocateMemory);
+    return 0;
+}
+
+void VMM::free_frame(pt::uintptr_t frame)
+{
+    if (!frame_allocator_ready || frame_bitmap == nullptr) return;
+
+    pt::size_t frame_num = frame / 4096;
+    pt::size_t byte_idx = frame_num / 8;
+    pt::uint8_t bit_idx = frame_num % 8;
+
+    if (byte_idx < frame_bitmap_size)
+    {
+        frame_bitmap[byte_idx] &= ~(1 << bit_idx);
+    }
 }

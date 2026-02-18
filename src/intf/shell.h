@@ -32,6 +32,8 @@ private:
     void execute_clear(const char* cmd);
     void execute_timers(const char* cmd);
     void execute_cancel(const char* cmd);
+    void execute_shutdown(const char* cmd);
+    void execute_reboot(const char* cmd);
     void execute_help(const char* cmd);
 };
 

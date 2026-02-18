@@ -8,6 +8,7 @@ constexpr pt::uint8_t NoSuitableRegion = 252;
 constexpr pt::uint8_t NotAbleToAllocateMemory = 251;
 constexpr pt::uint8_t MouseNotAcked	= 250;
 constexpr pt::uint8_t NullRefNotExpected = 249;
+constexpr pt::uint8_t ACPINotAvailable = 248;
 
 
 #define ASMCALL extern "C"

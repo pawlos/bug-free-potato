@@ -70,11 +70,27 @@ public:
     void unmap_page(pt::uintptr_t virt);
     pt::uintptr_t virt_to_phys_walk(pt::uintptr_t virt) const;
 
+    // Physical frame allocator
+    pt::uintptr_t allocate_frame();
+    void free_frame(pt::uintptr_t frame);
+    void initialize_frame_allocator(memory_map_entry* mmap[]);
+
+private:
+    // Frame allocator state - lazy initialized
+    pt::uint8_t* frame_bitmap;
+    pt::size_t frame_bitmap_size;
+    bool frame_allocator_ready;
+    memory_map_entry** cached_mmap;
+
     VMM() = default;
 
     VMM(memory_map_entry* mmap[], void *l4_page_address, const long address = 0x200000)
     {
         this->pageTables = static_cast<PageTableL4 *>(l4_page_address);
+        this->frame_bitmap = nullptr;
+        this->frame_bitmap_size = 0;
+        this->frame_allocator_ready = false;
+        this->cached_mmap = mmap;
 
         pt::size_t top_size = 0;
         pt::uint64_t addr = 0;
