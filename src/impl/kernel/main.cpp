@@ -11,6 +11,7 @@
 #include "pci.h"
 #include "shell.h"
 #include "line_reader.h"
+#include "task.h"
 #include "disk.h"
 #include "fat12.h"
 #include "ide.h"
@@ -38,6 +39,27 @@ void thirty_minute_callback(void* data) {
     klog("[TIMER] 30 minutes has elapsed\n");
 }
 
+void blink_task_fn() {
+    Framebuffer* fb = Framebuffer::get_instance();
+    constexpr pt::uint32_t DOT_W = 12;
+    constexpr pt::uint32_t DOT_H = 12;
+    const pt::uint32_t DOT_X = fb->get_width()  - DOT_W;  // flush to right edge
+    const pt::uint32_t DOT_Y = 0;                          // flush to top edge
+    bool dot_on = false;
+
+    while (true) {
+        bool should_be_on = (get_ticks() / 25) & 1;  // toggle ~every 0.5s at 50Hz
+        if (should_be_on != dot_on) {
+            dot_on = should_be_on;
+            if (dot_on)
+                fb->FillRect(DOT_X, DOT_Y, DOT_W, DOT_H, 0, 255, 0);
+            else
+                fb->FillRect(DOT_X, DOT_Y, DOT_W, DOT_H, 0, 0, 0);
+        }
+        TaskScheduler::task_yield();
+    }
+}
+
 ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     klog("[MAIN] Welcome to 64-bit potat OS\n");
 
@@ -46,6 +68,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     const auto boot_fb = bi.get_framebuffer();
 
     init_mouse(boot_fb->framebuffer_width, boot_fb->framebuffer_height);
+    TaskScheduler::initialize();
     init_timer(50);
 
     idt.initialize();
@@ -121,6 +144,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     timer_create(thirty_minutes_in_ticks, true, thirty_minute_callback, nullptr);
 
     Framebuffer::Init(boot_fb);
+    TaskScheduler::create_task(&blink_task_fn);
 
     TerminalPrinter terminal;
 

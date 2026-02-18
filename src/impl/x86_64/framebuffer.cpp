@@ -101,6 +101,17 @@ void Framebuffer::EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos
     }
 }
 
+void Framebuffer::FillRect(const pt::uint32_t x, const pt::uint32_t y,
+                           const pt::uint32_t w, const pt::uint32_t h,
+                           const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) const {
+    const pt::uint32_t color = static_cast<pt::uint32_t>(r) << 16
+                             | static_cast<pt::uint32_t>(g) << 8
+                             | static_cast<pt::uint32_t>(b);
+    for (pt::uint32_t row = y; row < y + h && row < m_height; row++)
+        for (pt::uint32_t col = x; col < x + w && col < m_width; col++)
+            this->PutPixel(col, row, color);
+}
+
 void Framebuffer::Clear(const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) const {
     const pt::uint32_t  fb_width  = this->m_width;
     const pt::uint32_t  fb_height  = this->m_height;

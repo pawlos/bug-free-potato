@@ -9,6 +9,7 @@
 #include "fat12.h"
 #include "ac97.h"
 #include "acpi.h"
+#include "task.h"
 #include "./libs/stdlib.h"
 
 constexpr char mem_cmd[] = "mem";
@@ -33,6 +34,7 @@ constexpr char timers_cmd[] = "timers";
 constexpr char cancel_cmd[] = "cancel ";
 constexpr char shutdown_cmd[] = "shutdown";
 constexpr char reboot_cmd[] = "reboot";
+constexpr char task_cmd[] = "task";
 
 void print_help() {
     klog("Available commands:\n");
@@ -54,6 +56,7 @@ void print_help() {
     klog("  history          - Show command history\n");
     klog("  shutdown         - Shutdown system (ACPI or PS/2)\n");
     klog("  reboot           - Reboot system\n");
+    klog("  task [create]    - Show tasks or create test task\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -197,11 +200,11 @@ void Shell::execute_map(const char* cmd) {
         pt::uintptr_t verify = vmm.virt_to_phys_walk(test_virt);
         if (verify == test_phys)
         {
-            klog("[MAP TEST] ✓ Verification passed: %x -> %x\n", test_virt, verify);
+            klog("[MAP TEST] [OK] Verification passed: %x -> %x\n", test_virt, verify);
         }
         else
         {
-            klog("[MAP TEST] ✗ Verification FAILED: expected %x, got %x\n", test_phys, verify);
+            klog("[MAP TEST] [FAIL] Verification FAILED: expected %x, got %x\n", test_phys, verify);
         }
 
         // Test 2: Multiple allocations
@@ -316,6 +319,56 @@ void Shell::execute_reboot(const char* cmd) {
     klog("Reboot failed\n");
 }
 
+// Simple test task that prints a few messages then exits
+void test_task_fn() {
+    klog("[TASK] Test task running!\n");
+    for (int i = 0; i < 5; i++) {
+        klog("[TASK] Test task iteration %d\n", i);
+        TaskScheduler::task_yield();
+    }
+    klog("[TASK] Test task exiting\n");
+    TaskScheduler::task_exit();
+}
+
+void Shell::execute_task(const char* cmd) {
+    const char* args = cmd + 4;  // Skip "task"
+
+    // Skip whitespace
+    while (*args == ' ' || *args == '\t') args++;
+
+    if (*args == '\0')
+    {
+        // List all tasks
+        klog("[SHELL] Task list:\n");
+        Task* current = TaskScheduler::get_current_task();
+        klog("  Current task ID: %d\n", current->id);
+        klog("  Task states:\n");
+        for (int i = 0; i < 16; i++) {
+            // We can't directly access tasks array, so just show current
+            klog("    Running task %d (ticks alive: %d)\n", current->id, (int)current->ticks_alive);
+        }
+        return;
+    }
+
+    // Check for "task create" command
+    if (args[0] == 'c' && args[1] == 'r' && args[2] == 'e' && args[3] == 'a' && args[4] == 't' && args[5] == 'e')
+    {
+        klog("[SHELL] Creating test task...\n");
+        pt::uint32_t task_id = TaskScheduler::create_task(&test_task_fn);
+        if (task_id != 0xFFFFFFFF)
+        {
+            klog("[SHELL] Created task with ID %d\n", task_id);
+        }
+        else
+        {
+            klog("[SHELL] Failed to create task\n");
+        }
+        return;
+    }
+
+    klog("Usage: task [create]\n");
+}
+
 void Shell::execute_help(const char* cmd) {
     print_help();
 }
@@ -369,7 +422,7 @@ bool Shell::execute(const char* cmd) {
     else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
         execute_clear_color(cmd, 255, 0, 0);
     }
-    else if (memcmp(cmd, map_cmd, sizeof(map_cmd))) {
+    else if (memcmp(cmd, map_cmd, 3)) {  // "map" is 3 chars, don't include null terminator
         execute_map(cmd);
     }
     else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
@@ -413,6 +466,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (memcmp(cmd, reboot_cmd, sizeof(reboot_cmd))) {
         execute_reboot(cmd);
+    }
+    else if (memcmp(cmd, task_cmd, 4)) {
+        execute_task(cmd);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

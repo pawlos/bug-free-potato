@@ -1,6 +1,7 @@
 #include "timer.h"
 #include "kernel.h"
 #include "io.h"
+#include "task.h"
 #include "virtual.h"
 
 extern VMM vmm;
@@ -109,6 +110,9 @@ void timer_routine()
 {
 	ticks++;
 	check_timers();
+
+	// Call scheduler for task switching on each timer tick
+	TaskScheduler::scheduler_tick();
 }
 
 void timer_list_all()

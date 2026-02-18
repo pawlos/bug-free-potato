@@ -9,6 +9,8 @@ x86_64_asm_object_files := $(patsubst src/impl/x86_64/%.asm, build/x86_64/%.o, $
 
 CPP=g++
 CPPFLAGS=-DKERNEL_LOG
+# Uncomment to enable verbose scheduler task-switch logging:
+# CPPFLAGS += -DSCHEDULER_DEBUG
 QEMU=/mnt/c/Program\ Files/qemu/qemu-system-x86_64.exe
 NASM=nasm
 LD=ld

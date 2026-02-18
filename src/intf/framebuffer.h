@@ -36,6 +36,8 @@ public:
     {}
 
     static void Init(const boot_framebuffer *fb);
+    pt::uint32_t get_width()  const { return m_width; }
+    pt::uint32_t get_height() const { return m_height; }
     void Free() {
         vmm.kfree(vga_font);
         this->vga_font = nullptr;
@@ -47,6 +49,9 @@ public:
               pt::uint32_t width, pt::uint32_t height) const;
 
     void Clear(pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) const;
+    void FillRect(pt::uint32_t x, pt::uint32_t y,
+                  pt::uint32_t w, pt::uint32_t h,
+                  pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) const;
 
     void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos) const;
     void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos) const;
