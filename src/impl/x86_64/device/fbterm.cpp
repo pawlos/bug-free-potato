@@ -91,6 +91,19 @@ void FbTerm::print(const char* str)
     while (*str) put_char(*str++);
 }
 
+void FbTerm::draw_at(pt::uint32_t px, pt::uint32_t py, const char* str,
+                     pt::uint32_t fg, pt::uint32_t bg)
+{
+    if (!m_ready) return;
+    pt::uint32_t saved_fg = m_fg, saved_bg = m_bg;
+    m_fg = fg; m_bg = bg;
+    while (*str) {
+        draw_glyph(*str++, px, py);
+        px += PSF1_GLYPH_WIDTH;
+    }
+    m_fg = saved_fg; m_bg = saved_bg;
+}
+
 void fbterm_putchar(char c)
 {
     fbterm.put_char(c);

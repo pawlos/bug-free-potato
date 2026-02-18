@@ -19,7 +19,8 @@ LD=ld
 QEMU_AUDIO_BACKEND ?= dsound
 QEMU_OPTIONS=-m 512M \
 	-audiodev $(QEMU_AUDIO_BACKEND),id=audio0 \
-	-device AC97,audiodev=audio0
+	-device AC97,audiodev=audio0 \
+	-rtc base=localtime
 
 x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 

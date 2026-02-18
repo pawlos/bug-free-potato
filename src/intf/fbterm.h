@@ -24,6 +24,11 @@ public:
     void put_char(char c);
     void print(const char* str);
 
+    // Draw a string at a fixed pixel position (does not affect the scroll cursor).
+    // Useful for HUD overlays like a clock.
+    void draw_at(pt::uint32_t px, pt::uint32_t py, const char* str,
+                 pt::uint32_t fg = 0xFFFFFF, pt::uint32_t bg = 0x000000);
+
     // fg/bg colors as packed 0xRRGGBB
     void set_colors(pt::uint32_t fg, pt::uint32_t bg) { m_fg = fg; m_bg = bg; }
 

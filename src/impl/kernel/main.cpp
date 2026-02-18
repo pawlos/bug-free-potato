@@ -17,6 +17,7 @@
 #include "ide.h"
 #include "ac97.h"
 #include "fbterm.h"
+#include "rtc.h"
 
 // These will be loaded from FAT12 disk
 const char* Logo = nullptr;
@@ -44,14 +45,25 @@ void thirty_minute_callback(void* data) {
 
 void blink_task_fn() {
     Framebuffer* fb = Framebuffer::get_instance();
-    constexpr pt::uint32_t DOT_W = 12;
-    constexpr pt::uint32_t DOT_H = 12;
-    const pt::uint32_t DOT_X = fb->get_width()  - DOT_W;  // flush to right edge
-    const pt::uint32_t DOT_Y = 0;                          // flush to top edge
+
+    constexpr pt::uint32_t DOT_W   = 12;
+    constexpr pt::uint32_t DOT_H   = 12;
+    // "HH:MM" = 5 chars * 8px wide = 40px, plus 4px gap before dot
+    constexpr pt::uint32_t CLOCK_W = 5 * PSF1_GLYPH_WIDTH;  // 40px
+    constexpr pt::uint32_t GAP     = 4;
+
+    const pt::uint32_t DOT_X   = fb->get_width() - DOT_W;
+    const pt::uint32_t DOT_Y   = 0;
+    const pt::uint32_t CLOCK_X = DOT_X - GAP - CLOCK_W;
+    const pt::uint32_t CLOCK_Y = 0;
+
     bool dot_on = false;
+    pt::uint8_t last_minute = 0xFF;  // force draw on first iteration
+    char time_buf[6];  // "HH:MM\0"
 
     while (true) {
-        bool should_be_on = (get_ticks() / 25) & 1;  // toggle ~every 0.5s at 50Hz
+        // Blink dot every ~0.5s
+        bool should_be_on = (get_ticks() / 25) & 1;
         if (should_be_on != dot_on) {
             dot_on = should_be_on;
             if (dot_on)
@@ -59,6 +71,22 @@ void blink_task_fn() {
             else
                 fb->FillRect(DOT_X, DOT_Y, DOT_W, DOT_H, 0, 0, 0);
         }
+
+        // Update clock display once per minute
+        RTCTime t;
+        rtc_read(&t);
+        if (t.minutes != last_minute) {
+            last_minute = t.minutes;
+            // Format as "HH:MM"
+            time_buf[0] = '0' + t.hours / 10;
+            time_buf[1] = '0' + t.hours % 10;
+            time_buf[2] = ':';
+            time_buf[3] = '0' + t.minutes / 10;
+            time_buf[4] = '0' + t.minutes % 10;
+            time_buf[5] = '\0';
+            fbterm.draw_at(CLOCK_X, CLOCK_Y, time_buf, 0x00FF00, 0x000000);
+        }
+
         TaskScheduler::task_yield();
     }
 }
