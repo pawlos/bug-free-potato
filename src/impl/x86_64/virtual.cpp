@@ -42,7 +42,13 @@ void* memcpy(void* dest, const void* src, pt::size_t n) {
 }
 
 pt::size_t VMM::memsize() {
-    return this->firstFreeMemoryRegion->length;
+    pt::size_t total = 0;
+    kMemoryRegion* r = firstFreeMemoryRegion;
+    while (r != nullptr) {
+        total += r->length;
+        r = r->nextFreeChunk;
+    }
+    return total;
 }
 
 void* VMM::kmalloc(pt::size_t size)
@@ -80,15 +86,10 @@ void* VMM::kmalloc(pt::size_t size)
             }
             currentMemorySegment->free = false;
 
-
             if (currentMemorySegment->prevFreeChunk != nullptr)
                 currentMemorySegment->prevFreeChunk->nextFreeChunk = currentMemorySegment->nextFreeChunk;
             if (currentMemorySegment->nextFreeChunk != nullptr)
                 currentMemorySegment->nextFreeChunk->prevFreeChunk = currentMemorySegment->prevFreeChunk;
-            if (currentMemorySegment->prevChunk != nullptr)
-                currentMemorySegment->prevChunk->nextFreeChunk = currentMemorySegment->nextChunk;
-            if (currentMemorySegment->nextChunk != nullptr)
-                currentMemorySegment->nextChunk->prevFreeChunk = currentMemorySegment->prevChunk;
 
             return currentMemorySegment + 1;
         }
@@ -149,9 +150,6 @@ void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
         if (b->nextChunk != nullptr) {
             b->nextChunk->prevChunk = a;
         }
-        if (b->nextChunk != nullptr) {
-            b->nextChunk->prevFreeChunk = a;
-        }
         if (b->nextFreeChunk != nullptr) {
             b->nextFreeChunk->prevFreeChunk = a;
         }
@@ -164,9 +162,6 @@ void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
         if (a->nextChunk != nullptr) {
             a->nextChunk->prevChunk = b;
         }
-        if (a->nextChunk != nullptr) {
-            a->nextChunk->prevFreeChunk = b;
-        }
         if (a->nextFreeChunk != nullptr) {
             a->nextFreeChunk->prevFreeChunk = b;
         }
@@ -176,7 +171,7 @@ void combineFreeSegments(kMemoryRegion* a, kMemoryRegion* b)
 void VMM::kfree(void *address)
 {
     if (address == nullptr) {
-        kernel_panic("Address should not be null", NullRefNotExpected);
+        return;
     }
 
     kMemoryRegion* currentMemorySegment = static_cast<kMemoryRegion *>(address) - 1;
