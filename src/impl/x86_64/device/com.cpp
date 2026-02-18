@@ -3,6 +3,9 @@
 #include "print.h"
 #include <cstdarg>
 
+// Forward declaration — defined in fbterm.cpp; guards internally if not ready.
+extern void fbterm_putchar(char c);
+
 int is_transmit_empty()
 {
 	return IO::inb(COM1 + 5) & 0x20;
@@ -11,8 +14,8 @@ int is_transmit_empty()
 void ComDevice::print_ch(const char a)
 {
 	while (is_transmit_empty() == 0) {}
-
 	IO::outb(COM1, a);
+	fbterm_putchar(a);
 }
 
 void ComDevice::print_str(const char *str, ...)

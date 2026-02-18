@@ -101,6 +101,25 @@ void Framebuffer::EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos
     }
 }
 
+void Framebuffer::ScrollRegionUp(const pt::uint32_t x, const pt::uint32_t y,
+                                 const pt::uint32_t w, const pt::uint32_t h,
+                                 const pt::uint32_t pixels) const {
+    const pt::uint32_t fb_bytes = m_bpp / 8;
+    // Copy rows upward one at a time
+    for (pt::uint32_t src_row = y + pixels; src_row < y + h && src_row < m_height; src_row++) {
+        const pt::uint32_t dst_row = src_row - pixels;
+        pt::uint8_t* src = reinterpret_cast<pt::uint8_t*>(m_addr + src_row * m_stride + x * fb_bytes);
+        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(m_addr + dst_row * m_stride + x * fb_bytes);
+        for (pt::uint32_t i = 0; i < w * fb_bytes; i++)
+            dst[i] = src[i];
+    }
+    // Clear the vacated bottom rows
+    const pt::uint32_t clear_start = (y + h > pixels) ? (y + h - pixels) : y;
+    for (pt::uint32_t row = clear_start; row < y + h && row < m_height; row++)
+        for (pt::uint32_t col = x; col < x + w && col < m_width; col++)
+            PutPixel(col, row, 0x000000);
+}
+
 void Framebuffer::FillRect(const pt::uint32_t x, const pt::uint32_t y,
                            const pt::uint32_t w, const pt::uint32_t h,
                            const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) const {

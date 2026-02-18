@@ -53,6 +53,11 @@ public:
                   pt::uint32_t w, pt::uint32_t h,
                   pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) const;
 
+    // Scroll a rectangular region up by `pixels` rows, clearing the vacated bottom area.
+    void ScrollRegionUp(pt::uint32_t x, pt::uint32_t y,
+                        pt::uint32_t w, pt::uint32_t h,
+                        pt::uint32_t pixels) const;
+
     void DrawCursor(pt::uint32_t x_pos, pt::uint32_t y_pos) const;
     void EraseCursor(pt::uint32_t x_pos, pt::uint32_t y_pos) const;
 };

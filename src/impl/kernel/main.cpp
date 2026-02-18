@@ -16,12 +16,15 @@
 #include "fat12.h"
 #include "ide.h"
 #include "ac97.h"
+#include "fbterm.h"
 
 // These will be loaded from FAT12 disk
 const char* Logo = nullptr;
 const unsigned char* PotatoLogo = nullptr;
 pt::uint8_t* BootSound = nullptr;
 pt::uint32_t BootSoundSize = 0;
+pt::uint8_t* FontData = nullptr;
+pt::uint32_t FontDataSize = 0;
 
 extern char get_char();
 static IDT idt;
@@ -111,6 +114,19 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
             klog("[MAIN] Warning: potato.raw not found on disk\n");
         }
 
+        // Load PSF1 font from font.psf
+        FAT12_File font_file;
+        if (FAT12::open_file("font.psf", &font_file)) {
+            FontData = (pt::uint8_t*)vmm.kmalloc(font_file.file_size);
+            if (FontData) {
+                FontDataSize = FAT12::read_file(&font_file, FontData, font_file.file_size);
+                klog("[MAIN] Loaded font.psf (%d bytes)\n", FontDataSize);
+            }
+            FAT12::close_file(&font_file);
+        } else {
+            klog("[MAIN] Warning: font.psf not found on disk\n");
+        }
+
         // Load boot sound from boot.raw (16-bit signed LE stereo PCM, 48 kHz)
         FAT12_File sound_file;
         if (FAT12::open_file("boot.raw", &sound_file)) {
@@ -144,6 +160,14 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     timer_create(thirty_minutes_in_ticks, true, thirty_minute_callback, nullptr);
 
     Framebuffer::Init(boot_fb);
+
+    if (FontData && FontDataSize > 0) {
+        if (fbterm.init(FontData, FontDataSize, Framebuffer::get_instance()))
+            klog("[MAIN] Framebuffer terminal ready\n");
+        else
+            klog("[MAIN] Framebuffer terminal init failed\n");
+    }
+
     TaskScheduler::create_task(&blink_task_fn);
 
     TerminalPrinter terminal;
