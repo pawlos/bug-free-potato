@@ -160,5 +160,6 @@ class BootInfo
     public:
         explicit BootInfo(boot_info *boot_info);
         [[nodiscard]] boot_framebuffer* get_framebuffer() const;
+        [[nodiscard]] const boot_elf_symbols* get_elf_symbols() const { return elf; }
         memory_map_entry** get_memory_maps();
 };

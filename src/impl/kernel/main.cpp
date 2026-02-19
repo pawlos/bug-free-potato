@@ -36,6 +36,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     klog("[MAIN] Welcome to 64-bit potat OS\n");
 
     auto bi = BootInfo(boot_info);
+    panic_set_elf_symbols(bi.get_elf_symbols());
     const auto boot_fb = bi.get_framebuffer();
 
     // Hardware init
