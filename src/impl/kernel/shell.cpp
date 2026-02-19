@@ -1,5 +1,6 @@
 #include "shell.h"
 #include "kernel.h"
+#include "elf_loader.h"
 #include "print.h"
 #include "framebuffer.h"
 #include "virtual.h"
@@ -37,6 +38,7 @@ constexpr char reboot_cmd[] = "reboot";
 constexpr char task_cmd[] = "task";
 constexpr char write_cmd[] = "write ";
 constexpr char rm_cmd[] = "rm ";
+constexpr char exec_cmd[] = "exec ";
 
 void print_help() {
     klog("Available commands:\n");
@@ -61,6 +63,7 @@ void print_help() {
     klog("  task [create]    - Show tasks or create test task\n");
     klog("  write <file> <text> - Create a new file with text content\n");
     klog("  rm <file>        - Delete a file\n");
+    klog("  exec <file>      - Load and run an ELF program\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -413,6 +416,30 @@ void Shell::execute_write(const char* cmd) {
     }
 }
 
+static pt::uintptr_t g_elf_entry = 0;
+
+static void run_loaded_elf() {
+    if (g_elf_entry != 0) {
+        reinterpret_cast<void(*)()>(g_elf_entry)();
+    }
+    TaskScheduler::task_exit();
+}
+
+void Shell::execute_exec(const char* cmd) {
+    const char* filename = cmd + 5;  // skip "exec "
+    if (filename[0] == '\0') {
+        klog("Usage: exec <filename>\n");
+        return;
+    }
+    g_elf_entry = ElfLoader::load(filename);
+    if (g_elf_entry == 0) {
+        klog("exec: failed to load ELF '%s'\n", filename);
+        return;
+    }
+    klog("exec: loaded '%s', entry=0x%lx\n", filename, g_elf_entry);
+    TaskScheduler::create_task(run_loaded_elf);
+}
+
 void Shell::execute_rm(const char* cmd) {
     const char* filename = cmd + 3;  // Skip "rm "
     if (filename[0] == '\0') {
@@ -528,6 +555,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (memcmp(cmd, rm_cmd, 3)) {
         execute_rm(cmd);
+    }
+    else if (memcmp(cmd, exec_cmd, 5)) {
+        execute_exec(cmd);
     }
     else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {
