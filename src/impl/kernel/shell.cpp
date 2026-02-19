@@ -139,11 +139,11 @@ void Shell::execute_clear_color(const char* cmd, pt::uint8_t r, pt::uint8_t g, p
 }
 
 void Shell::execute_vmm(const char* cmd) {
-    auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
-    klog("Paging struct at address: %x\n", pageTableL3);
-    for (int i = 0; i < 1024; i+=4) {
-        if (*(pageTableL3 + i) != 0x0) {
-            klog("Page table entry for index %d: %x\n", i/4, *(pageTableL3 + i));
+    auto *pml4 = reinterpret_cast<pt::uint64_t *>(vmm.GetPageTableL3());
+    klog("Paging struct at address: %x\n", pml4);
+    for (int i = 0; i < 512; i++) {
+        if (pml4[i] != 0) {
+            klog("Page table entry for index %d: %x\n", i, pml4[i]);
         }
     }
 }

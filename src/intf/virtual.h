@@ -3,6 +3,8 @@
 #include "boot.h"
 #include "kernel.h"
 
+constexpr pt::uintptr_t KERNEL_OFFSET = 0xFFFF800000000000ULL;
+
 // Memory utility functions
 void memset(void* dst, pt::uint64_t value, const pt::size_t size);
 void* memcpy(void* dest, const void* src, pt::size_t n);
@@ -59,10 +61,13 @@ public:
     [[nodiscard]] PageTableL4* GetPageTableL3() const { return pageTables; }
 
     // Convert virtual address to physical address.
-    // Since the kernel uses identity mapping (loaded at 1MB, paged 1:1),
-    // virtual == physical for all kernel allocations.
+    // Heap pointers are at KERNEL_OFFSET + physical; identity-mapped addresses
+    // (below KERNEL_OFFSET) map 1:1.
     static pt::uintptr_t virt_to_phys(void* virt_addr) {
-        return reinterpret_cast<pt::uintptr_t>(virt_addr);
+        pt::uintptr_t v = reinterpret_cast<pt::uintptr_t>(virt_addr);
+        if (v >= KERNEL_OFFSET)
+            return v - KERNEL_OFFSET;
+        return v;
     }
 
     // Page mapping operations
@@ -77,7 +82,7 @@ public:
 
     VMM() = default;
 
-    VMM(memory_map_entry* mmap[], void *l4_page_address, const long address = 0x200000)
+    VMM(memory_map_entry* mmap[], void *l4_page_address, const pt::uintptr_t phys_start = 0x200000)
     {
         this->pageTables = static_cast<PageTableL4 *>(l4_page_address);
         this->frame_bitmap = nullptr;
@@ -86,7 +91,7 @@ public:
         this->cached_mmap = mmap;
 
         pt::size_t top_size = 0;
-        pt::uint64_t addr = 0;
+        pt::uintptr_t addr = 0;
         for(pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
         {
             const auto entry = mmap[i];
@@ -96,8 +101,8 @@ public:
             {
                 if (entry->length > top_size)
                 {
-                    top_size = entry->length - (address - entry->base_addr);
-                    addr = address;
+                    top_size = entry->length - (phys_start - entry->base_addr);
+                    addr = phys_start + KERNEL_OFFSET;
                 }
             }
         }

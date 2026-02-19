@@ -1,7 +1,7 @@
 global long_mode_start
 extern kernel_main, _syscall_stub
 
-section .text
+section .boot_text
 bits 64
 long_mode_start:
     ; do we need to remap page tables here for 64-bit?
@@ -16,7 +16,8 @@ long_mode_start:
 
 	pop rdi
 	; rdi - pointer to boot_info; rsi - pointer to l4_page_table
-	call kernel_main
+	mov rax, kernel_main   ; MOVABS RAX, imm64 — full 64-bit absolute address
+	call rax
 
 	hlt
 
@@ -28,8 +29,9 @@ enable_syscalls:
 	wrmsr
 
 	mov rcx, 0xc0000082
-	rdmsr
-	mov rax, dword _syscall_stub
+	mov rax, _syscall_stub     ; MOVABS: full 64-bit absolute address
+	mov rdx, rax
+	shr rdx, 32                ; EDX:EAX = full 64-bit address for WRMSR
 	wrmsr
 
 	ret

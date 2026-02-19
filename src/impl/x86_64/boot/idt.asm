@@ -348,7 +348,7 @@ isr31:
 GLOBAL isr31
 
 LoadIDT:
-    lidt [idtDescriptor]
+    lidt [rel idtDescriptor]
     sti
     ret
     GLOBAL LoadIDT

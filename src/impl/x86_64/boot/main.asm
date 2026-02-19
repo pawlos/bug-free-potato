@@ -1,7 +1,7 @@
 global start, gdt64
 extern long_mode_start
 
-section .text
+section .boot_text
 bits 32
 start:
     mov esp, stack_top
@@ -109,6 +109,11 @@ setup_page_tables:
     or  eax, 0x03
     mov [page_table_l4 + 0], eax
     mov dword [page_table_l4 + 4], 0
+
+; PML4[256] -> same PDPT, maps 0xFFFF800000000000 (high half)
+; eax still holds: page_table_l3 | 0x03
+    mov [page_table_l4 + 256*8 + 0], eax
+    mov dword [page_table_l4 + 256*8 + 4], 0
     ret
 
 enable_paging:
@@ -137,7 +142,7 @@ error:
     mov byte  [0xb800a], al
     hlt
 
-section .bss
+section .boot_bss
 align 4096
 page_table_l4:  resb 4096
 align 4096
@@ -156,7 +161,7 @@ stack_bottom:
 stack_top:
 
 
-section .rodata
+section .boot_rodata
 gdt64:
 .null_segment: equ $ - gdt64
     dw 0xffff
