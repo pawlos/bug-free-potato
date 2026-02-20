@@ -83,6 +83,10 @@ GLOBAL irq0
 [extern syscall_handler]
 _syscall_stub:
     PUSHALL
+    ; registers still hold caller's values after PUSHALL
+    mov rdx, rsi    ; arg2: original rsi  (must come first — saves rsi before overwrite)
+    mov rsi, rdi    ; arg1: original rdi
+    mov rdi, rax    ; nr:   original rax (syscall number)
     call syscall_handler
     POPALL
     iretq

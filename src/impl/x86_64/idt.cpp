@@ -2,6 +2,8 @@
 #include "com.h"
 #include "kernel.h"
 #include "pic.h"
+#include "syscall.h"
+#include "task.h"
 
 extern IDT64 _idt[256];
 extern pt::uint64_t isr0;
@@ -41,6 +43,7 @@ extern pt::uint64_t irq1;
 extern pt::uint64_t irq12;
 extern pt::uint64_t irq14;
 extern pt::uint64_t irq15;
+extern pt::uint64_t _syscall_stub;
 
 extern void keyboard_routine(pt::uint8_t scancode);
 extern void mouse_routine(const pt::int8_t mouse[]);
@@ -100,6 +103,8 @@ void IDT::initialize()
 	init_idt_entry(44, irq12);
 	init_idt_entry(46, irq14);
 	init_idt_entry(47, irq15);
+
+	init_idt_entry(0x80, _syscall_stub);
 
 	PIC::UnmaskAll();
 	LoadIDT();
@@ -319,7 +324,17 @@ ASMCALL void isr31_handler()
 	kernel_panic("Reserved exception 31", 31);
 }
 
-ASMCALL void syscall_handler()
+ASMCALL void syscall_handler(pt::uint64_t nr, pt::uint64_t arg1, pt::uint64_t /*arg2*/)
 {
-	klog("Syscall executed");
+	switch (nr) {
+		case SYS_WRITE:
+			klog("%s", reinterpret_cast<const char*>(arg1));
+			break;
+		case SYS_EXIT:
+			TaskScheduler::task_exit();
+			break;
+		default:
+			klog("syscall: unknown nr=%llu\n", nr);
+			break;
+	}
 }

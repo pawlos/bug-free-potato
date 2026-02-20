@@ -1,19 +1,18 @@
-; Ring-0 ELF test program: writes "Hello from ELF!\n" to COM1 (port 0x3F8)
-; Returns to the kernel trampoline which calls TaskScheduler::task_exit().
 bits 64
 section .text
 global _start
 
+SYS_WRITE equ 0
+SYS_EXIT  equ 1
+
 _start:
-    mov rsi, msg
-    mov rcx, msg_len
-.loop:
-    mov dx, 0x3F8
-    lodsb
-    out dx, al
-    loop .loop
-    ret          ; returns to run_loaded_elf() trampoline -> task_exit()
+    mov rax, SYS_WRITE
+    mov rdi, msg
+    int 0x80
+
+    mov rax, SYS_EXIT
+    mov rdi, 0
+    int 0x80
 
 section .rodata
-msg:     db "Hello from ELF!", 10
-msg_len  equ $ - msg
+msg: db "Hello from ELF via syscall!", 10, 0
