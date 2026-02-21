@@ -4,6 +4,7 @@
 #include "pic.h"
 #include "syscall.h"
 #include "task.h"
+#include "timer.h"
 
 extern IDT64 _idt[256];
 extern pt::uint64_t isr0;
@@ -44,10 +45,10 @@ extern pt::uint64_t irq12;
 extern pt::uint64_t irq14;
 extern pt::uint64_t irq15;
 extern pt::uint64_t _syscall_stub;
+extern pt::uint64_t _int_yield_stub;
 
 extern void keyboard_routine(pt::uint8_t scancode);
 extern void mouse_routine(const pt::int8_t mouse[]);
-extern void timer_routine();
 ASMCALL void LoadIDT();
 
 void init_idt_entry(int irq_no, pt::uint64_t& irq)
@@ -105,15 +106,25 @@ void IDT::initialize()
 	init_idt_entry(47, irq15);
 
 	init_idt_entry(0x80, _syscall_stub);
+	init_idt_entry(0x81, _int_yield_stub);
 
 	PIC::UnmaskAll();
 	LoadIDT();
 }
 
-ASMCALL void irq0_handler()
+// Called directly from the irq0 asm stub with RSP pointing to the PUSHALL frame.
+// Returns the RSP to resume (same task or next task).
+ASMCALL pt::uintptr_t irq0_schedule(pt::uintptr_t saved_rsp)
 {
-	timer_routine();
+	timer_tick();
 	PIC::irq_ack(0);
+	return TaskScheduler::preempt(saved_rsp);
+}
+
+// Called from _int_yield_stub (int 0x81).  Cooperative yield path.
+ASMCALL pt::uintptr_t yield_schedule(pt::uintptr_t saved_rsp)
+{
+	return TaskScheduler::yield_tick(saved_rsp);
 }
 
 ASMCALL void irq1_handler()

@@ -35,16 +35,22 @@ struct TaskContext {
 struct Task {
     pt::uint32_t id;
     TaskState state;
-    TaskContext context;
+    TaskContext context;        // legacy; kept for padding / future use
     pt::uintptr_t kernel_stack_base;
     pt::size_t kernel_stack_size;
     pt::uint64_t ticks_alive;
+    // RSP pointing to the PUSHALL frame saved at the last interrupt boundary.
+    // This is the value restored by irq0/int-0x81 to resume the task.
+    pt::uintptr_t preempt_rsp;
 };
 
 class TaskScheduler {
 public:
     static constexpr pt::size_t MAX_TASKS = 16;
     static constexpr pt::size_t TASK_STACK_SIZE = 4096;  // 4KB per task
+    // How many timer ticks between forced preemptions.
+    // At 50 Hz this gives ~200 ms time slices.
+    static constexpr pt::size_t SCHEDULER_QUANTUM = 10;
 
     // Initialize scheduler
     static void initialize();
@@ -55,13 +61,19 @@ public:
     // Get current running task
     static Task* get_current_task();
 
-    // Scheduler tick - called from timer interrupt
-    static void scheduler_tick();
+    // Called from irq0_schedule (timer interrupt boundary).
+    // Saves current task's context, may switch to next task.
+    // Returns the RSP to resume (same or different task).
+    static pt::uintptr_t preempt(pt::uintptr_t rsp);
 
-    // Task yield - voluntarily give up CPU
+    // Called from yield_schedule (int 0x81 boundary).
+    // Always tries to switch to the next ready task.
+    static pt::uintptr_t yield_tick(pt::uintptr_t rsp);
+
+    // Task yield - voluntarily give up CPU (fires int 0x81)
     static void task_yield();
 
-    // Mark task as dead
+    // Mark task as dead and switch away
     static void task_exit();
 
 private:
@@ -70,15 +82,15 @@ private:
     static pt::uint32_t current_task_id;
     static pt::uint64_t scheduler_ticks;
 
-    // Switch to next ready task
-    static void switch_to_next_task();
+    // Round-robin: find next ready task and switch to it.
+    // Returns new preempt_rsp (or current_rsp if no switch).
+    static pt::uintptr_t do_switch_to_next(pt::uintptr_t current_rsp);
 
     // Get task by ID
     static Task* get_task(pt::uint32_t id);
-};
 
-// Assembly functions for context switching
-extern "C" {
-    // Save current context and load new context
-    void task_switch(TaskContext* old_context, TaskContext* new_context);
-}
+    // irq0_schedule and yield_schedule are C-linkage functions in idt.cpp
+    // that call preempt() and yield_tick() respectively.
+    friend pt::uintptr_t irq0_schedule_impl(pt::uintptr_t);
+    friend pt::uintptr_t yield_schedule_impl(pt::uintptr_t);
+};

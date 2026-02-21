@@ -12,7 +12,6 @@ void TaskScheduler::initialize()
 {
     klog("[SCHEDULER] Initializing task scheduler (max %d tasks)\n", MAX_TASKS);
 
-    // Clear all tasks
     for (pt::uint32_t i = 0; i < MAX_TASKS; i++)
     {
         tasks[i].id = 0xFFFFFFFF;
@@ -20,16 +19,15 @@ void TaskScheduler::initialize()
         tasks[i].ticks_alive = 0;
         tasks[i].kernel_stack_base = 0;
         tasks[i].kernel_stack_size = 0;
+        tasks[i].preempt_rsp = 0;
     }
 
-    // Initialize kernel as task 0
+    // Kernel is task 0; it has no allocated stack (uses the boot stack).
+    // Its preempt_rsp is filled in the first time irq0 fires.
     tasks[0].id = 0;
     tasks[0].state = TASK_RUNNING;
-    tasks[0].ticks_alive = 0;
-    tasks[0].kernel_stack_base = 0;  // Kernel uses system stack
-    tasks[0].kernel_stack_size = 0;
 
-    task_count = 1;  // Kernel task counts as 1 task
+    task_count = 1;
     current_task_id = 0;
     scheduler_ticks = 0;
 
@@ -58,18 +56,15 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     }
 
     if (new_task == nullptr)
-    {
         return 0xFFFFFFFF;
-    }
 
-    // Free old stack if this slot was previously used (lazy cleanup from task_exit)
+    // Lazy stack cleanup from a previous task_exit on this slot
     if (new_task->kernel_stack_base != 0)
     {
         vmm.kfree((void*)new_task->kernel_stack_base);
         new_task->kernel_stack_base = 0;
     }
 
-    // Allocate kernel stack
     void* stack_mem = vmm.kmalloc(stack_size);
     if (stack_mem == nullptr)
     {
@@ -77,38 +72,42 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         return 0xFFFFFFFF;
     }
 
-    // Initialize task
     new_task->id = task_id;
     new_task->state = TASK_READY;
     new_task->kernel_stack_base = (pt::uintptr_t)stack_mem;
     new_task->kernel_stack_size = stack_size;
     new_task->ticks_alive = 0;
 
-    // Initialize context - stack pointer points to top of allocated stack
-    pt::uint8_t* stack_top = (pt::uint8_t*)stack_mem + stack_size;
-    new_task->context.rsp = (pt::uintptr_t)stack_top;
-    new_task->context.rip = (pt::uintptr_t)entry_fn;
-    new_task->context.rflags = 0x202;  // IF flag set, interrupt enabled
+    // Build a synthetic PUSHALL + iretq frame on the task's stack so it can
+    // be started by the exact same POPALL/iretq path used for any resumed task.
+    //
+    // Stack layout (low addr = top of stack after all pushes):
+    //   preempt_rsp → [r15][r14]...[rax]   ← PUSHALL frame (15 × 8 = 120 bytes)
+    //                 [RIP][CS][RFLAGS][RSP][SS]  ← iretq frame (5 × 8 = 40 bytes)
+    //
+    // PUSHALL push order: rax, rbx, rcx, rdx, rbp, rsi, rdi, r8..r15
+    // POPALL pop order (reverse): r15 first → rax last
+    //
+    pt::uint64_t* stack = (pt::uint64_t*)((pt::uint8_t*)stack_mem + stack_size);
+    const pt::uint64_t stack_top = (pt::uint64_t)((pt::uint8_t*)stack_mem + stack_size);
 
-    // Zero out other registers
-    new_task->context.rax = 0;
-    new_task->context.rbx = 0;
-    new_task->context.rcx = 0;
-    new_task->context.rdx = 0;
-    new_task->context.rsi = 0;
-    new_task->context.rdi = 0;
-    new_task->context.rbp = 0;
-    new_task->context.r8 = 0;
-    new_task->context.r9 = 0;
-    new_task->context.r10 = 0;
-    new_task->context.r11 = 0;
-    new_task->context.r12 = 0;
-    new_task->context.r13 = 0;
-    new_task->context.r14 = 0;
-    new_task->context.r15 = 0;
+    // iretq frame (CPU pushes in this order when servicing an interrupt):
+    *(--stack) = 0x10;                  // SS  (kernel data segment)
+    *(--stack) = stack_top;             // RSP (task's initial stack pointer after iretq)
+    *(--stack) = 0x202;                 // RFLAGS (IF=1, reserved bit 1 set)
+    *(--stack) = 0x08;                  // CS  (kernel code segment)
+    *(--stack) = (pt::uint64_t)entry_fn; // RIP
+
+    // PUSHALL frame: 15 registers, all zeroed (rax first → r15 last in push order,
+    // so r15 ends up at the lowest address = preempt_rsp)
+    for (int i = 0; i < 15; i++)
+        *(--stack) = 0;
+
+    new_task->preempt_rsp = (pt::uintptr_t)stack;
 
     task_count++;
-    klog("[SCHEDULER] Created task %d, stack at %x, entry at %x\n", task_id, new_task->kernel_stack_base, entry_fn);
+    klog("[SCHEDULER] Created task %d, stack at %x, entry at %x\n",
+         task_id, new_task->kernel_stack_base, entry_fn);
 
     return task_id;
 }
@@ -125,73 +124,81 @@ Task* TaskScheduler::get_task(pt::uint32_t id)
     return &tasks[id];
 }
 
-void TaskScheduler::scheduler_tick()
+// Round-robin: walk the task table to find the next READY/RUNNING task.
+// Saves the current RSP and switches to the next task's preempt_rsp.
+// Returns the RSP to load (unchanged if no switch happened).
+pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
 {
-    scheduler_ticks++;
-
-    // Simple round-robin scheduling
-    // Find next ready task
-    switch_to_next_task();
-}
-
-void TaskScheduler::switch_to_next_task()
-{
-    Task* current = get_current_task();
-    if (current == nullptr) return;
-
-    // Find next ready task (simple round-robin)
     pt::uint32_t next_id = current_task_id;
-    pt::uint32_t attempts = 0;
-
-    do {
-        next_id = (next_id + 1) % MAX_TASKS;
-        attempts++;
-    } while (attempts < MAX_TASKS && (tasks[next_id].state != TASK_READY && tasks[next_id].state != TASK_RUNNING));
-
-    if (attempts >= MAX_TASKS)
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++)
     {
-        // No other task ready, stay with current
-        return;
+        next_id = (next_id + 1) % MAX_TASKS;
+        if (tasks[next_id].state == TASK_READY ||
+            tasks[next_id].state == TASK_RUNNING)
+            break;
     }
 
     if (next_id == current_task_id)
     {
-        // Already on the only task
-        return;
+        // No other runnable task — keep running current
+        if (tasks[current_task_id].state == TASK_READY)
+            tasks[current_task_id].state = TASK_RUNNING;
+        return current_rsp;
     }
 
-    // Safety check: ensure next task is actually valid before switching
     if (tasks[next_id].state == TASK_DEAD)
     {
-        klog("[SCHEDULER] ERROR: Tried to switch to dead task %d\n", next_id);
-        return;
+        klog("[SCHEDULER] ERROR: next task %d is dead\n", next_id);
+        return current_rsp;
     }
 
-    // Switch tasks
-    Task* next_task = &tasks[next_id];
 #ifdef SCHEDULER_DEBUG
     klog("[SCHEDULER] Switching from task %d to task %d\n", current_task_id, next_id);
 #endif
 
-    if (current->state == TASK_RUNNING)
-        current->state = TASK_READY;
-    next_task->state = TASK_RUNNING;
-
+    if (tasks[current_task_id].state == TASK_RUNNING)
+        tasks[current_task_id].state = TASK_READY;
+    tasks[next_id].state = TASK_RUNNING;
     current_task_id = next_id;
-    next_task->ticks_alive++;
+    tasks[next_id].ticks_alive++;
 
-    // Perform context switch (in assembly)
-    task_switch(&current->context, &next_task->context);
+    return tasks[next_id].preempt_rsp;
 }
 
+// Called from irq0_schedule (timer interrupt boundary).
+// Saves the current task's context pointer and may preempt it.
+pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
+{
+    scheduler_ticks++;
+
+    // Always update preempt_rsp so it stays fresh for when this task is resumed.
+    tasks[current_task_id].preempt_rsp = rsp;
+    tasks[current_task_id].ticks_alive++;
+
+    if (scheduler_ticks % SCHEDULER_QUANTUM != 0)
+        return rsp;  // quantum not expired — stay with current task
+
+    return do_switch_to_next(rsp);
+}
+
+// Called from yield_schedule (int 0x81 boundary).
+// Always tries to hand off to the next ready task.
+pt::uintptr_t TaskScheduler::yield_tick(pt::uintptr_t rsp)
+{
+    tasks[current_task_id].preempt_rsp = rsp;
+
+    if (tasks[current_task_id].state == TASK_RUNNING)
+        tasks[current_task_id].state = TASK_READY;
+
+    return do_switch_to_next(rsp);
+}
+
+// Voluntarily yield the CPU: fire int 0x81 which goes through _int_yield_stub →
+// yield_schedule → yield_tick.  The interrupt frame captures the exact return
+// point so the task resumes correctly after task_yield() returns.
 void TaskScheduler::task_yield()
 {
-    Task* current = get_current_task();
-    if (current != nullptr)
-    {
-        current->state = TASK_READY;
-        scheduler_tick();
-    }
+    asm volatile("int 0x81");
 }
 
 void TaskScheduler::task_exit()
@@ -202,13 +209,10 @@ void TaskScheduler::task_exit()
         klog("[SCHEDULER] Task %d exiting\n", current->id);
         current->state = TASK_DEAD;
         task_count--;
-        // Stack is intentionally NOT freed here: we're still executing on it.
-        // It will be freed lazily in create_task() when this slot is reused.
-
-        // Switch to next task; this task should never run again (state=TASK_DEAD)
-        scheduler_tick();
+        // Stack is freed lazily in create_task() when this slot is reused.
+        // Fire yield so the scheduler switches away immediately.
+        asm volatile("int 0x81");
+        // Should never reach here; yield_tick won't resume a DEAD task.
+        __builtin_unreachable();
     }
 }
-
-// Assembly implementation is in src/impl/x86_64/boot/task_switch.asm
-// extern "C" void task_switch(TaskContext* old_context, TaskContext* new_context);

@@ -22,3 +22,5 @@ pt::uint64_t timer_create(pt::uint64_t delay_ticks, bool periodic, void (*callba
 void timer_cancel(pt::uint64_t timer_id);
 void check_timers();
 void timer_list_all();
+// Called by irq0_schedule; increments ticks and fires callbacks (no scheduler call).
+void timer_tick();

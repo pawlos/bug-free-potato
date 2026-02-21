@@ -1,7 +1,6 @@
 #include "timer.h"
 #include "kernel.h"
 #include "io.h"
-#include "task.h"
 #include "virtual.h"
 
 extern VMM vmm;
@@ -106,13 +105,11 @@ void check_timers()
 	}
 }
 
-void timer_routine()
+void timer_tick()
 {
 	ticks++;
 	check_timers();
-
-	// Call scheduler for task switching on each timer tick
-	TaskScheduler::scheduler_tick();
+	// Scheduling is handled by irq0_schedule in idt.cpp, not here.
 }
 
 void timer_list_all()

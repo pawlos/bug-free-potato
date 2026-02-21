@@ -72,13 +72,30 @@ irq1:
     iretq
 GLOBAL irq1
 
-[extern irq0_handler]
+; irq0: timer interrupt — preemptive scheduler entry point.
+; Passes saved register block (RSP after PUSHALL) to irq0_schedule.
+; irq0_schedule returns the RSP to resume (same task or next task).
+[extern irq0_schedule]
 irq0:
     PUSHALL
-    call irq0_handler
+    mov rdi, rsp            ; arg: pointer to saved context (PUSHALL frame)
+    call irq0_schedule      ; returns new RSP (same or next task)
+    mov rsp, rax            ; switch to (possibly different) task context
     POPALL
     iretq
 GLOBAL irq0
+
+; _int_yield_stub: software yield via int 0x81.
+; Same mechanism as irq0 but for cooperative task_yield().
+[extern yield_schedule]
+_int_yield_stub:
+    PUSHALL
+    mov rdi, rsp
+    call yield_schedule
+    mov rsp, rax
+    POPALL
+    iretq
+GLOBAL _int_yield_stub
 
 [extern syscall_handler]
 _syscall_stub:
