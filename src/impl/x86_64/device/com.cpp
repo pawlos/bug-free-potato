@@ -58,9 +58,18 @@ void ComDevice::print_str(const char *str, va_list args)
 				}
 				case 'l':
 				{
-					const pt::uint64_t a = va_arg(args, pt::uint64_t);
-					print_str(decToString(a));
-					i += 1;
+					// Handle %l[l][x/X/u/d]: all variants read a 64-bit value.
+					// Peek past 'l' (and optional second 'l') to find the specifier.
+					pt::uint64_t a = va_arg(args, pt::uint64_t);
+					pt::size_t skip = 1;
+					char spec = str[i + 2];
+					if (spec == 'l') { skip = 2; spec = str[i + 3]; }
+					switch (spec) {
+						case 'x': print_str("0x%s", hexToString(a, false)); break;
+						case 'X': print_str("0x%s", hexToString(a, true));  break;
+						default:  print_str(decToString(a)); break;
+					}
+					i += skip + 1;
 					continue;
 				}
 				case 'p':

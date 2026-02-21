@@ -101,8 +101,9 @@ GLOBAL _int_yield_stub
 _syscall_stub:
     PUSHALL
     ; Caller's registers are still live after PUSHALL (saved above us on the stack).
-    ; Shuffle into C calling convention: rdi=nr, rsi=arg1, rdx=arg2
-    mov rdx, rsi    ; arg2 = original rsi (save before overwrite)
+    ; Shuffle into C calling convention: rdi=nr, rsi=arg1, rdx=arg2, rcx=arg3
+    mov rcx, rdx    ; arg3 = original rdx (save before rdx is overwritten)
+    mov rdx, rsi    ; arg2 = original rsi (save before rsi is overwritten)
     mov rsi, rdi    ; arg1 = original rdi
     mov rdi, rax    ; nr   = original rax (syscall number)
     call syscall_handler

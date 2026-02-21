@@ -58,7 +58,7 @@ pt::uintptr_t ElfLoader::load(const char* filename) {
         return 0;
     }
 
-    klog("[ELF] Loading '%s', entry=0x%x, %d program headers\n",
+    klog("[ELF] Loading '%s', entry=%x, %d program headers\n",
          filename, ehdr->e_entry, (int)ehdr->e_phnum);
 
     // Walk program headers and load PT_LOAD segments
@@ -74,7 +74,7 @@ pt::uintptr_t ElfLoader::load(const char* filename) {
         pt::uintptr_t vaddr_start = page_align_down(phdr->p_vaddr);
         pt::uintptr_t vaddr_end   = page_align_up(phdr->p_vaddr + phdr->p_memsz);
 
-        klog("[ELF] PT_LOAD: vaddr=0x%x filesz=%d memsz=%d\n",
+        klog("[ELF] PT_LOAD: vaddr=%x filesz=%d memsz=%d\n",
              phdr->p_vaddr, (int)phdr->p_filesz, (int)phdr->p_memsz);
 
         // Map pages for this segment

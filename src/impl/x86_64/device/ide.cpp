@@ -201,7 +201,7 @@ bool IDE::read_sectors(pt::uint8_t drive, pt::uint32_t lba, pt::uint8_t sector_c
         if (!ide_wait_drq()) {
             pt::uint8_t status = IO::inb(IDE_PRIMARY_STATUS);
             pt::uint8_t error = IO::inb(IDE_PRIMARY_ERROR);
-            klog("[IDE] DRQ timeout: status=0x%x error=0x%x\n", status, error);
+            klog("[IDE] DRQ timeout: status=%x error=%x\n", status, error);
             enable_interrupts();
             return false;
         }
@@ -264,7 +264,7 @@ bool IDE::write_sectors(pt::uint8_t drive, pt::uint32_t lba, pt::uint8_t sector_
         if (!ide_wait_drq()) {
             pt::uint8_t status = IO::inb(IDE_PRIMARY_STATUS);
             pt::uint8_t error  = IO::inb(IDE_PRIMARY_ERROR);
-            klog("[IDE] Write DRQ timeout: status=0x%x error=0x%x\n", status, error);
+            klog("[IDE] Write DRQ timeout: status=%x error=%x\n", status, error);
             enable_interrupts();
             return false;
         }
