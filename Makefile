@@ -60,6 +60,41 @@ clean:
 	-rm -f disk.img
 	-rm -f $(TEST_ELF_OBJ) $(TEST_ELF_BIN)
 	-rm -f $(BLINK_ELF_OBJ) $(BLINK_ELF_BIN)
+	-rm -rf build/userspace/libc
+	-rm -f $(LIBC_CRT0) $(LIBC_A) $(HELLO_ELF_BIN)
+
+# ── Userspace C runtime (libc shim) ──────────────────────────────────────
+CC          = gcc
+CFLAGS_USER = -ffreestanding -fno-stack-protector -fno-builtin \
+              -m64 -nostdlib -Wall -Wextra -I src/userspace
+
+LIBC_SRCS = src/userspace/libc/stdio.c \
+            src/userspace/libc/stdlib.c \
+            src/userspace/libc/string.c
+LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
+LIBC_CRT0 = build/userspace/crt0.o
+LIBC_A    = build/userspace/libc.a
+
+$(LIBC_CRT0): src/userspace/libc/crt0.asm
+	mkdir -p build/userspace
+	$(NASM) -f elf64 -o $@ $<
+
+$(LIBC_OBJS): build/userspace/libc/%.o : src/userspace/libc/%.c
+	mkdir -p build/userspace/libc
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(LIBC_A): $(LIBC_OBJS)
+	ar rcs $@ $^
+
+# ── Hello demo (C userspace program) ─────────────────────────────────────
+HELLO_ELF_OBJ = build/userspace/hello.o
+HELLO_ELF_BIN = src/impl/x86_64/bins/hello.elf
+
+$(HELLO_ELF_OBJ): src/userspace/hello.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(HELLO_ELF_BIN): $(HELLO_ELF_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(HELLO_ELF_OBJ) $(LIBC_A)
 
 # Files to copy to disk image from bins folder
 BIN_FILES := $(wildcard src/impl/x86_64/bins/*)
@@ -87,7 +122,7 @@ $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
 # Create FAT12 disk image with test files from bins folder
-disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN)
+disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN)
 	@echo "Creating FAT12 disk image..."
 	@# Create 10MB disk image (large enough for testing)
 	dd if=/dev/zero of=disk.img bs=512 count=20480 2>/dev/null
@@ -103,6 +138,7 @@ disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN)
 	@# Also copy the test/blink ELFs explicitly (in case they weren't in BIN_FILES wildcard)
 	@mcopy -i disk.img $(TEST_ELF_BIN)  ::TEST.ELF  2>/dev/null || true
 	@mcopy -i disk.img $(BLINK_ELF_BIN) ::BLINK.ELF 2>/dev/null || true
+	@mcopy -i disk.img $(HELLO_ELF_BIN) ::HELLO.ELF 2>/dev/null || true
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 
