@@ -45,6 +45,9 @@ struct Task {
     // Physical address of this task's PML4 page table.
     // 0 = unset; loaded into CR3 on every context switch.
     pt::uintptr_t cr3;
+    // True if this task runs at CPL=3 (ring-3). The synthetic iretq frame
+    // uses user CS=0x1B / SS=0x23 and TSS.RSP0 is updated on every switch.
+    bool user_mode;
 };
 
 class TaskScheduler {
@@ -58,8 +61,11 @@ public:
     // Initialize scheduler
     static void initialize();
 
-    // Create a new task with given entry function
-    static pt::uint32_t create_task(void (*entry_fn)(), pt::size_t stack_size = TASK_STACK_SIZE);
+    // Create a new task with given entry function.
+    // Pass user_mode=true to start the task at CPL=3 (ring-3).
+    static pt::uint32_t create_task(void (*entry_fn)(),
+                                    pt::size_t stack_size = TASK_STACK_SIZE,
+                                    bool user_mode = false);
 
     // Get current running task
     static Task* get_current_task();

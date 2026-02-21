@@ -416,14 +416,8 @@ void Shell::execute_write(const char* cmd) {
     }
 }
 
-static pt::uintptr_t g_elf_entry = 0;
 
-static void run_loaded_elf() {
-    if (g_elf_entry != 0) {
-        reinterpret_cast<void(*)()>(g_elf_entry)();
-    }
-    TaskScheduler::task_exit();
-}
+
 
 void Shell::execute_exec(const char* cmd) {
     const char* filename = cmd + 5;  // skip "exec "
@@ -431,13 +425,13 @@ void Shell::execute_exec(const char* cmd) {
         klog("Usage: exec <filename>\n");
         return;
     }
-    g_elf_entry = ElfLoader::load(filename);
-    if (g_elf_entry == 0) {
+    pt::uintptr_t entry = ElfLoader::load(filename);
+    if (entry == 0) {
         klog("exec: failed to load ELF '%s'\n", filename);
         return;
     }
-    klog("exec: loaded '%s', entry=%lx\n", filename, g_elf_entry);
-    TaskScheduler::create_task(run_loaded_elf);
+    klog("exec: loaded '%s', entry=%lx\n", filename, entry);
+    TaskScheduler::create_task(reinterpret_cast<void(*)()>(entry), TaskScheduler::TASK_STACK_SIZE, true);
 }
 
 void Shell::execute_rm(const char* cmd) {

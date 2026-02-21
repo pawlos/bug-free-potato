@@ -17,6 +17,7 @@
 #include "fbterm.h"
 #include "assets.h"
 #include "blink_task.h"
+#include "tss.h"
 
 extern char get_char();
 static IDT idt;
@@ -45,6 +46,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     init_timer(50);
     idt.initialize();
     vmm = VMM(bi.get_memory_maps(), l4_page_table);
+    tss_init();
 
     // Storage + assets
     Disk::initialize();

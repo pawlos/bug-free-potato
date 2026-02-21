@@ -15,7 +15,7 @@ start:
     call setup_page_tables
     call enable_paging
 
-    lgdt [gdt64.pointer]
+    lgdt [gdt64_pointer]
 
     ;we will read page tables in the kernel_main
     mov eax, page_table_l4
@@ -83,7 +83,7 @@ setup_page_tables:
     shl eax, 9                  ; eax = esi * 512
     add eax, ecx                ; eax = block_index = esi*512 + ecx
     shl eax, 21                 ; eax = phys = block_index * 2MiB
-    or  eax, 0x83               ; present | rw | PS (2MiB)
+    or  eax, 0x87               ; present | rw | PS (2MiB) | user
     ; write 64-bit entry: low dword = eax, high dword = 0
     mov [ebx + ecx*8 + 0], eax
     mov dword [ebx + ecx*8 + 4], 0
@@ -92,9 +92,9 @@ setup_page_tables:
     cmp ecx, 512
     jne .fill_pd_loop_chunk
 
-    ; set PDPT entry for this chunk: page_table_l3[esi] = EBX | 0x03
+    ; set PDPT entry for this chunk: page_table_l3[esi] = EBX | 0x07
     mov eax, ebx
-    or  eax, 0x03
+    or  eax, 0x07
     mov [page_table_l3 + esi*8 + 0], eax
     mov dword [page_table_l3 + esi*8 + 4], 0
 
@@ -106,7 +106,7 @@ setup_page_tables:
 
 ; finally set PML4[0] -> page_table_l3 (PDPT)
     mov eax, page_table_l3
-    or  eax, 0x03
+    or  eax, 0x07
     mov [page_table_l4 + 0], eax
     mov dword [page_table_l4 + 4], 0
 
@@ -189,7 +189,7 @@ gdt64:
     dw 0
     db 0
     db 11111010b
-    db 11001111b
+    db 00100000b   ; L=1 (64-bit long mode)
     db 0
 .data_segment_user: equ $ - gdt64
     dw 0
@@ -198,6 +198,12 @@ gdt64:
     db 11110010b
     db 11001111b
     db 0
-.pointer:
+; TSS descriptor (16 bytes) — filled at runtime by tss_init() in C++.
+; Selector = 0x28 (offset 40 = 5 * 8-byte entries above).
+; 16-byte TSS descriptor placeholder at GDT offset 0x28.
+; tss_init() in C++ locates this via sgdt and fills it at runtime.
+    dq 0    ; TSS descriptor low qword
+    dq 0    ; TSS descriptor high qword
+gdt64_pointer:
     dw $ - gdt64 - 1
     dq gdt64

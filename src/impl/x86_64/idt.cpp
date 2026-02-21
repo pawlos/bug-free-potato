@@ -54,7 +54,9 @@ extern void keyboard_routine(pt::uint8_t scancode);
 extern void mouse_routine(const pt::int8_t mouse[]);
 ASMCALL void LoadIDT();
 
-void init_idt_entry(int irq_no, pt::uint64_t& irq)
+// type_attr = 0x8E: P=1, DPL=0, interrupt gate (ring-0 only)
+// type_attr = 0xEE: P=1, DPL=3, interrupt gate (callable from ring-3)
+void init_idt_entry(int irq_no, pt::uint64_t& irq, pt::uint8_t type_attr = 0x8e)
 {
 	_idt[irq_no].zero = 0;
 	_idt[irq_no].offset_low  = (pt::uint16_t)((pt::uint64_t)&irq & 0x000000000000FFFF);
@@ -62,7 +64,7 @@ void init_idt_entry(int irq_no, pt::uint64_t& irq)
 	_idt[irq_no].offset_high = (pt::uint32_t)(((pt::uint64_t)&irq & 0xFFFFFFFF00000000) >> 32);
 	_idt[irq_no].ist = 0;
 	_idt[irq_no].selector = 0x08;
-	_idt[irq_no].type_attr = 0x8e;
+	_idt[irq_no].type_attr = type_attr;
 }
 
 void IDT::initialize()
@@ -108,8 +110,8 @@ void IDT::initialize()
 	init_idt_entry(46, irq14);
 	init_idt_entry(47, irq15);
 
-	init_idt_entry(0x80, _syscall_stub);
-	init_idt_entry(0x81, _int_yield_stub);
+	init_idt_entry(0x80, _syscall_stub,   0xEE);  // DPL=3: ring-3 can call int 0x80
+	init_idt_entry(0x81, _int_yield_stub, 0xEE);  // DPL=3: ring-3 can call int 0x81
 
 	PIC::UnmaskAll();
 	LoadIDT();

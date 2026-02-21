@@ -1,6 +1,7 @@
 #include "task.h"
 #include "kernel.h"
 #include "virtual.h"
+#include "tss.h"
 
 // Static member initialization
 Task TaskScheduler::tasks[MAX_TASKS];
@@ -25,6 +26,7 @@ void TaskScheduler::initialize()
         tasks[i].kernel_stack_size = 0;
         tasks[i].preempt_rsp = 0;
         tasks[i].cr3 = 0;
+        tasks[i].user_mode = false;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
@@ -32,6 +34,7 @@ void TaskScheduler::initialize()
     tasks[0].id = 0;
     tasks[0].state = TASK_RUNNING;
     tasks[0].cr3 = kernel_cr3;
+    tasks[0].user_mode = false;
 
     task_count = 1;
     current_task_id = 0;
@@ -40,7 +43,7 @@ void TaskScheduler::initialize()
     klog("[SCHEDULER] Scheduler ready (kernel as task 0)\n");
 }
 
-pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_size)
+pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_size, bool user_mode)
 {
     if (task_count >= MAX_TASKS)
     {
@@ -96,6 +99,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->kernel_stack_size = stack_size;
     new_task->ticks_alive = 0;
     new_task->cr3 = pml4_frame;
+    new_task->user_mode = user_mode;
 
     // Build a synthetic PUSHALL + iretq frame on the task's stack so it can
     // be started by the exact same POPALL/iretq path used for any resumed task.
@@ -110,11 +114,20 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     pt::uint64_t* stack = (pt::uint64_t*)((pt::uint8_t*)stack_mem + stack_size);
     const pt::uint64_t stack_top = (pt::uint64_t)((pt::uint8_t*)stack_mem + stack_size);
 
-    // iretq frame (CPU pushes in this order when servicing an interrupt):
-    *(--stack) = 0x10;                  // SS  (kernel data segment)
-    *(--stack) = stack_top;             // RSP (task's initial stack pointer after iretq)
-    *(--stack) = 0x202;                 // RFLAGS (IF=1, reserved bit 1 set)
-    *(--stack) = 0x08;                  // CS  (kernel code segment)
+    // iretq frame — segments depend on target privilege level.
+    // Ring-0: CS=0x08 (kernel code), SS=0x10 (kernel data)
+    // Ring-3: CS=0x1B (user code | RPL3), SS=0x23 (user data | RPL3)
+    if (user_mode) {
+        *(--stack) = 0x23;               // SS  (user data, DPL=3)
+        *(--stack) = stack_top;          // RSP
+        *(--stack) = 0x202;              // RFLAGS (IF=1)
+        *(--stack) = 0x1B;               // CS  (user code, DPL=3)
+    } else {
+        *(--stack) = 0x10;               // SS  (kernel data)
+        *(--stack) = stack_top;          // RSP
+        *(--stack) = 0x202;              // RFLAGS (IF=1)
+        *(--stack) = 0x08;               // CS  (kernel code)
+    }
     *(--stack) = (pt::uint64_t)entry_fn; // RIP
 
     // PUSHALL frame: 15 registers, all zeroed (rax first → r15 last in push order,
@@ -180,6 +193,12 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
     tasks[next_id].state = TASK_RUNNING;
     current_task_id = next_id;
     tasks[next_id].ticks_alive++;
+
+    // For user-mode tasks, update TSS.RSP0 to this task's kernel stack top.
+    // The CPU reads RSP0 on every ring-3 → ring-0 privilege switch and uses
+    // it as the initial kernel RSP before pushing the interrupt frame.
+    if (tasks[next_id].user_mode && tasks[next_id].kernel_stack_base != 0)
+        tss_set_rsp0(tasks[next_id].kernel_stack_base + tasks[next_id].kernel_stack_size);
 
     // Switch to the new task's address space.
     // All cloned PML4s share the same kernel (higher-half) mappings so
