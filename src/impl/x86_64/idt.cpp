@@ -7,6 +7,7 @@
 #include "syscall.h"
 #include "task.h"
 #include "timer.h"
+#include "virtual.h"
 
 extern IDT64 _idt[256];
 extern pt::uint64_t isr0;
@@ -390,6 +391,21 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				return (pt::uint64_t)-1;
 			FAT12::close_file(&fd_table[fd]);
 			klog("syscall: SYS_CLOSE: fd %d\n", fd);
+			return 0;
+		}
+		case SYS_MMAP: {
+			pt::size_t size = (pt::size_t)arg1;
+			if (size == 0) return (pt::uint64_t)-1;
+			void* ptr = vmm.kmalloc(size);
+			if (!ptr) return (pt::uint64_t)-1;
+			klog("syscall: SYS_MMAP size=%d -> %lx\n", (int)size, (pt::uint64_t)ptr);
+			return (pt::uint64_t)ptr;
+		}
+		case SYS_MUNMAP: {
+			void* ptr = reinterpret_cast<void*>(arg1);
+			if (!ptr) return (pt::uint64_t)-1;
+			vmm.kfree(ptr);
+			klog("syscall: SYS_MUNMAP ptr=%lx\n", (pt::uint64_t)ptr);
 			return 0;
 		}
 		default:
