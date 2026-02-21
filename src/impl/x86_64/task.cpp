@@ -7,10 +7,14 @@ Task TaskScheduler::tasks[MAX_TASKS];
 pt::uint32_t TaskScheduler::task_count = 0;
 pt::uint32_t TaskScheduler::current_task_id = 0;
 pt::uint64_t TaskScheduler::scheduler_ticks = 0;
+static pt::uintptr_t kernel_cr3 = 0;  // Boot PML4 physical address
 
 void TaskScheduler::initialize()
 {
     klog("[SCHEDULER] Initializing task scheduler (max %d tasks)\n", MAX_TASKS);
+
+    // Read the current CR3 (boot PML4 physical address) before anything else.
+    asm volatile("mov %0, cr3" : "=r"(kernel_cr3));
 
     for (pt::uint32_t i = 0; i < MAX_TASKS; i++)
     {
@@ -20,12 +24,14 @@ void TaskScheduler::initialize()
         tasks[i].kernel_stack_base = 0;
         tasks[i].kernel_stack_size = 0;
         tasks[i].preempt_rsp = 0;
+        tasks[i].cr3 = 0;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
     // Its preempt_rsp is filled in the first time irq0 fires.
     tasks[0].id = 0;
     tasks[0].state = TASK_RUNNING;
+    tasks[0].cr3 = kernel_cr3;
 
     task_count = 1;
     current_task_id = 0;
@@ -58,11 +64,16 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     if (new_task == nullptr)
         return 0xFFFFFFFF;
 
-    // Lazy stack cleanup from a previous task_exit on this slot
+    // Lazy cleanup from a previous task_exit on this slot.
     if (new_task->kernel_stack_base != 0)
     {
         vmm.kfree((void*)new_task->kernel_stack_base);
         new_task->kernel_stack_base = 0;
+    }
+    if (new_task->cr3 != 0 && new_task->cr3 != kernel_cr3)
+    {
+        vmm.free_frame(new_task->cr3);
+        new_task->cr3 = 0;
     }
 
     void* stack_mem = vmm.kmalloc(stack_size);
@@ -72,11 +83,19 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         return 0xFFFFFFFF;
     }
 
+    // Clone the boot PML4 for this task.  Physical frames < 4GB are accessible
+    // at their identity-mapped virtual address (boot tables map phys x → virt x).
+    pt::uintptr_t pml4_frame = vmm.allocate_frame();
+    memcpy(reinterpret_cast<void*>(pml4_frame),
+           reinterpret_cast<void*>(kernel_cr3),
+           4096);
+
     new_task->id = task_id;
     new_task->state = TASK_READY;
     new_task->kernel_stack_base = (pt::uintptr_t)stack_mem;
     new_task->kernel_stack_size = stack_size;
     new_task->ticks_alive = 0;
+    new_task->cr3 = pml4_frame;
 
     // Build a synthetic PUSHALL + iretq frame on the task's stack so it can
     // be started by the exact same POPALL/iretq path used for any resumed task.
@@ -161,6 +180,12 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
     tasks[next_id].state = TASK_RUNNING;
     current_task_id = next_id;
     tasks[next_id].ticks_alive++;
+
+    // Switch to the new task's address space.
+    // All cloned PML4s share the same kernel (higher-half) mappings so
+    // kernel code and stack remain accessible after the CR3 write.
+    if (tasks[next_id].cr3 != 0)
+        asm volatile("mov cr3, %0" : : "r"(tasks[next_id].cr3) : "memory");
 
     return tasks[next_id].preempt_rsp;
 }

@@ -42,6 +42,9 @@ struct Task {
     // RSP pointing to the PUSHALL frame saved at the last interrupt boundary.
     // This is the value restored by irq0/int-0x81 to resume the task.
     pt::uintptr_t preempt_rsp;
+    // Physical address of this task's PML4 page table.
+    // 0 = unset; loaded into CR3 on every context switch.
+    pt::uintptr_t cr3;
 };
 
 class TaskScheduler {
