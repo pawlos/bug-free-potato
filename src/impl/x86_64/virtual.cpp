@@ -357,8 +357,11 @@ void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
         frame_bitmap[i] = 0;
     }
 
-    // Mark kernel memory (0-2MB) as used
-    pt::size_t kernel_frames = (2 * 1024 * 1024) / 4096;
+    // Mark the first 16MB as reserved so that allocate_frame() never returns
+    // a physical address that overlaps the kernel binary or the heap.
+    // The kernel binary starts at 1MB; the heap follows immediately and can
+    // grow to several MB, so 16MB gives plenty of headroom.
+    pt::size_t kernel_frames = (16 * 1024 * 1024) / 4096;
     for (pt::size_t i = 0; i < kernel_frames; i++)
     {
         pt::size_t byte_idx = i / 8;

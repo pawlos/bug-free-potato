@@ -119,8 +119,9 @@ GLOBAL _syscall_stub
 
 [extern isr14_handler]
 isr14:
-    pop rax
+    pop rax                 ; pop error code (saved into rax, PUSHALL stores it at [RSP+112])
     PUSHALL
+    mov rdi, rsp            ; pass frame pointer: user RIP is at [rdi+120], user RSP at [rdi+144]
     call isr14_handler
     POPALL
     iretq

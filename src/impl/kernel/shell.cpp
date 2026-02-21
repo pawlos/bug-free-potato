@@ -425,6 +425,13 @@ void Shell::execute_exec(const char* cmd) {
         klog("Usage: exec <filename>\n");
         return;
     }
+    // Kill any running user tasks before loading the new ELF.
+    // All user ELFs share the same physical code region (0x18000000), so
+    // loading a new ELF overwrites the code of every running user task.
+    // Leaving them alive causes them to execute the new ELF's code with
+    // their old (stale) register values, leading to instant page faults.
+    TaskScheduler::kill_user_tasks();
+
     pt::uintptr_t entry = ElfLoader::load(filename);
     if (entry == 0) {
         klog("exec: failed to load ELF '%s'\n", filename);

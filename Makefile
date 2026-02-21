@@ -66,6 +66,7 @@ clean:
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
 CFLAGS_USER = -ffreestanding -fno-stack-protector -fno-builtin \
+              -fno-asynchronous-unwind-tables \
               -m64 -nostdlib -Wall -Wextra -I src/userspace
 
 LIBC_SRCS = src/userspace/libc/stdio.c \

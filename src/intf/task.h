@@ -51,6 +51,12 @@ struct Task {
     // True if this task runs at CPL=3 (ring-3). The synthetic iretq frame
     // uses user CS=0x1B / SS=0x23 and TSS.RSP0 is updated on every switch.
     bool user_mode;
+    // Separate user-mode execution stack (ring-3 tasks only).
+    // The kernel_stack is used exclusively for interrupt/syscall frames
+    // (TSS RSP0).  Keeping them separate prevents the interrupt frame from
+    // overwriting the user's call frames when a syscall fires.
+    // 0 for kernel-mode tasks.
+    pt::uintptr_t user_stack_base;
     // Per-task open file descriptors.  slot.open==false means free.
     FAT12_File fd_table[MAX_FDS];
 };
@@ -58,7 +64,8 @@ struct Task {
 class TaskScheduler {
 public:
     static constexpr pt::size_t MAX_TASKS = 16;
-    static constexpr pt::size_t TASK_STACK_SIZE = 4096;  // 4KB per task
+    static constexpr pt::size_t TASK_STACK_SIZE = 4096;   // 4KB kernel interrupt stack
+    static constexpr pt::size_t USER_STACK_SIZE  = 16384; // 16KB user execution stack
     // How many timer ticks between forced preemptions.
     // At 50 Hz this gives ~200 ms time slices.
     static constexpr pt::size_t SCHEDULER_QUANTUM = 10;
@@ -89,6 +96,10 @@ public:
 
     // Mark task as dead and switch away
     static void task_exit();
+
+    // Kill all user-mode tasks (used by exec before loading a new ELF).
+    // Resources are freed immediately; the caller must not be a user task.
+    static void kill_user_tasks();
 
 private:
     static Task tasks[MAX_TASKS];

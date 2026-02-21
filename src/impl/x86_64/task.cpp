@@ -28,6 +28,7 @@ void TaskScheduler::initialize()
         tasks[i].preempt_rsp = 0;
         tasks[i].cr3 = 0;
         tasks[i].user_mode = false;
+        tasks[i].user_stack_base = 0;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
@@ -74,6 +75,11 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         vmm.kfree((void*)new_task->kernel_stack_base);
         new_task->kernel_stack_base = 0;
     }
+    if (new_task->user_stack_base != 0)
+    {
+        vmm.kfree((void*)new_task->user_stack_base);
+        new_task->user_stack_base = 0;
+    }
     if (new_task->cr3 != 0 && new_task->cr3 != kernel_cr3)
     {
         vmm.free_frame(new_task->cr3);
@@ -94,9 +100,15 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     // Clone the boot PML4 for this task.  Physical frames < 4GB are accessible
     // at their identity-mapped virtual address (boot tables map phys x → virt x).
     pt::uintptr_t pml4_frame = vmm.allocate_frame();
+    klog("[TASK] Per-task PML4 frame: phys=%lx (kernel_cr3=%lx)\n", pml4_frame, kernel_cr3);
     memcpy(reinterpret_cast<void*>(pml4_frame),
            reinterpret_cast<void*>(kernel_cr3),
            4096);
+
+    // Verify the copy: PML4[0] covers VA 0x0-0x7FFFFFFF (identity map, user-accessible)
+    // PML4[256] covers VA 0xFFFF800000000000+ (higher-half kernel alias)
+    pt::uint64_t* pml4 = reinterpret_cast<pt::uint64_t*>(pml4_frame);
+    klog("[TASK] Cloned PML4[0]=%lx PML4[256]=%lx\n", pml4[0], pml4[256]);
 
     new_task->id = task_id;
     new_task->state = TASK_READY;
@@ -105,8 +117,37 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->ticks_alive = 0;
     new_task->cr3 = pml4_frame;
     new_task->user_mode = user_mode;
+    new_task->user_stack_base = 0;
 
-    // Build a synthetic PUSHALL + iretq frame on the task's stack so it can
+    // For ring-3 tasks, allocate a separate user execution stack.
+    //
+    // The kernel_stack is used exclusively as the interrupt/syscall stack
+    // (TSS RSP0).  When an int fires the CPU pushes an interrupt frame below
+    // RSP0, then the handler saves all registers via PUSHALL.  If user code
+    // were also running with RSP inside that same region the interrupt frame
+    // would silently overwrite saved return addresses and locals, causing the
+    // corrupted-stack crash observed when any syscall is made from C code.
+    //
+    // Keeping the two stacks in separate allocations eliminates the collision:
+    //   kernel_stack → used only during ring-3 → ring-0 transitions (TSS RSP0)
+    //   user_stack   → used only by ring-3 C/asm code (call, ret, push, pop)
+    pt::uint64_t user_rsp;
+    if (user_mode) {
+        void* user_stack_mem = vmm.kmalloc(USER_STACK_SIZE);
+        if (user_stack_mem == nullptr)
+        {
+            klog("[SCHEDULER] Failed to allocate user stack for task\n");
+            vmm.kfree(stack_mem);
+            vmm.free_frame(pml4_frame);
+            return 0xFFFFFFFF;
+        }
+        new_task->user_stack_base = (pt::uintptr_t)user_stack_mem;
+        user_rsp = (pt::uint64_t)((pt::uint8_t*)user_stack_mem + USER_STACK_SIZE);
+    } else {
+        user_rsp = (pt::uint64_t)((pt::uint8_t*)stack_mem + stack_size);
+    }
+
+    // Build a synthetic PUSHALL + iretq frame on the KERNEL stack so it can
     // be started by the exact same POPALL/iretq path used for any resumed task.
     //
     // Stack layout (low addr = top of stack after all pushes):
@@ -117,19 +158,18 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     // POPALL pop order (reverse): r15 first → rax last
     //
     pt::uint64_t* stack = (pt::uint64_t*)((pt::uint8_t*)stack_mem + stack_size);
-    const pt::uint64_t stack_top = (pt::uint64_t)((pt::uint8_t*)stack_mem + stack_size);
 
     // iretq frame — segments depend on target privilege level.
     // Ring-0: CS=0x08 (kernel code), SS=0x10 (kernel data)
     // Ring-3: CS=0x1B (user code | RPL3), SS=0x23 (user data | RPL3)
     if (user_mode) {
         *(--stack) = 0x23;               // SS  (user data, DPL=3)
-        *(--stack) = stack_top;          // RSP
+        *(--stack) = user_rsp;           // RSP (top of separate user stack)
         *(--stack) = 0x202;              // RFLAGS (IF=1)
         *(--stack) = 0x1B;               // CS  (user code, DPL=3)
     } else {
         *(--stack) = 0x10;               // SS  (kernel data)
-        *(--stack) = stack_top;          // RSP
+        *(--stack) = user_rsp;           // RSP (top of kernel stack)
         *(--stack) = 0x202;              // RFLAGS (IF=1)
         *(--stack) = 0x08;               // CS  (kernel code)
     }
@@ -143,8 +183,8 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->preempt_rsp = (pt::uintptr_t)stack;
 
     task_count++;
-    klog("[SCHEDULER] Created task %d, stack at %x, entry at %x\n",
-         task_id, new_task->kernel_stack_base, entry_fn);
+    klog("[SCHEDULER] Created task %d, kstack=%lx user_rsp=%lx entry=%lx\n",
+         task_id, new_task->kernel_stack_base, user_rsp, (pt::uint64_t)entry_fn);
 
     return task_id;
 }
@@ -208,8 +248,14 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
     // Switch to the new task's address space.
     // All cloned PML4s share the same kernel (higher-half) mappings so
     // kernel code and stack remain accessible after the CR3 write.
-    if (tasks[next_id].cr3 != 0)
+    if (tasks[next_id].cr3 != 0) {
+        // Verify the PML4 is still intact before loading it
+        pt::uint64_t* pml4 = reinterpret_cast<pt::uint64_t*>(tasks[next_id].cr3);
+        if (tasks[next_id].user_mode)
+            klog("[SCHED] Loading CR3=%lx for task %d: PML4[0]=%lx PML4[256]=%lx\n",
+                 tasks[next_id].cr3, next_id, pml4[0], pml4[256]);
         asm volatile("mov cr3, %0" : : "r"(tasks[next_id].cr3) : "memory");
+    }
 
     return tasks[next_id].preempt_rsp;
 }
@@ -250,6 +296,45 @@ void TaskScheduler::task_yield()
     asm volatile("int 0x81");
 }
 
+void TaskScheduler::kill_user_tasks()
+{
+    for (pt::uint32_t i = 1; i < MAX_TASKS; i++)
+    {
+        Task* t = &tasks[i];
+        if (t->state == TASK_DEAD || !t->user_mode)
+            continue;
+
+        klog("[SCHEDULER] kill_user_tasks: killing task %d\n", i);
+
+        // Close any open file descriptors.
+        for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++) {
+            if (t->fd_table[fd].open)
+                FAT12::close_file(&t->fd_table[fd]);
+        }
+
+        // Free user execution stack.
+        if (t->user_stack_base != 0) {
+            vmm.kfree(reinterpret_cast<void*>(t->user_stack_base));
+            t->user_stack_base = 0;
+        }
+
+        // Free kernel interrupt stack.
+        if (t->kernel_stack_base != 0) {
+            vmm.kfree(reinterpret_cast<void*>(t->kernel_stack_base));
+            t->kernel_stack_base = 0;
+        }
+
+        // Free per-task PML4 frame.
+        if (t->cr3 != 0 && t->cr3 != kernel_cr3) {
+            vmm.free_frame(t->cr3);
+            t->cr3 = 0;
+        }
+
+        t->state = TASK_DEAD;
+        task_count--;
+    }
+}
+
 void TaskScheduler::task_exit()
 {
     Task* current = get_current_task();
@@ -260,6 +345,13 @@ void TaskScheduler::task_exit()
         for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
             if (current->fd_table[i].open)
                 FAT12::close_file(&current->fd_table[i]);
+        }
+        // Free the user execution stack eagerly (safe here; we're about to
+        // switch away and will never return to user_rsp).
+        if (current->user_stack_base != 0)
+        {
+            vmm.kfree((void*)current->user_stack_base);
+            current->user_stack_base = 0;
         }
         current->state = TASK_DEAD;
         task_count--;

@@ -250,11 +250,34 @@ ASMCALL void isr13_handler()
 	kernel_panic("General protection fault", 13);
 }
 
-ASMCALL void isr14_handler()
+ASMCALL void isr14_handler(pt::uintptr_t frame)
 {
 	pt::uintptr_t cr2;
 	asm __volatile__("mov %%cr2, %0" : "=r"(cr2));
-	klog("[PAGE FAULT] Faulting address: %x\n", cr2);
+	pt::uint64_t err_code = *reinterpret_cast<pt::uint64_t*>(frame + 112);
+	pt::uint64_t user_rip = *reinterpret_cast<pt::uint64_t*>(frame + 120);
+	pt::uint64_t user_rsp = *reinterpret_cast<pt::uint64_t*>(frame + 144);
+	pt::uint64_t user_rbp = *reinterpret_cast<pt::uint64_t*>(frame + 80);
+	pt::uint64_t user_rdi = *reinterpret_cast<pt::uint64_t*>(frame + 64);
+	pt::uint64_t user_rsi = *reinterpret_cast<pt::uint64_t*>(frame + 72);
+	pt::uint64_t user_rdx = *reinterpret_cast<pt::uint64_t*>(frame + 88);
+	pt::uint64_t user_rcx = *reinterpret_cast<pt::uint64_t*>(frame + 96);
+	pt::uint64_t user_rbx = *reinterpret_cast<pt::uint64_t*>(frame + 104);
+	klog("[PAGE FAULT] cr2=%lx errcode=%lx RIP=%lx RSP=%lx\n", cr2, err_code, user_rip, user_rsp);
+	klog("[PAGE FAULT] rbp=%lx rbx=%lx\n", user_rbp, user_rbx);
+	klog("[PAGE FAULT] rdi=%lx rsi=%lx rdx=%lx rcx=%lx\n", user_rdi, user_rsi, user_rdx, user_rcx);
+
+	// Dump raw stack contents to see what user code was doing
+	klog("[PAGE FAULT] Stack dump around RSP:\n");
+	for (int i = -2; i <= 8; i++) {
+		pt::uint64_t addr = user_rsp + (pt::uint64_t)(i * 8);
+		// Only dump if in a plausible user/kernel region
+		if (addr > 0x1000 && addr < 0xFFFFFFFFFFFFFF00ULL) {
+			pt::uint64_t val = *reinterpret_cast<pt::uint64_t*>(addr);
+			klog("  [RSP%+d] %lx = %lx\n", i * 8, addr, val);
+		}
+	}
+
 	kernel_panic("Page fault", 14);
 }
 
