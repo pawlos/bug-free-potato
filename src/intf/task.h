@@ -1,5 +1,6 @@
 #pragma once
 #include "defs.h"
+#include "fat12.h"
 
 // Task states
 enum TaskState {
@@ -33,6 +34,8 @@ struct TaskContext {
 
 // Task control block
 struct Task {
+    static constexpr pt::size_t MAX_FDS = 8;
+
     pt::uint32_t id;
     TaskState state;
     TaskContext context;        // legacy; kept for padding / future use
@@ -48,6 +51,8 @@ struct Task {
     // True if this task runs at CPL=3 (ring-3). The synthetic iretq frame
     // uses user CS=0x1B / SS=0x23 and TSS.RSP0 is updated on every switch.
     bool user_mode;
+    // Per-task open file descriptors.  slot.open==false means free.
+    FAT12_File fd_table[MAX_FDS];
 };
 
 class TaskScheduler {

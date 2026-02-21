@@ -2,6 +2,7 @@
 #include "kernel.h"
 #include "virtual.h"
 #include "tss.h"
+#include "fat12.h"
 
 // Static member initialization
 Task TaskScheduler::tasks[MAX_TASKS];
@@ -78,6 +79,10 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         vmm.free_frame(new_task->cr3);
         new_task->cr3 = 0;
     }
+
+    // Reset per-task file descriptor table for this slot.
+    for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+        new_task->fd_table[i].open = false;
 
     void* stack_mem = vmm.kmalloc(stack_size);
     if (stack_mem == nullptr)
@@ -251,6 +256,11 @@ void TaskScheduler::task_exit()
     if (current != nullptr)
     {
         klog("[SCHEDULER] Task %d exiting\n", current->id);
+        // Close any file descriptors left open by this task.
+        for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
+            if (current->fd_table[i].open)
+                FAT12::close_file(&current->fd_table[i]);
+        }
         current->state = TASK_DEAD;
         task_count--;
         // Stack is freed lazily in create_task() when this slot is reused.

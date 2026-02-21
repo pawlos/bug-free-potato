@@ -343,10 +343,6 @@ ASMCALL void isr31_handler()
 	kernel_panic("Reserved exception 31", 31);
 }
 
-// Kernel-side file descriptor table (max 8 concurrent open files).
-static constexpr int MAX_FDS = 8;
-static FAT12_File fd_table[MAX_FDS];  // zero-initialised; open==false means free
-
 ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
                                       pt::uint64_t arg2, pt::uint64_t arg3,
                                       pt::uint64_t arg4, pt::uint64_t arg5)
@@ -367,16 +363,17 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		}
 		case SYS_OPEN: {
 			const char* filename = reinterpret_cast<const char*>(arg1);
-			// Find a free fd slot
+			Task* t = TaskScheduler::get_current_task();
+			// Find a free fd slot in the current task's table
 			int fd = -1;
-			for (int i = 0; i < MAX_FDS; i++) {
-				if (!fd_table[i].open) { fd = i; break; }
+			for (int i = 0; i < (int)Task::MAX_FDS; i++) {
+				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
 				klog("syscall: SYS_OPEN: no free fd\n");
 				return (pt::uint64_t)-1;
 			}
-			if (!FAT12::open_file(filename, &fd_table[fd])) {
+			if (!FAT12::open_file(filename, &t->fd_table[fd])) {
 				klog("syscall: SYS_OPEN: '%s' not found\n", filename);
 				return (pt::uint64_t)-1;
 			}
@@ -387,15 +384,17 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			int fd = (int)(pt::int8_t)arg1;  // treat as signed to catch negative fds
 			void* buf   = reinterpret_cast<void*>(arg2);
 			pt::uint32_t count = (pt::uint32_t)arg3;
-			if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].open)
+			Task* t = TaskScheduler::get_current_task();
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
 				return (pt::uint64_t)-1;
-			return (pt::uint64_t)FAT12::read_file(&fd_table[fd], buf, count);
+			return (pt::uint64_t)FAT12::read_file(&t->fd_table[fd], buf, count);
 		}
 		case SYS_CLOSE: {
 			int fd = (int)(pt::int8_t)arg1;
-			if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].open)
+			Task* t = TaskScheduler::get_current_task();
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
 				return (pt::uint64_t)-1;
-			FAT12::close_file(&fd_table[fd]);
+			FAT12::close_file(&t->fd_table[fd]);
 			klog("syscall: SYS_CLOSE: fd %d\n", fd);
 			return 0;
 		}
