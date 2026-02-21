@@ -7,7 +7,7 @@
 #include "timer.h"
 #include "pci.h"
 #include "disk.h"
-#include "fat12.h"
+#include "vfs.h"
 #include "ac97.h"
 #include "acpi.h"
 #include "task.h"
@@ -251,7 +251,7 @@ void Shell::execute_history(const char* cmd) {
 }
 
 void Shell::execute_ls(const char* cmd) {
-    FAT12::list_root_directory();
+    VFS::list_root_directory();
 }
 
 void Shell::execute_disk(const char* cmd) {
@@ -271,18 +271,18 @@ void Shell::execute_play(const char* cmd) {
     } else if (!AC97::is_present()) {
         klog("AC97 audio not available\n");
     } else {
-        FAT12_File file;
-        if (FAT12::open_file(filename, &file)) {
+        File file;
+        if (VFS::open_file(filename, &file)) {
             klog("Playing: %s (%d bytes)\n", file.filename, file.file_size);
             pt::uint8_t* buf = (pt::uint8_t*)vmm.kmalloc(file.file_size);
             if (buf) {
-                pt::uint32_t bytes_read = FAT12::read_file(&file, buf, file.file_size);
+                pt::uint32_t bytes_read = VFS::read_file(&file, buf, file.file_size);
                 AC97::play_pcm(buf, bytes_read, 48000);
                 // Wait for DMA to finish before freeing the buffer
                 while (AC97::is_playing()) { /* spin */ }
                 vmm.kfree(buf);
             }
-            FAT12::close_file(&file);
+            VFS::close_file(&file);
         } else {
             klog("File not found: %s\n", filename);
         }
@@ -295,17 +295,17 @@ void Shell::execute_cat(const char* cmd) {
     if (filename[0] == '\0') {
         klog("Usage: cat <filename>\n");
     } else {
-        FAT12_File file;
-        if (FAT12::open_file(filename, &file)) {
+        File file;
+        if (VFS::open_file(filename, &file)) {
             klog("File: %s (%d bytes)\n", file.filename, file.file_size);
             char* buffer = (char*)vmm.kmalloc(file.file_size + 1);
             if (buffer) {
-                pt::uint32_t bytes_read = FAT12::read_file(&file, buffer, file.file_size);
+                pt::uint32_t bytes_read = VFS::read_file(&file, buffer, file.file_size);
                 buffer[bytes_read] = '\0';
                 klog("Contents:\n%s\n", buffer);
                 vmm.kfree(buffer);
             }
-            FAT12::close_file(&file);
+            VFS::close_file(&file);
         } else {
             klog("File not found: %s\n", filename);
         }
@@ -405,10 +405,10 @@ void Shell::execute_write(const char* cmd) {
     pt::uint32_t len = 0;
     while (content[len]) len++;
 
-    if (FAT12::create_file(filename, (const pt::uint8_t*)content, len)) {
+    if (VFS::create_file(filename, (const pt::uint8_t*)content, len)) {
         klog("Created file '%s' (%d bytes)\n", filename, len);
     } else {
-        if (FAT12::file_exists(filename)) {
+        if (VFS::file_exists(filename)) {
             klog("Error: file already exists\n");
         } else {
             klog("Error: disk full or write failed\n");
@@ -438,7 +438,7 @@ void Shell::execute_rm(const char* cmd) {
         klog("Usage: rm <filename>\n");
         return;
     }
-    if (FAT12::delete_file(filename)) {
+    if (VFS::delete_file(filename)) {
         klog("Deleted '%s'\n", filename);
     } else {
         klog("Error: file not found or delete failed\n");

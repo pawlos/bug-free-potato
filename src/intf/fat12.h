@@ -1,6 +1,7 @@
 #pragma once
 
 #include "defs.h"
+#include "vfs.h"
 
 // FAT12 Filesystem structures and API
 
@@ -45,50 +46,46 @@ struct __attribute__((packed)) FAT12_DirEntry {
     pt::uint32_t file_size;
 };
 
-// File handle for open files
-struct FAT12_File {
-    char filename[13];  // 8.3 + null terminator
-    pt::uint32_t file_size;
-    pt::uint32_t current_position;
+// FAT12-private state stored in File::fs_data
+struct FAT12State {
     pt::uint16_t current_cluster;
     pt::uint32_t start_sector;
-    pt::uint8_t  buffer[512];
-    bool open;
 };
+static_assert(sizeof(FAT12State) <= 32, "FAT12State overflows fs_data");
 
-class FAT12 {
+class FAT12 : public Filesystem {
 public:
-    static bool initialize();
-    static bool open_file(const char* filename, FAT12_File* file);
-    static pt::uint32_t read_file(FAT12_File* file, void* buffer, pt::uint32_t bytes_to_read);
-    static void close_file(FAT12_File* file);
-    static bool file_exists(const char* filename);
-    static void list_root_directory();
-    static bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size);
-    static bool delete_file(const char* filename);
+    bool mount() override;
+    bool open_file(const char* filename, File* file) override;
+    pt::uint32_t read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) override;
+    void close_file(File* file) override;
+    bool file_exists(const char* filename) override;
+    void list_root_directory() override;
+    bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) override;
+    bool delete_file(const char* filename) override;
 
     // Filesystem info getters
-    static pt::uint32_t get_bytes_per_cluster();
-    static pt::uint32_t get_free_space();
-    static pt::uint32_t get_total_space();
+    pt::uint32_t get_bytes_per_cluster() override;
+    pt::uint32_t get_free_space() override;
+    pt::uint32_t get_total_space() override;
 
 private:
-    static bool read_bpb();
-    static bool read_fat();
-    static pt::uint16_t get_next_cluster(pt::uint16_t cluster);
-    static pt::uint32_t cluster_to_sector(pt::uint16_t cluster);
-    static bool compare_filename(const FAT12_DirEntry* entry, const char* filename);
-    static void format_filename(const char* input, char* output);
-    static pt::uint16_t find_free_cluster(pt::uint16_t start_from);
-    static void set_fat_entry(pt::uint16_t cluster, pt::uint16_t value);
-    static bool flush_fat();
-    
-    static FAT12_BPB bpb;
-    static pt::uint8_t* fat_table;
-    static pt::uint32_t fat_start_sector;
-    static pt::uint32_t root_dir_start_sector;
-    static pt::uint32_t data_start_sector;
-    static pt::uint32_t root_dir_sectors;
-    static pt::uint32_t total_clusters;
-    static bool mounted;
+    bool read_bpb();
+    bool read_fat();
+    pt::uint16_t get_next_cluster(pt::uint16_t cluster);
+    pt::uint32_t cluster_to_sector(pt::uint16_t cluster);
+    bool compare_filename(const FAT12_DirEntry* entry, const char* filename);
+    void format_filename(const char* input, char* output);
+    pt::uint16_t find_free_cluster(pt::uint16_t start_from);
+    void set_fat_entry(pt::uint16_t cluster, pt::uint16_t value);
+    bool flush_fat();
+
+    FAT12_BPB bpb;
+    pt::uint8_t* fat_table = nullptr;
+    pt::uint32_t fat_start_sector = 0;
+    pt::uint32_t root_dir_start_sector = 0;
+    pt::uint32_t data_start_sector = 0;
+    pt::uint32_t root_dir_sectors = 0;
+    pt::uint32_t total_clusters = 0;
+    bool mounted = false;
 };

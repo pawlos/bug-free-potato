@@ -1,12 +1,12 @@
 #include "elf.h"
 #include "elf_loader.h"
-#include "fat12.h"
+#include "vfs.h"
 #include "virtual.h"
 #include "kernel.h"
 
 pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
-    FAT12_File file;
-    if (!FAT12::open_file(filename, &file)) {
+    File file;
+    if (!VFS::open_file(filename, &file)) {
         klog("[ELF] File not found: %s\n", filename);
         return 0;
     }
@@ -14,7 +14,7 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
     pt::uint32_t file_size = file.file_size;
     if (file_size == 0) {
         klog("[ELF] File is empty: %s\n", filename);
-        FAT12::close_file(&file);
+        VFS::close_file(&file);
         return 0;
     }
 
@@ -22,12 +22,12 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
     pt::uint8_t* buf = static_cast<pt::uint8_t*>(vmm.kmalloc(file_size));
     if (!buf) {
         klog("[ELF] Failed to allocate buffer for file\n");
-        FAT12::close_file(&file);
+        VFS::close_file(&file);
         return 0;
     }
 
-    pt::uint32_t bytes_read = FAT12::read_file(&file, buf, file_size);
-    FAT12::close_file(&file);
+    pt::uint32_t bytes_read = VFS::read_file(&file, buf, file_size);
+    VFS::close_file(&file);
 
     if (bytes_read < sizeof(Elf64_Ehdr)) {
         klog("[ELF] File too small to be a valid ELF\n");

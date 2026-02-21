@@ -2,7 +2,7 @@
 #include "kernel.h"
 #include "virtual.h"
 #include "tss.h"
-#include "fat12.h"
+#include "vfs.h"
 #include "elf_loader.h"
 
 // Static member initialization
@@ -337,7 +337,7 @@ void TaskScheduler::kill_user_tasks()
         // Close any open file descriptors.
         for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++) {
             if (t->fd_table[fd].open)
-                FAT12::close_file(&t->fd_table[fd]);
+                VFS::close_file(&t->fd_table[fd]);
         }
 
         // Free user execution stack.
@@ -491,7 +491,7 @@ void TaskScheduler::task_exit()
         // Close any file descriptors left open by this task.
         for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
             if (current->fd_table[i].open)
-                FAT12::close_file(&current->fd_table[i]);
+                VFS::close_file(&current->fd_table[i]);
         }
         // Free the user execution stack eagerly (safe here; we're about to
         // switch away and will never return to user_rsp).

@@ -12,7 +12,7 @@
 #include "line_reader.h"
 #include "task.h"
 #include "disk.h"
-#include "fat12.h"
+#include "vfs.h"
 #include "ac97.h"
 #include "fbterm.h"
 #include "assets.h"
@@ -49,7 +49,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 
     // Storage + assets
     Disk::initialize();
-    if (FAT12::initialize())
+    if (VFS::mount())
         load_assets();
 
     // Audio

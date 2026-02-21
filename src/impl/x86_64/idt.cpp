@@ -1,6 +1,6 @@
 #include "idt.h"
 #include "com.h"
-#include "fat12.h"
+#include "vfs.h"
 #include "fbterm.h"
 #include "framebuffer.h"
 #include "kernel.h"
@@ -396,7 +396,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				klog("syscall: SYS_OPEN: no free fd\n");
 				return (pt::uint64_t)-1;
 			}
-			if (!FAT12::open_file(filename, &t->fd_table[fd])) {
+			if (!VFS::open_file(filename, &t->fd_table[fd])) {
 				klog("syscall: SYS_OPEN: '%s' not found\n", filename);
 				return (pt::uint64_t)-1;
 			}
@@ -410,14 +410,14 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			Task* t = TaskScheduler::get_current_task();
 			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
 				return (pt::uint64_t)-1;
-			return (pt::uint64_t)FAT12::read_file(&t->fd_table[fd], buf, count);
+			return (pt::uint64_t)VFS::read_file(&t->fd_table[fd], buf, count);
 		}
 		case SYS_CLOSE: {
 			int fd = (int)(pt::int8_t)arg1;
 			Task* t = TaskScheduler::get_current_task();
 			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
 				return (pt::uint64_t)-1;
-			FAT12::close_file(&t->fd_table[fd]);
+			VFS::close_file(&t->fd_table[fd]);
 			klog("syscall: SYS_CLOSE: fd %d\n", fd);
 			return 0;
 		}

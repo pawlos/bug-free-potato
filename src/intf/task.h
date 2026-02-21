@@ -1,6 +1,6 @@
 #pragma once
 #include "defs.h"
-#include "fat12.h"
+#include "vfs.h"
 
 // Task states
 enum TaskState {
@@ -58,7 +58,7 @@ struct Task {
     // 0 for kernel-mode tasks.
     pt::uintptr_t user_stack_base;
     // Per-task open file descriptors.  slot.open==false means free.
-    FAT12_File fd_table[MAX_FDS];
+    File fd_table[MAX_FDS];
 
     // Private page-table frames carved out for user ELF code isolation.
     // Each user ELF task gets its own PDPT/PD/PT so that the code region
