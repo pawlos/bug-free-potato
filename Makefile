@@ -59,6 +59,7 @@ clean:
 	-rm -f dist/x86_64/kernel.*
 	-rm -f disk.img
 	-rm -f $(TEST_ELF_OBJ) $(TEST_ELF_BIN)
+	-rm -f $(BLINK_ELF_OBJ) $(BLINK_ELF_BIN)
 
 # Files to copy to disk image from bins folder
 BIN_FILES := $(wildcard src/impl/x86_64/bins/*)
@@ -74,8 +75,19 @@ $(TEST_ELF_OBJ): src/userspace/test.asm
 $(TEST_ELF_BIN): $(TEST_ELF_OBJ) src/userspace/test.ld
 	$(LD) -T src/userspace/test.ld -o $(TEST_ELF_BIN) $(TEST_ELF_OBJ)
 
+# Userspace blink ELF
+BLINK_ELF_OBJ = build/userspace/blink.o
+BLINK_ELF_BIN = src/impl/x86_64/bins/blink.elf
+
+$(BLINK_ELF_OBJ): src/userspace/blink.asm
+	mkdir -p build/userspace
+	$(NASM) -f elf64 -o $(BLINK_ELF_OBJ) src/userspace/blink.asm
+
+$(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
+	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
+
 # Create FAT12 disk image with test files from bins folder
-disk.img: $(BIN_FILES) $(TEST_ELF_BIN)
+disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN)
 	@echo "Creating FAT12 disk image..."
 	@# Create 10MB disk image (large enough for testing)
 	dd if=/dev/zero of=disk.img bs=512 count=20480 2>/dev/null
@@ -88,8 +100,9 @@ disk.img: $(BIN_FILES) $(TEST_ELF_BIN)
 		echo "  Copying $$filename -> $$uppername"; \
 		mcopy -i disk.img $$file ::$$uppername; \
 	done
-	@# Also copy the test ELF explicitly (in case it wasn't in BIN_FILES wildcard)
-	@mcopy -i disk.img $(TEST_ELF_BIN) ::TEST.ELF 2>/dev/null || true
+	@# Also copy the test/blink ELFs explicitly (in case they weren't in BIN_FILES wildcard)
+	@mcopy -i disk.img $(TEST_ELF_BIN)  ::TEST.ELF  2>/dev/null || true
+	@mcopy -i disk.img $(BLINK_ELF_BIN) ::BLINK.ELF 2>/dev/null || true
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 

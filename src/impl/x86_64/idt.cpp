@@ -1,9 +1,12 @@
 #include "idt.h"
 #include "com.h"
 #include "fat12.h"
+#include "fbterm.h"
+#include "framebuffer.h"
 #include "kernel.h"
 #include "keyboard.h"
 #include "pic.h"
+#include "rtc.h"
 #include "syscall.h"
 #include "task.h"
 #include "timer.h"
@@ -345,7 +348,8 @@ static constexpr int MAX_FDS = 8;
 static FAT12_File fd_table[MAX_FDS];  // zero-initialised; open==false means free
 
 ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
-                                      pt::uint64_t arg2, pt::uint64_t arg3)
+                                      pt::uint64_t arg2, pt::uint64_t arg3,
+                                      pt::uint64_t arg4, pt::uint64_t arg5)
 {
 	switch (nr) {
 		case SYS_WRITE:
@@ -409,6 +413,37 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			vmm.kfree(ptr);
 			klog("syscall: SYS_MUNMAP ptr=%lx\n", (pt::uint64_t)ptr);
 			return 0;
+		}
+		case SYS_YIELD:
+			TaskScheduler::task_yield();
+			return 0;
+		case SYS_GET_TICKS:
+			return (pt::uint64_t)get_ticks();
+		case SYS_GET_TIME: {
+			RTCTime t;
+			rtc_read(&t);
+			return ((pt::uint64_t)t.hours << 8) | t.minutes;
+		}
+		case SYS_FILL_RECT: {
+			Framebuffer* fb = Framebuffer::get_instance();
+			if (!fb) return (pt::uint64_t)-1;
+			pt::uint8_t r = (pt::uint8_t)(arg5 >> 16);
+			pt::uint8_t g = (pt::uint8_t)(arg5 >> 8);
+			pt::uint8_t b = (pt::uint8_t)(arg5);
+			fb->FillRect((pt::uint32_t)arg1, (pt::uint32_t)arg2,
+			             (pt::uint32_t)arg3, (pt::uint32_t)arg4, r, g, b);
+			return 0;
+		}
+		case SYS_DRAW_TEXT:
+			if (fbterm.is_ready())
+				fbterm.draw_at((pt::uint32_t)arg1, (pt::uint32_t)arg2,
+				               reinterpret_cast<const char*>(arg3),
+				               (pt::uint32_t)arg4, (pt::uint32_t)arg5);
+			return 0;
+		case SYS_FB_WIDTH: {
+			Framebuffer* fb = Framebuffer::get_instance();
+			pt::uint64_t w = fb ? (pt::uint64_t)fb->get_width() : 0;
+			return w;
 		}
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);

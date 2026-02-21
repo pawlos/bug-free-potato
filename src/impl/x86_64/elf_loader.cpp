@@ -4,14 +4,6 @@
 #include "virtual.h"
 #include "kernel.h"
 
-static pt::uintptr_t page_align_down(pt::uintptr_t addr) {
-    return addr & ~(ELF_PAGE_SIZE - 1);
-}
-
-static pt::uintptr_t page_align_up(pt::uintptr_t addr) {
-    return (addr + ELF_PAGE_SIZE - 1) & ~(ELF_PAGE_SIZE - 1);
-}
-
 pt::uintptr_t ElfLoader::load(const char* filename) {
     FAT12_File file;
     if (!FAT12::open_file(filename, &file)) {
@@ -71,22 +63,11 @@ pt::uintptr_t ElfLoader::load(const char* filename) {
             continue;
         }
 
-        pt::uintptr_t vaddr_start = page_align_down(phdr->p_vaddr);
-        pt::uintptr_t vaddr_end   = page_align_up(phdr->p_vaddr + phdr->p_memsz);
-
         klog("[ELF] PT_LOAD: vaddr=%x filesz=%d memsz=%d\n",
              phdr->p_vaddr, (int)phdr->p_filesz, (int)phdr->p_memsz);
 
-        // Map pages for this segment
-        for (pt::uintptr_t va = vaddr_start; va < vaddr_end; va += ELF_PAGE_SIZE) {
-            pt::uintptr_t frame = vmm.allocate_frame();
-            if (frame == 0) {
-                klog("[ELF] Out of physical frames\n");
-                vmm.kfree(buf);
-                return 0;
-            }
-            vmm.map_page(va, frame, 0x03);  // present + writable
-        }
+        // Boot 2MB superpages already map all higher-half VA up to 4GB with RWU flags,
+        // so the segment VA is already accessible — no new mapping needed.
 
         // Copy file data to virtual address
         pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(phdr->p_vaddr);
