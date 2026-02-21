@@ -9,3 +9,4 @@ constexpr pt::uint8_t L_CTRL = 0x1D;
 constexpr pt::uint8_t CAPSLOCK = 0x3A;
 
 void keyboard_routine(pt::uint8_t scancode);
+char get_char();

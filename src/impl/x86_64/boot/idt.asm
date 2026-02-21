@@ -100,11 +100,15 @@ GLOBAL _int_yield_stub
 [extern syscall_handler]
 _syscall_stub:
     PUSHALL
-    ; registers still hold caller's values after PUSHALL
-    mov rdx, rsi    ; arg2: original rsi  (must come first — saves rsi before overwrite)
-    mov rsi, rdi    ; arg1: original rdi
-    mov rdi, rax    ; nr:   original rax (syscall number)
+    ; Caller's registers are still live after PUSHALL (saved above us on the stack).
+    ; Shuffle into C calling convention: rdi=nr, rsi=arg1, rdx=arg2
+    mov rdx, rsi    ; arg2 = original rsi (save before overwrite)
+    mov rsi, rdi    ; arg1 = original rdi
+    mov rdi, rax    ; nr   = original rax (syscall number)
     call syscall_handler
+    ; Write return value (rax) into the saved-rax slot so POPALL restores it.
+    ; PUSHALL pushed rax first, so it sits at the highest address: rsp+112.
+    mov [rsp + 112], rax
     POPALL
     iretq
 GLOBAL _syscall_stub

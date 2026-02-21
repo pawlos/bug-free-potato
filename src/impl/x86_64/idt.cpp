@@ -1,6 +1,7 @@
 #include "idt.h"
 #include "com.h"
 #include "kernel.h"
+#include "keyboard.h"
 #include "pic.h"
 #include "syscall.h"
 #include "task.h"
@@ -335,17 +336,24 @@ ASMCALL void isr31_handler()
 	kernel_panic("Reserved exception 31", 31);
 }
 
-ASMCALL void syscall_handler(pt::uint64_t nr, pt::uint64_t arg1, pt::uint64_t /*arg2*/)
+ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1, pt::uint64_t /*arg2*/)
 {
 	switch (nr) {
 		case SYS_WRITE:
 			klog("%s", reinterpret_cast<const char*>(arg1));
-			break;
+			return 0;
 		case SYS_EXIT:
 			TaskScheduler::task_exit();
-			break;
+			return 0;
+		case SYS_READ_KEY: {
+			const char c = get_char();
+			// get_char() returns -1 (as char) when no key is available.
+			if (c == -1)
+				return (pt::uint64_t)-1;
+			return (pt::uint64_t)(pt::uint8_t)c;
+		}
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
-			break;
+			return (pt::uint64_t)-1;
 	}
 }
