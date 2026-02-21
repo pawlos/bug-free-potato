@@ -59,6 +59,15 @@ struct Task {
     pt::uintptr_t user_stack_base;
     // Per-task open file descriptors.  slot.open==false means free.
     FAT12_File fd_table[MAX_FDS];
+
+    // Private page-table frames carved out for user ELF code isolation.
+    // Each user ELF task gets its own PDPT/PD/PT so that the code region
+    // (0xFFFF800018000000) maps to task-private physical frames, allowing
+    // multiple ELF tasks to run concurrently without overwriting each other.
+    // All three are 0 for kernel tasks or tasks created without create_elf_task.
+    pt::uintptr_t priv_pdpt;   // physical addr of private PDPT frame (or 0)
+    pt::uintptr_t priv_pd;     // physical addr of private PD frame   (or 0)
+    pt::uintptr_t priv_pt;     // physical addr of private PT frame   (or 0)
 };
 
 class TaskScheduler {
@@ -96,6 +105,11 @@ public:
 
     // Mark task as dead and switch away
     static void task_exit();
+
+    // Load an ELF file and start it as a new user-mode task with private
+    // page-table frames so it can coexist with other running ELF tasks.
+    // Returns the new task ID, or 0xFFFFFFFF on failure.
+    static pt::uint32_t create_elf_task(const char* filename);
 
     // Kill all user-mode tasks (used by exec before loading a new ELF).
     // Resources are freed immediately; the caller must not be a user task.

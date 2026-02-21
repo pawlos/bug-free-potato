@@ -16,7 +16,6 @@
 #include "ac97.h"
 #include "fbterm.h"
 #include "assets.h"
-#include "elf_loader.h"
 #include "tss.h"
 
 extern char get_char();
@@ -78,12 +77,8 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
         else
             klog("[MAIN] Framebuffer terminal init failed\n");
     }
-    pt::uintptr_t blink_entry = ElfLoader::load("BLINK.ELF");
-    if (blink_entry != 0) {
-        TaskScheduler::create_task(reinterpret_cast<void(*)()>(blink_entry),
-                                   TaskScheduler::TASK_STACK_SIZE, true);
-    } else
-        klog("[MAIN] BLINK.ELF not found, skipping clock task\n");
+    if (TaskScheduler::create_elf_task("BLINK.ELF") == 0xFFFFFFFF)
+        klog("[MAIN] BLINK.ELF not found or failed to start\n");
 
     // Initial UI
     TerminalPrinter terminal;

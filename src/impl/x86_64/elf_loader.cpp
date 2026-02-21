@@ -4,7 +4,7 @@
 #include "virtual.h"
 #include "kernel.h"
 
-pt::uintptr_t ElfLoader::load(const char* filename) {
+pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
     FAT12_File file;
     if (!FAT12::open_file(filename, &file)) {
         klog("[ELF] File not found: %s\n", filename);
@@ -53,8 +53,12 @@ pt::uintptr_t ElfLoader::load(const char* filename) {
     klog("[ELF] Loading '%s', entry=%x, %d program headers\n",
          filename, ehdr->e_entry, (int)ehdr->e_phnum);
 
-    // Walk program headers and load PT_LOAD segments
+    // Walk program headers and load PT_LOAD segments.
+    // Track VA span for out_code_size.
     const pt::uint8_t* phdr_base = buf + ehdr->e_phoff;
+    pt::uintptr_t va_min = ~(pt::uintptr_t)0;
+    pt::uintptr_t va_max = 0;
+
     for (pt::uint16_t i = 0; i < ehdr->e_phnum; i++) {
         const Elf64_Phdr* phdr = reinterpret_cast<const Elf64_Phdr*>(
             phdr_base + i * ehdr->e_phentsize);
@@ -65,6 +69,10 @@ pt::uintptr_t ElfLoader::load(const char* filename) {
 
         klog("[ELF] PT_LOAD: vaddr=%x filesz=%d memsz=%d\n",
              phdr->p_vaddr, (int)phdr->p_filesz, (int)phdr->p_memsz);
+
+        if (phdr->p_vaddr < va_min) va_min = phdr->p_vaddr;
+        pt::uintptr_t seg_end = phdr->p_vaddr + phdr->p_memsz;
+        if (seg_end > va_max) va_max = seg_end;
 
         // Boot 2MB superpages already map all higher-half VA up to 4GB with RWU flags,
         // so the segment VA is already accessible — no new mapping needed.
@@ -80,6 +88,10 @@ pt::uintptr_t ElfLoader::load(const char* filename) {
         for (pt::uint64_t b = phdr->p_filesz; b < phdr->p_memsz; b++) {
             dst[b] = 0;
         }
+    }
+
+    if (out_code_size) {
+        *out_code_size = (va_max > va_min) ? (pt::size_t)(va_max - va_min) : 0;
     }
 
     pt::uintptr_t entry = ehdr->e_entry;
