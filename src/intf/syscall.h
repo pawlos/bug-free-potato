@@ -1,7 +1,7 @@
 #pragma once
 #include "defs.h"
 
-constexpr pt::uint64_t SYS_WRITE    = 0;  // rdi=null-terminated str ptr
+constexpr pt::uint64_t SYS_WRITE    = 0;  // rdi=fd, rsi=buf ptr, rdx=count; fd=1→stdout
 constexpr pt::uint64_t SYS_EXIT     = 1;  // rdi=exit code (ignored for now)
 constexpr pt::uint64_t SYS_READ_KEY = 2;  // returns: char (0-255) or (uint64)-1 if no key
 constexpr pt::uint64_t SYS_OPEN     = 3;  // rdi=filename ptr; returns fd (0-7) or (uint64)-1
@@ -18,3 +18,4 @@ constexpr pt::uint64_t SYS_FB_WIDTH  = 13; // returns framebuffer width
 constexpr pt::uint64_t SYS_FORK     = 14; // clone current task; returns child id (parent) or 0 (child)
 constexpr pt::uint64_t SYS_EXEC     = 15; // rdi=filename ptr; replace image; returns 0 or -1
 constexpr pt::uint64_t SYS_WAITPID  = 16; // rdi=child_id, rsi=exit_code_ptr; returns 0 or -1
+constexpr pt::uint64_t SYS_PIPE     = 17; // rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd; returns 0 or -1

@@ -3,7 +3,27 @@
 #include "virtual.h"
 #include "tss.h"
 #include "vfs.h"
+#include "pipe.h"
 #include "elf_loader.h"
+
+// Close a single file descriptor, dispatching on its type.
+// Handles FILE (VFS), PIPE_RD and PIPE_WR (ref-count, kfree on last close).
+static void close_fd(File* f)
+{
+    if (!f->open) return;
+    if (f->type == FdType::FILE) {
+        VFS::close_file(f);
+    } else {
+        // PIPE_RD or PIPE_WR
+        PipeBuffer* pipe = pipe_get_buf(f->fs_data);
+        if (f->type == FdType::PIPE_WR)
+            pipe->writer_closed = true;
+        pipe->ref_count--;
+        if (pipe->ref_count == 0)
+            vmm.kfree(pipe);
+        f->open = false;
+    }
+}
 
 // Static member initialization
 Task TaskScheduler::tasks[MAX_TASKS];
@@ -351,10 +371,8 @@ void TaskScheduler::kill_user_tasks()
         klog("[SCHEDULER] kill_user_tasks: killing task %d\n", i);
 
         // Close any open file descriptors.
-        for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++) {
-            if (t->fd_table[fd].open)
-                VFS::close_file(&t->fd_table[fd]);
-        }
+        for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
+            close_fd(&t->fd_table[fd]);
 
         // Free user execution stack.
         if (t->user_stack_base != 0) {
@@ -509,10 +527,8 @@ void TaskScheduler::task_exit(int exit_code)
         current->exit_code = exit_code;
 
         // Close any file descriptors left open by this task.
-        for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
-            if (current->fd_table[i].open)
-                VFS::close_file(&current->fd_table[i]);
-        }
+        for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+            close_fd(&current->fd_table[i]);
 
         // Free the user execution stack eagerly (safe here; we're about to
         // switch away and will never return to user_rsp).
@@ -739,6 +755,16 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     // Copy open file descriptors (shallow copy — positions are independent).
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
         child->fd_table[i] = parent->fd_table[i];
+
+    // Increment ref_count for every pipe FD inherited by the child so that
+    // each end is closed independently without premature buffer freeing.
+    for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
+        File* f = &child->fd_table[i];
+        if (f->open && (f->type == FdType::PIPE_RD || f->type == FdType::PIPE_WR)) {
+            PipeBuffer* pipe = pipe_get_buf(f->fs_data);
+            pipe->ref_count++;
+        }
+    }
 
     task_count++;
     klog("[FORK] Forked task %d -> child %d\n", parent->id, child_id);

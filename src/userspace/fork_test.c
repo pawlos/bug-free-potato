@@ -1,4 +1,5 @@
 #include "libc/stdio.h"
+#include "libc/string.h"
 #include "libc/syscall.h"
 
 int main(void)
@@ -25,7 +26,10 @@ int main(void)
     int code = -1;
     long r = sys_waitpid(child, &code);
     /* Immediate raw write — proves iretq returned to user space correctly */
-    sys_write("[fork_test] back in user after waitpid\n");
+    {
+        const char *msg = "[fork_test] back in user after waitpid\n";
+        sys_write(1, msg, strlen(msg));
+    }
     if (r != 0) {
         puts("[fork_test] FAIL: waitpid returned error");
         return 1;

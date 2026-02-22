@@ -334,6 +334,9 @@ void FAT12::list_root_directory() {
                 continue;
             }
 
+            // Skip volume labels and LFN entries (attribute 0x0F has bit 0x08 set).
+            if (entries[e].attributes & 0x08) continue;
+
             char name[13];
             int k = 0;
             for (int i = 0; i < 8 && entries[e].filename[i] != ' '; i++) {

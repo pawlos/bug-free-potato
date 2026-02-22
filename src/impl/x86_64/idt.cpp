@@ -1,5 +1,6 @@
 #include "idt.h"
 #include "com.h"
+#include "pipe.h"
 #include "vfs.h"
 #include "fbterm.h"
 #include "framebuffer.h"
@@ -404,9 +405,39 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 	}
 
 	switch (nr) {
-		case SYS_WRITE:
-			klog("%s", reinterpret_cast<const char*>(arg1));
-			return 0;
+		case SYS_WRITE: {
+			int fd = (int)(pt::int8_t)arg1;
+			const char* buf = reinterpret_cast<const char*>(arg2);
+			pt::uint32_t n  = (pt::uint32_t)arg3;
+			if (fd == 1) {
+				// stdout → framebuffer terminal
+				for (pt::uint32_t i = 0; i < n; i++)
+					fbterm.put_char(buf[i]);
+				return (pt::uint64_t)n;
+			}
+			Task* t = TaskScheduler::get_current_task();
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+				return (pt::uint64_t)-1;
+			{
+				File* f = &t->fd_table[fd];
+				if (f->type == FdType::PIPE_WR) {
+					PipeBuffer* pipe = pipe_get_buf(f->fs_data);
+					pt::uint32_t written = 0;
+					while (written < n) {
+						pt::uint32_t used = pipe->write_pos - pipe->read_pos;
+						if (used < PipeBuffer::CAPACITY) {
+							pipe->data[pipe->write_pos % PipeBuffer::CAPACITY] =
+								(pt::uint8_t)buf[written++];
+							pipe->write_pos++;
+						} else {
+							TaskScheduler::task_yield();
+						}
+					}
+					return (pt::uint64_t)written;
+				}
+			}
+			return (pt::uint64_t)-1;
+		}
 		case SYS_EXIT:
 			TaskScheduler::task_exit((int)arg1);
 			return 0;
@@ -433,24 +464,56 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				klog("syscall: SYS_OPEN: '%s' not found\n", filename);
 				return (pt::uint64_t)-1;
 			}
+			t->fd_table[fd].type = FdType::FILE;
 			klog("syscall: SYS_OPEN: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
 		case SYS_READ: {
 			int fd = (int)(pt::int8_t)arg1;  // treat as signed to catch negative fds
-			void* buf   = reinterpret_cast<void*>(arg2);
+			void* buf        = reinterpret_cast<void*>(arg2);
 			pt::uint32_t count = (pt::uint32_t)arg3;
 			Task* t = TaskScheduler::get_current_task();
 			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
 				return (pt::uint64_t)-1;
-			return (pt::uint64_t)VFS::read_file(&t->fd_table[fd], buf, count);
+			File* f = &t->fd_table[fd];
+			if (f->type == FdType::FILE)
+				return (pt::uint64_t)VFS::read_file(f, buf, count);
+			if (f->type == FdType::PIPE_RD) {
+				PipeBuffer* pipe = pipe_get_buf(f->fs_data);
+				pt::uint32_t nread = 0;
+				pt::uint8_t* dst   = reinterpret_cast<pt::uint8_t*>(buf);
+				while (nread < count) {
+					if (pipe->write_pos != pipe->read_pos) {
+						dst[nread++] = pipe->data[pipe->read_pos % PipeBuffer::CAPACITY];
+						pipe->read_pos++;
+					} else if (pipe->writer_closed) {
+						break;  // EOF
+					} else {
+						TaskScheduler::task_yield();
+					}
+				}
+				return (pt::uint64_t)nread;
+			}
+			return (pt::uint64_t)-1;
 		}
 		case SYS_CLOSE: {
 			int fd = (int)(pt::int8_t)arg1;
 			Task* t = TaskScheduler::get_current_task();
 			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
 				return (pt::uint64_t)-1;
-			VFS::close_file(&t->fd_table[fd]);
+			File* f = &t->fd_table[fd];
+			if (f->type == FdType::FILE) {
+				VFS::close_file(f);
+			} else {
+				// PIPE_RD or PIPE_WR
+				PipeBuffer* pipe = pipe_get_buf(f->fs_data);
+				if (f->type == FdType::PIPE_WR)
+					pipe->writer_closed = true;
+				pipe->ref_count--;
+				if (pipe->ref_count == 0)
+					vmm.kfree(pipe);
+				f->open = false;
+			}
 			klog("syscall: SYS_CLOSE: fd %d\n", fd);
 			return 0;
 		}
@@ -526,6 +589,48 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			     *(pt::uint64_t*)(frame_rsp + 144));
 #endif
 			return wr;
+		}
+
+		case SYS_PIPE: {
+			int* pipefd = reinterpret_cast<int*>(arg1);
+			Task* t = TaskScheduler::get_current_task();
+			// Find two free fd slots.
+			int rd_fd = -1, wr_fd = -1;
+			for (int i = 0; i < (int)Task::MAX_FDS && (rd_fd == -1 || wr_fd == -1); i++) {
+				if (!t->fd_table[i].open) {
+					if (rd_fd == -1) rd_fd = i;
+					else             wr_fd = i;
+				}
+			}
+			if (rd_fd == -1 || wr_fd == -1) {
+				klog("syscall: SYS_PIPE: no free fd slots\n");
+				return (pt::uint64_t)-1;
+			}
+			// Allocate and zero-init a PipeBuffer.
+			PipeBuffer* pipe = reinterpret_cast<PipeBuffer*>(vmm.kcalloc(sizeof(PipeBuffer)));
+			if (!pipe) {
+				klog("syscall: SYS_PIPE: out of memory\n");
+				return (pt::uint64_t)-1;
+			}
+			pipe->ref_count     = 2;
+			pipe->writer_closed = false;
+			pipe->read_pos      = 0;
+			pipe->write_pos     = 0;
+			// Set up read end.
+			File* rd = &t->fd_table[rd_fd];
+			rd->open = true;
+			rd->type = FdType::PIPE_RD;
+			pipe_set_buf(rd->fs_data, pipe);
+			// Set up write end.
+			File* wr = &t->fd_table[wr_fd];
+			wr->open = true;
+			wr->type = FdType::PIPE_WR;
+			pipe_set_buf(wr->fs_data, pipe);
+			// Return fds to caller.
+			pipefd[0] = rd_fd;
+			pipefd[1] = wr_fd;
+			klog("syscall: SYS_PIPE: rd=%d wr=%d\n", rd_fd, wr_fd);
+			return 0;
 		}
 
 		default:

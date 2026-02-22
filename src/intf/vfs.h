@@ -2,6 +2,12 @@
 
 #include "defs.h"
 
+enum class FdType : pt::uint8_t {
+    FILE    = 0,   // FAT12 filesystem file (default; zero-init is correct)
+    PIPE_RD = 1,   // pipe read end
+    PIPE_WR = 2,   // pipe write end
+};
+
 // Generic file handle - replaces FAT12_File everywhere.
 // fs_data is opaque FS-private state (e.g. FAT12State).
 struct File {
@@ -9,6 +15,7 @@ struct File {
     pt::uint32_t file_size;
     pt::uint32_t current_position;
     bool         open;
+    FdType       type;             // FILE, PIPE_RD, or PIPE_WR
     pt::uint8_t  fs_data[32];  // opaque FS-private state
 };
 

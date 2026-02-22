@@ -6,15 +6,16 @@
 
 int putchar(int c)
 {
-    char buf[2] = { (char)c, '\0' };
-    sys_write(buf);
+    char ch = (char)c;
+    sys_write(1, &ch, 1);
     return (unsigned char)c;
 }
 
 int puts(const char *s)
 {
-    sys_write(s);
-    sys_write("\n");
+    size_t len = strlen(s);
+    sys_write(1, s, len);
+    sys_write(1, "\n", 1);
     return 0;
 }
 
@@ -123,6 +124,6 @@ int printf(const char *fmt, ...)
 
     out[pos] = '\0';
     va_end(ap);
-    sys_write(out);
+    sys_write(1, out, (size_t)pos);
     return pos;
 }

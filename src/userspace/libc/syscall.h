@@ -1,7 +1,7 @@
 #pragma once
 
 /* Syscall numbers — must match src/intf/syscall.h in the kernel. */
-#define SYS_WRITE     0   /* rdi = null-terminated string ptr              */
+#define SYS_WRITE     0   /* rdi=fd, rsi=buf ptr, rdx=count; fd=1→stdout  */
 #define SYS_EXIT      1   /* rdi = exit code                               */
 #define SYS_READ_KEY  2   /* returns char (0-255) or (long)-1 if no key    */
 #define SYS_OPEN      3   /* rdi = filename ptr; returns fd or -1          */
@@ -18,6 +18,7 @@
 #define SYS_FORK      14  /* clone task; returns child id (parent) or 0 (child) */
 #define SYS_EXEC      15  /* rdi=filename ptr; replace image; returns 0 or -1   */
 #define SYS_WAITPID   16  /* rdi=child_id, rsi=exit_code_ptr; returns 0 or -1   */
+#define SYS_PIPE      17  /* rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd          */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -72,8 +73,8 @@ static inline long __sc5(long nr, long a1, long a2, long a3, long a4, long a5)
 
 /* ── high-level wrappers ───────────────────────────────────────────────── */
 
-static inline void  sys_write(const char *s)
-    { __sc1(SYS_WRITE, (long)s); }
+static inline long  sys_write(int fd, const void *buf, size_t n)
+    { return __sc3(SYS_WRITE, fd, (long)buf, (long)n); }
 
 static inline void  sys_exit(int code)
     { __sc1(SYS_EXIT, code); }
@@ -122,3 +123,6 @@ static inline long  sys_exec(const char* filename)
 
 static inline long  sys_waitpid(long child_pid, int* exit_code)
     { return __sc2(SYS_WAITPID, child_pid, (long)exit_code); }
+
+static inline long  sys_pipe(int pipefd[2])
+    { return __sc1(SYS_PIPE, (long)pipefd); }

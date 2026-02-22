@@ -63,6 +63,7 @@ clean:
 	-rm -rf build/userspace/libc
 	-rm -f $(LIBC_CRT0) $(LIBC_A) $(HELLO_ELF_BIN)
 	-rm -f $(FORK_TEST_OBJ) $(FORK_TEST_BIN)
+	-rm -f $(PIPE_TEST_OBJ) $(PIPE_TEST_BIN)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -108,6 +109,16 @@ $(FORK_TEST_OBJ): src/userspace/fork_test.c $(LIBC_A)
 $(FORK_TEST_BIN): $(FORK_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(FORK_TEST_OBJ) $(LIBC_A)
 
+# ── pipe test ────────────────────────────────────────────────────────────────
+PIPE_TEST_OBJ = build/userspace/pipe_test.o
+PIPE_TEST_BIN = src/impl/x86_64/bins/pipe_test.elf
+
+$(PIPE_TEST_OBJ): src/userspace/pipe_test.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(PIPE_TEST_BIN): $(PIPE_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PIPE_TEST_OBJ) $(LIBC_A)
+
 # Files to copy to disk image from bins folder
 BIN_FILES := $(wildcard src/impl/x86_64/bins/*)
 
@@ -134,7 +145,7 @@ $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
 # Create FAT12 disk image with test files from bins folder
-disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN)
+disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN)
 	@echo "Creating FAT12 disk image..."
 	@# Create 10MB disk image (large enough for testing)
 	dd if=/dev/zero of=disk.img bs=512 count=20480 2>/dev/null
@@ -152,6 +163,7 @@ disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_
 	@mcopy -i disk.img $(BLINK_ELF_BIN) ::BLINK.ELF 2>/dev/null || true
 	@mcopy -i disk.img $(HELLO_ELF_BIN)      ::HELLO.ELF     2>/dev/null || true
 	@mcopy -i disk.img $(FORK_TEST_BIN)  ::FORK_TEST.ELF 2>/dev/null || true
+	@mcopy -i disk.img $(PIPE_TEST_BIN)  ::PIPE_TEST.ELF 2>/dev/null || true
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 
