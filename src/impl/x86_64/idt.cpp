@@ -12,6 +12,7 @@
 #include "timer.h"
 #include "virtual.h"
 
+extern pt::uintptr_t g_syscall_rsp;
 extern IDT64 _idt[256];
 extern pt::uint64_t isr0;
 extern pt::uint64_t isr1;
@@ -210,8 +211,32 @@ ASMCALL void isr5_handler()
 	kernel_panic("Bound range exceeded", 5);
 }
 
-ASMCALL void isr6_handler()
+ASMCALL void isr6_handler(pt::uint64_t* frame)
 {
+	// frame[15] = faulting RIP (+120), frame[16] = CS (+128)
+	// For ring-3 faults: frame[18] = user RSP (+144), frame[19] = SS (+152)
+	pt::uint64_t rip    = frame[15];
+	pt::uint64_t cs     = frame[16];
+	pt::uint64_t rflags = frame[17];
+	pt::uint64_t rsp    = frame[18];
+	pt::uint64_t ss     = frame[19];
+	pt::uint64_t rbp    = frame[10];  // saved rbp: PUSHALL index 10 (+80)
+	klog("[ISR6] #UD at RIP=%lx CS=%lx RFLAGS=%lx RSP=%lx SS=%lx rbp=%lx (ring-%d)\n",
+	     rip, cs, rflags, rsp, ss, rbp, (int)(cs & 3));
+	// Dump opcodes at the faulting address.
+	const pt::uint8_t* code = reinterpret_cast<const pt::uint8_t*>(rip);
+	klog("[ISR6] opcodes @ RIP: %x %x %x %x %x %x %x %x\n",
+	     (unsigned)code[0], (unsigned)code[1], (unsigned)code[2], (unsigned)code[3],
+	     (unsigned)code[4], (unsigned)code[5], (unsigned)code[6], (unsigned)code[7]);
+	// For ring-3 faults: dump the user stack around RSP so we can see what
+	// ret/pop loaded.  RSP-8 through RSP+40 covers the relevant slots.
+	if (cs & 3) {
+		klog("[ISR6] user stack dump at fault RSP=%lx:\n", rsp);
+		for (int _d = -1; _d <= 5; _d++) {
+			pt::uint64_t addr = rsp + (pt::uint64_t)(_d * 8);
+			klog("[ISR6]   [%lx] = %lx\n", addr, *(pt::uint64_t*)addr);
+		}
+	}
 	kernel_panic("Invalid opcode", 6);
 }
 
@@ -370,12 +395,20 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
                                       pt::uint64_t arg2, pt::uint64_t arg3,
                                       pt::uint64_t arg4, pt::uint64_t arg5)
 {
+	// Snapshot g_syscall_rsp into the current task BEFORE any blocking
+	// operation (e.g. waitpid) can cause another task's SYS_EXIT to
+	// overwrite the global with a different task's kernel stack RSP.
+	{
+		Task* ct = TaskScheduler::get_current_task();
+		if (ct) ct->syscall_frame_rsp = g_syscall_rsp;
+	}
+
 	switch (nr) {
 		case SYS_WRITE:
 			klog("%s", reinterpret_cast<const char*>(arg1));
 			return 0;
 		case SYS_EXIT:
-			TaskScheduler::task_exit();
+			TaskScheduler::task_exit((int)arg1);
 			return 0;
 		case SYS_READ_KEY: {
 			const char c = get_char();
@@ -467,6 +500,34 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			pt::uint64_t w = fb ? (pt::uint64_t)fb->get_width() : 0;
 			return w;
 		}
+		case SYS_FORK: {
+			Task* ct = TaskScheduler::get_current_task();
+			return (pt::uint64_t)TaskScheduler::fork_task(
+				ct ? ct->syscall_frame_rsp : g_syscall_rsp);
+		}
+
+		case SYS_EXEC: {
+			Task* ct = TaskScheduler::get_current_task();
+			pt::uintptr_t frame_rsp = ct ? ct->syscall_frame_rsp : g_syscall_rsp;
+			return TaskScheduler::exec_task(
+				reinterpret_cast<const char*>(arg1), frame_rsp);
+		}
+
+		case SYS_WAITPID: {
+			pt::uint64_t wr = TaskScheduler::waitpid_task(
+				(pt::uint32_t)arg1,
+				reinterpret_cast<int*>(arg2));
+#ifdef FORK_DEBUG
+			Task* ct = TaskScheduler::get_current_task();
+			pt::uintptr_t frame_rsp = ct ? ct->syscall_frame_rsp : g_syscall_rsp;
+			klog("[SYSCALL_DEBUG] SYS_WAITPID -> %llu iretq: RIP=%lx RSP=%lx\n",
+			     wr,
+			     *(pt::uint64_t*)(frame_rsp + 120),
+			     *(pt::uint64_t*)(frame_rsp + 144));
+#endif
+			return wr;
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

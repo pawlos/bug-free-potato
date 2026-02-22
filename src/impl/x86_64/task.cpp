@@ -12,6 +12,10 @@ pt::uint32_t TaskScheduler::current_task_id = 0;
 pt::uint64_t TaskScheduler::scheduler_ticks = 0;
 static pt::uintptr_t kernel_cr3 = 0;  // Boot PML4 physical address
 
+// Kernel RSP captured by _syscall_stub immediately after PUSHALL.
+// Declared extern in task.h and idt.asm.
+pt::uintptr_t g_syscall_rsp = 0;
+
 void TaskScheduler::initialize()
 {
     klog("[SCHEDULER] Initializing task scheduler (max %d tasks)\n", MAX_TASKS);
@@ -30,9 +34,13 @@ void TaskScheduler::initialize()
         tasks[i].cr3 = 0;
         tasks[i].user_mode = false;
         tasks[i].user_stack_base = 0;
-        tasks[i].priv_pdpt = 0;
-        tasks[i].priv_pd   = 0;
-        tasks[i].priv_pt   = 0;
+        tasks[i].priv_pdpt    = 0;
+        tasks[i].priv_pd      = 0;
+        tasks[i].priv_pt      = 0;
+        tasks[i].parent_id        = 0xFFFFFFFF;
+        tasks[i].waiting_for      = 0xFFFFFFFF;
+        tasks[i].exit_code        = 0;
+        tasks[i].syscall_frame_rsp = 0;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
@@ -134,16 +142,20 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     klog("[TASK] Cloned PML4[0]=%lx PML4[256]=%lx\n", pml4[0], pml4[256]);
 
     new_task->id = task_id;
-    new_task->state = TASK_READY;
+    new_task->state = TASK_BLOCKED;  // not schedulable until preempt_rsp is set
     new_task->kernel_stack_base = (pt::uintptr_t)stack_mem;
     new_task->kernel_stack_size = stack_size;
     new_task->ticks_alive = 0;
     new_task->cr3 = pml4_frame;
     new_task->user_mode = user_mode;
     new_task->user_stack_base = 0;
-    new_task->priv_pdpt = 0;
-    new_task->priv_pd   = 0;
-    new_task->priv_pt   = 0;
+    new_task->priv_pdpt    = 0;
+    new_task->priv_pd      = 0;
+    new_task->priv_pt      = 0;
+    new_task->parent_id        = 0xFFFFFFFF;
+    new_task->waiting_for      = 0xFFFFFFFF;
+    new_task->exit_code        = 0;
+    new_task->syscall_frame_rsp = 0;
 
     // For ring-3 tasks, allocate a separate user execution stack.
     //
@@ -207,6 +219,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         *(--stack) = 0;
 
     new_task->preempt_rsp = (pt::uintptr_t)stack;
+    new_task->state = TASK_READY;  // frame is fully built; safe to schedule now
 
     task_count++;
     klog("[SCHEDULER] Created task %d, kstack=%lx user_rsp=%lx entry=%lx\n",
@@ -306,12 +319,15 @@ pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
 
 // Called from yield_schedule (int 0x81 boundary).
 // Always tries to hand off to the next ready task.
+// TASK_BLOCKED tasks are intentionally NOT set to TASK_READY here;
+// they stay blocked until task_exit() of their awaited child unblocks them.
 pt::uintptr_t TaskScheduler::yield_tick(pt::uintptr_t rsp)
 {
     tasks[current_task_id].preempt_rsp = rsp;
 
     if (tasks[current_task_id].state == TASK_RUNNING)
         tasks[current_task_id].state = TASK_READY;
+    // TASK_BLOCKED: leave state unchanged so do_switch_to_next skips this task.
 
     return do_switch_to_next(rsp);
 }
@@ -482,17 +498,22 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     return task_id;
 }
 
-void TaskScheduler::task_exit()
+void TaskScheduler::task_exit(int exit_code)
 {
     Task* current = get_current_task();
     if (current != nullptr)
     {
-        klog("[SCHEDULER] Task %d exiting\n", current->id);
+        klog("[SCHEDULER] Task %d exiting with code %d\n", current->id, (int)exit_code);
+
+        // Store exit code so waitpid_task() can read it.
+        current->exit_code = exit_code;
+
         // Close any file descriptors left open by this task.
         for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
             if (current->fd_table[i].open)
                 VFS::close_file(&current->fd_table[i]);
         }
+
         // Free the user execution stack eagerly (safe here; we're about to
         // switch away and will never return to user_rsp).
         if (current->user_stack_base != 0)
@@ -500,6 +521,17 @@ void TaskScheduler::task_exit()
             vmm.kfree((void*)current->user_stack_base);
             current->user_stack_base = 0;
         }
+
+        // Wake any parent task blocked in waitpid_task() waiting on us.
+        for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+            if (tasks[i].state == TASK_BLOCKED &&
+                tasks[i].waiting_for == current->id) {
+                tasks[i].waiting_for = 0xFFFFFFFF;
+                tasks[i].state = TASK_READY;
+                klog("[SCHEDULER] Unblocked parent task %d\n", i);
+            }
+        }
+
         current->state = TASK_DEAD;
         task_count--;
         // Stack is freed lazily in create_task() when this slot is reused.
@@ -508,4 +540,408 @@ void TaskScheduler::task_exit()
         // Should never reach here; yield_tick won't resume a DEAD task.
         __builtin_unreachable();
     }
+}
+
+// ─── fork_task ────────────────────────────────────────────────────────────────
+//
+// Clone the calling user task into a free task slot.
+// The parent's kernel stack frame (PUSHALL + iretq = 160 bytes) is copied
+// verbatim to the child's kernel stack and patched so that:
+//   - child gets rax=0  (fork returns 0 in the child)
+//   - child gets an adjusted user RSP in the same relative position inside
+//     its own user stack copy
+//
+// Returns the child task ID to the parent.  The child will be scheduled
+// normally; when it runs, POPALL+iretq resumes it at the same user RIP.
+//
+pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
+{
+    if (task_count >= MAX_TASKS) {
+        klog("[FORK] Max tasks reached\n");
+        return (pt::uint32_t)-1;
+    }
+
+    Task* parent = get_current_task();
+    if (!parent || !parent->user_mode) {
+        klog("[FORK] fork from non-user task not supported\n");
+        return (pt::uint32_t)-1;
+    }
+
+    // Find a free slot.
+    Task* child = nullptr;
+    pt::uint32_t child_id = 0xFFFFFFFF;
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        if (tasks[i].state == TASK_DEAD) {
+            child    = &tasks[i];
+            child_id = i;
+            break;
+        }
+    }
+    if (!child) {
+        klog("[FORK] No free task slot\n");
+        return (pt::uint32_t)-1;
+    }
+
+    // Lazy cleanup of previous occupant (mirrors create_task).
+    if (child->kernel_stack_base != 0) {
+        vmm.kfree((void*)child->kernel_stack_base);
+        child->kernel_stack_base = 0;
+    }
+    if (child->user_stack_base != 0) {
+        vmm.kfree((void*)child->user_stack_base);
+        child->user_stack_base = 0;
+    }
+    if (child->cr3 != 0 && child->cr3 != kernel_cr3) {
+        vmm.free_frame(child->cr3);
+        child->cr3 = 0;
+    }
+    if (child->priv_pt != 0) {
+        pt::uint64_t* old_pt = reinterpret_cast<pt::uint64_t*>(child->priv_pt);
+        for (int i = 0; i < 512; i++) {
+            if (old_pt[i] & 0x01)
+                vmm.free_frame(old_pt[i] & ~(pt::uintptr_t)0xFFF);
+        }
+        vmm.free_frame(child->priv_pt);
+        child->priv_pt = 0;
+    }
+    if (child->priv_pd != 0)   { vmm.free_frame(child->priv_pd);   child->priv_pd   = 0; }
+    if (child->priv_pdpt != 0) { vmm.free_frame(child->priv_pdpt); child->priv_pdpt = 0; }
+
+    // ── Allocate child kernel stack ──────────────────────────────────────────
+    void* child_kstack_mem = vmm.kmalloc(TASK_STACK_SIZE);
+    if (!child_kstack_mem) {
+        klog("[FORK] Failed to allocate child kernel stack\n");
+        return (pt::uint32_t)-1;
+    }
+
+    // ── Allocate + copy child user stack ────────────────────────────────────
+    void* child_ustack_mem = vmm.kmalloc(USER_STACK_SIZE);
+    if (!child_ustack_mem) {
+        vmm.kfree(child_kstack_mem);
+        klog("[FORK] Failed to allocate child user stack\n");
+        return (pt::uint32_t)-1;
+    }
+    memcpy(child_ustack_mem, (void*)parent->user_stack_base, USER_STACK_SIZE);
+
+#ifdef FORK_DEBUG
+    klog("[FORK_DEBUG] parent ustack=[%lx, %lx) child kstack=[%lx, %lx) child ustack=[%lx, %lx)\n",
+         parent->user_stack_base, parent->user_stack_base + USER_STACK_SIZE,
+         (pt::uintptr_t)child_kstack_mem, (pt::uintptr_t)child_kstack_mem + TASK_STACK_SIZE,
+         (pt::uintptr_t)child_ustack_mem, (pt::uintptr_t)child_ustack_mem + USER_STACK_SIZE);
+#endif
+
+    // ── Clone PML4 ──────────────────────────────────────────────────────────
+    pt::uintptr_t child_pml4_frame = vmm.allocate_frame();
+    memcpy((void*)child_pml4_frame, (void*)parent->cr3, 4096);
+
+    // ── Deep-copy private ELF code page table frames ─────────────────────
+    pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
+    pt::uintptr_t new_pd_frame   = vmm.allocate_frame();
+    pt::uintptr_t new_pt_frame   = vmm.allocate_frame();
+
+    memcpy((void*)new_pdpt_frame, (void*)parent->priv_pdpt, 4096);
+    memcpy((void*)new_pd_frame,   (void*)parent->priv_pd,   4096);
+
+    pt::uint64_t* parent_pt = reinterpret_cast<pt::uint64_t*>(parent->priv_pt);
+    pt::uint64_t* new_pt    = reinterpret_cast<pt::uint64_t*>(new_pt_frame);
+    for (int i = 0; i < 512; i++) {
+        if (parent_pt[i] & 0x01) {
+            pt::uintptr_t src_frame = parent_pt[i] & ~(pt::uintptr_t)0xFFF;
+            pt::uintptr_t dst_frame = vmm.allocate_frame();
+            memcpy((void*)dst_frame, (void*)src_frame, 4096);
+            new_pt[i] = dst_frame | 0x07;
+        } else {
+            new_pt[i] = 0;
+        }
+    }
+
+    // Wire private page tables in the child.
+    pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
+    pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
+    new_pd[ELF_PD_IDX]          = new_pt_frame   | 0x07;
+    new_pdpt[ELF_PDPT_IDX]      = new_pd_frame   | 0x07;
+    pt::uint64_t* child_pml4    = reinterpret_cast<pt::uint64_t*>(child_pml4_frame);
+    child_pml4[ELF_PML4_IDX]    = new_pdpt_frame  | 0x07;
+
+    // ── Build child kernel stack frame ───────────────────────────────────────
+    // Copy the parent's 160-byte PUSHALL+iretq frame verbatim, then patch it.
+    pt::uint8_t* child_kstack_top =
+        (pt::uint8_t*)child_kstack_mem + TASK_STACK_SIZE - 160;
+    memcpy(child_kstack_top, (void*)syscall_frame_rsp, 160);
+
+    pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(child_kstack_top);
+
+    // frame[14] = rax slot → 0 (fork returns 0 in child)
+    frame[14] = 0;
+
+    // frame[18] = user RSP slot → adjusted into child's user stack copy.
+    pt::uint64_t parent_user_rsp = *(pt::uint64_t*)(syscall_frame_rsp + 144);
+    pt::uint64_t parent_ustack_base = parent->user_stack_base;
+    pt::uint64_t child_ustack_base  = (pt::uint64_t)child_ustack_mem;
+    pt::uint64_t child_user_rsp =
+        child_ustack_base + (parent_user_rsp - parent_ustack_base);
+    frame[18] = child_user_rsp;
+
+    // frame[10] = rbp slot → also needs adjustment, for the same reason as RSP.
+    //
+    // Without this fix the child resumes inside __scN's epilogue with the
+    // PARENT's rbp value.  The first thing __scN does post-int-0x80 is:
+    //   mov [rbp-0x8], rax   (store return value)
+    // which would write into the PARENT's user stack, corrupting e.g. the
+    // call-return address stored there and causing the parent to fault.
+    //
+    // We also walk the entire rbp frame-chain in the child's COPIED user stack
+    // and adjust every saved-rbp slot that still points into the parent's stack
+    // range, translating it to the corresponding child stack address.
+    {
+        const pt::uint64_t delta   = child_ustack_base - parent_ustack_base;
+        const pt::uint64_t stk_bot = parent_ustack_base;
+        const pt::uint64_t stk_top = parent_ustack_base + USER_STACK_SIZE;
+
+        // Fix the PUSHALL-saved rbp register (frame[10] = offset +80).
+        pt::uint64_t cur = frame[10];
+        if (cur >= stk_bot && cur < stk_top)
+            frame[10] = cur + delta;
+
+        // Walk the rbp frame chain in the child's copied user stack.
+        // We iterate using PARENT coordinates so the loop termination is
+        // consistent even after we patch the child's memory.
+        while (cur >= stk_bot && cur < stk_top) {
+            // The slot in the child's user stack that mirrors parent's [cur].
+            pt::uint64_t* slot = reinterpret_cast<pt::uint64_t*>(
+                child_ustack_base + (cur - stk_bot));
+            pt::uint64_t prev = *slot;   // value at parent's [cur] = next rbp
+            if (prev >= stk_bot && prev < stk_top)
+                *slot = prev + delta;    // translate to child coords
+            cur = prev;                  // advance to next frame (parent coords)
+        }
+    }
+
+    // ── Populate child Task struct ────────────────────────────────────────────
+    child->id                = child_id;
+    child->state             = TASK_BLOCKED;  // not schedulable until preempt_rsp is set
+    child->kernel_stack_base = (pt::uintptr_t)child_kstack_mem;
+    child->kernel_stack_size = TASK_STACK_SIZE;
+    child->ticks_alive       = 0;
+    child->preempt_rsp       = (pt::uintptr_t)child_kstack_top;
+    child->state             = TASK_READY;    // frame fully built; safe to schedule now
+    child->cr3               = child_pml4_frame;
+    child->user_mode         = true;
+    child->user_stack_base   = child_ustack_base;
+    child->priv_pdpt         = new_pdpt_frame;
+    child->priv_pd           = new_pd_frame;
+    child->priv_pt           = new_pt_frame;
+    child->parent_id          = parent->id;
+    child->waiting_for        = 0xFFFFFFFF;
+    child->exit_code          = 0;
+    child->syscall_frame_rsp  = 0;
+
+    // Copy open file descriptors (shallow copy — positions are independent).
+    for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+        child->fd_table[i] = parent->fd_table[i];
+
+    task_count++;
+    klog("[FORK] Forked task %d -> child %d\n", parent->id, child_id);
+#ifdef FORK_DEBUG
+    klog("[FORK_DEBUG] child_ustack=%lx child_user_rsp=%lx\n",
+         child_ustack_base, child_user_rsp);
+#endif
+
+    return child_id;
+}
+
+// ─── exec_task ────────────────────────────────────────────────────────────────
+//
+// Replace the current task's ELF image with a new file.
+// Does NOT allocate a new task slot, kernel stack, or user stack.
+// The existing iretq frame on the kernel stack (pointed to by syscall_frame_rsp)
+// is patched in-place so that _syscall_stub's POPALL+iretq jumps to the new
+// entry point with a fresh user RSP.
+//
+pt::uint64_t TaskScheduler::exec_task(const char* filename,
+                                      pt::uintptr_t syscall_frame_rsp)
+{
+    // 'filename' is a pointer into the calling task's private ELF code region
+    // (VA 0xFFFF800018000xxx, e.g. .rodata).  We must copy it to the kernel
+    // stack BEFORE switching CR3, because under kernel_cr3 that VA maps to the
+    // boot staging area, not the task's private frames.
+    char fname_buf[64];
+    {
+        int i = 0;
+        while (i < 63 && filename[i]) { fname_buf[i] = filename[i]; i++; }
+        fname_buf[i] = '\0';
+    }
+
+    Task* current = get_current_task();
+    klog("[EXEC] Task %d: exec '%s'\n", current->id, fname_buf);
+
+    // 1. Load ELF into the staging area.
+    //
+    // Switch to boot PML4 so VA 0xFFFF800018000000 maps to the physical staging
+    // area (phys 0x18000000) rather than this task's private code frames.
+    // Kernel heap and code remain accessible (they're in separate PD entries).
+    // We pass fname_buf (kernel stack) instead of filename (ELF rodata).
+    asm volatile("mov cr3, %0" : : "r"(kernel_cr3) : "memory");
+
+    pt::size_t code_size = 0;
+    pt::uintptr_t entry = ElfLoader::load(fname_buf, &code_size);
+    if (entry == 0) {
+        klog("[EXEC] Failed to load '%s'\n", fname_buf);
+        // Restore task CR3 before returning.
+        asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
+        return (pt::uint64_t)-1;
+    }
+#ifdef FORK_DEBUG
+    klog("[EXEC_DEBUG] Loaded '%s': entry=%lx code_size=%u\n",
+         fname_buf, entry, (unsigned)code_size);
+#endif
+
+    pt::size_t num_frames = (code_size + 4095) / 4096;
+    if (num_frames > 512) {
+        klog("[EXEC] ELF too large (%d pages)\n", (int)num_frames);
+        asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
+        return (pt::uint64_t)-1;
+    }
+
+    // 2. Read boot PDPT/PD to seed the new private tables.
+    pt::uint64_t* kernel_pml4    = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
+    pt::uintptr_t boot_pdpt_phys = kernel_pml4[ELF_PML4_IDX] & ~(pt::uintptr_t)0xFFF;
+    pt::uint64_t* boot_pdpt      = reinterpret_cast<pt::uint64_t*>(boot_pdpt_phys);
+    pt::uintptr_t boot_pd_phys   = boot_pdpt[ELF_PDPT_IDX] & ~(pt::uintptr_t)0xFFF;
+
+    // 3. Allocate new private PDPT, PD, PT; copy boot tables.
+    pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
+    pt::uintptr_t new_pd_frame   = vmm.allocate_frame();
+    pt::uintptr_t new_pt_frame   = vmm.allocate_frame();
+
+    memcpy((void*)new_pdpt_frame, (void*)boot_pdpt_phys, 4096);
+    memcpy((void*)new_pd_frame,   (void*)boot_pd_phys,   4096);
+
+    pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(new_pt_frame);
+    for (int i = 0; i < 512; i++) new_pt[i] = 0;
+
+    // 4. Copy ELF frames from staging area into new private frames.
+    for (pt::size_t i = 0; i < num_frames; i++) {
+        pt::uintptr_t frame = vmm.allocate_frame();
+        memcpy((void*)frame,
+               (void*)(ELF_STAGING_PHYS + i * 4096),
+               4096);
+        new_pt[i] = frame | 0x07;
+    }
+
+    // 5. Wire new page tables.
+    pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
+    pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
+    new_pd[ELF_PD_IDX]          = new_pt_frame   | 0x07;
+    new_pdpt[ELF_PDPT_IDX]      = new_pd_frame   | 0x07;
+
+    // 6. Free old private code frames and page table frames.
+    if (current->priv_pt != 0) {
+        pt::uint64_t* old_pt = reinterpret_cast<pt::uint64_t*>(current->priv_pt);
+        for (int i = 0; i < 512; i++) {
+            if (old_pt[i] & 0x01)
+                vmm.free_frame(old_pt[i] & ~(pt::uintptr_t)0xFFF);
+        }
+        vmm.free_frame(current->priv_pt);
+    }
+    if (current->priv_pd   != 0) vmm.free_frame(current->priv_pd);
+    if (current->priv_pdpt != 0) vmm.free_frame(current->priv_pdpt);
+
+    // 7. Install new private tables into current task and PML4.
+    current->priv_pdpt = new_pdpt_frame;
+    current->priv_pd   = new_pd_frame;
+    current->priv_pt   = new_pt_frame;
+
+    pt::uint64_t* current_pml4    = reinterpret_cast<pt::uint64_t*>(current->cr3);
+    current_pml4[ELF_PML4_IDX]   = new_pdpt_frame | 0x07;
+
+    // 8. New user RSP = top of existing user stack (stack contents discarded).
+    pt::uint64_t new_user_rsp = current->user_stack_base + USER_STACK_SIZE;
+
+    // 9. Patch the live iretq frame in-place so _syscall_stub's iretq jumps
+    //    to the new ELF entry point with a fresh user RSP.
+    pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(syscall_frame_rsp);
+    frame[15] = entry;        // [+120] = new RIP
+    frame[18] = new_user_rsp; // [+144] = new user RSP
+
+    // 10. Switch back to task CR3 (now wired to new private tables) and flush TLB.
+    klog("[EXEC] Task %d: iretq -> %lx\n", current->id, entry);
+    asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
+
+    return 0;
+}
+
+// ─── waitpid_task ─────────────────────────────────────────────────────────────
+//
+// Block the calling task until child (child_id) transitions to TASK_DEAD.
+// Uses int 0x81 (yield) from ring 0 to release the CPU; task_exit() of the
+// child sets TASK_READY on the parent and wakes it back up.
+//
+pt::uint64_t TaskScheduler::waitpid_task(pt::uint32_t child_id,
+                                         int* out_exit_code)
+{
+    if (child_id >= MAX_TASKS) {
+        klog("[WAITPID] Invalid child_id %u\n", child_id);
+        return (pt::uint64_t)-1;
+    }
+
+    Task* child  = &tasks[child_id];
+    Task* parent = get_current_task();
+
+    // Validate child belongs to this parent (skip check for task 0 kernel tasks).
+    if (parent->id != 0 && child->parent_id != parent->id) {
+        klog("[WAITPID] Task %d is not a child of task %d\n", child_id, parent->id);
+        return (pt::uint64_t)-1;
+    }
+
+    // Fast path: child already exited.
+    if (child->state == TASK_DEAD) {
+        if (out_exit_code) *out_exit_code = child->exit_code;
+        return 0;
+    }
+
+    // Slow path: block until child exits.
+    // int 0x81 from ring 0 pushes a ring-0 iretq frame (CS=0x08) and jumps
+    // through _int_yield_stub → yield_tick.  yield_tick sees TASK_BLOCKED and
+    // does NOT reset us to TASK_READY — we stay blocked until task_exit()
+    // of the child sets our state back to TASK_READY.
+    // When the scheduler picks us up again, iretq returns right here (the
+    // instruction after "int 0x81") so the loop re-checks the child state.
+    while (child->state != TASK_DEAD) {
+        parent->waiting_for = child_id;
+        parent->state       = TASK_BLOCKED;
+        asm volatile("int 0x81");
+        // Resumed: either the child exited (task_exit unblocked us) or a
+        // spurious wakeup.  Re-check the condition.
+    }
+
+    if (out_exit_code) *out_exit_code = child->exit_code;
+    klog("[WAITPID] Task %d: child %d exited with code %d\n",
+         parent->id, child_id, (int)child->exit_code);
+
+#ifdef FORK_DEBUG
+    // Diagnostic: dump the REAL iretq frame and user stack contents.
+    // Useful for verifying the parent's return path is not corrupted after fork.
+    pt::uintptr_t real_frame = parent->syscall_frame_rsp;
+    klog("[WAITPID_DEBUG] real_frame=%lx g_syscall_rsp=%lx\n",
+         real_frame, g_syscall_rsp);
+    if (real_frame != 0) {
+        pt::uint64_t user_rsp = *(pt::uint64_t*)(real_frame + 144);
+        klog("[WAITPID_DEBUG] iretq frame: RIP=%lx CS=%lx RFLAGS=%lx RSP=%lx SS=%lx\n",
+             *(pt::uint64_t*)(real_frame + 120),
+             *(pt::uint64_t*)(real_frame + 128),
+             *(pt::uint64_t*)(real_frame + 136),
+             user_rsp,
+             *(pt::uint64_t*)(real_frame + 152));
+        klog("[WAITPID_DEBUG] user stack dump (pre-iretq):\n");
+        for (int _d = -1; _d <= 4; _d++) {
+            pt::uint64_t addr = user_rsp + (pt::uint64_t)(_d * 8);
+            klog("[WAITPID_DEBUG]   [%lx] = %lx%s\n",
+                 addr, *(pt::uint64_t*)addr,
+                 (_d == 0 ? "  <- saved rbp" :
+                  _d == 1 ? "  <- return addr" : ""));
+        }
+    }
+#endif
+    return 0;
 }

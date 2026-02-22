@@ -68,7 +68,24 @@ struct Task {
     pt::uintptr_t priv_pdpt;   // physical addr of private PDPT frame (or 0)
     pt::uintptr_t priv_pd;     // physical addr of private PD frame   (or 0)
     pt::uintptr_t priv_pt;     // physical addr of private PT frame   (or 0)
+
+    // Process hierarchy and exit status (for fork/waitpid).
+    pt::uint32_t parent_id;    // 0xFFFFFFFF = no parent
+    pt::uint32_t waiting_for;  // child task ID we're blocked on; 0xFFFFFFFF = none
+    int  exit_code;    // populated by task_exit() / SYS_EXIT
+
+    // Per-task snapshot of g_syscall_rsp captured at the START of every syscall
+    // handler invocation (before any blocking that would let other tasks
+    // overwrite the global).  fork_task and exec_task use this instead of the
+    // global so that a stale g_syscall_rsp (overwritten by a child's SYS_EXIT
+    // during waitpid blocking) cannot corrupt the parent's iretq frame patch.
+    pt::uintptr_t syscall_frame_rsp;
 };
+
+// Kernel RSP captured in _syscall_stub immediately after PUSHALL.
+// Points to the PUSHALL+iretq frame; used by fork_task and exec_task
+// to inspect/clone/patch the calling user task's register state.
+extern pt::uintptr_t g_syscall_rsp;
 
 class TaskScheduler {
 public:
@@ -103,8 +120,9 @@ public:
     // Task yield - voluntarily give up CPU (fires int 0x81)
     static void task_yield();
 
-    // Mark task as dead and switch away
-    static void task_exit();
+    // Mark task as dead and switch away; stores exit_code in the task slot
+    // and wakes any parent blocked in waitpid_task().
+    static void task_exit(int exit_code = 0);
 
     // Load an ELF file and start it as a new user-mode task with private
     // page-table frames so it can coexist with other running ELF tasks.
@@ -114,6 +132,21 @@ public:
     // Kill all user-mode tasks (used by exec before loading a new ELF).
     // Resources are freed immediately; the caller must not be a user task.
     static void kill_user_tasks();
+
+    // fork_task: clone the current task into a new slot.
+    // syscall_frame_rsp points to the PUSHALL+iretq frame on the kernel stack.
+    // Returns child task ID to parent; child frame gets rax=0.
+    static pt::uint32_t fork_task(pt::uintptr_t syscall_frame_rsp);
+
+    // exec_task: replace current task's ELF image with filename.
+    // Patches the live iretq frame in place; returns 0 on success, -1 on error.
+    static pt::uint64_t exec_task(const char* filename,
+                                  pt::uintptr_t syscall_frame_rsp);
+
+    // waitpid_task: block until child exits; writes its exit code.
+    // Returns 0 on success, (uint64_t)-1 on invalid child_id / not a child.
+    static pt::uint64_t waitpid_task(pt::uint32_t child_id,
+                                     int* out_exit_code);
 
 private:
     static Task tasks[MAX_TASKS];

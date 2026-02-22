@@ -6,6 +6,7 @@ target/x86_64/iso/boot/kernel.bin
 # Generated files
 disk.img
 *.iso
+src/impl/x86_64/bins/*.elf
 
 # IDE and debug
 .idea/

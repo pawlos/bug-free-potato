@@ -15,3 +15,6 @@ constexpr pt::uint64_t SYS_GET_TIME  = 10; // returns (hours<<8)|minutes
 constexpr pt::uint64_t SYS_FILL_RECT = 11; // rdi=x, rsi=y, rdx=w, rcx=h, r8=0xRRGGBB
 constexpr pt::uint64_t SYS_DRAW_TEXT = 12; // rdi=x, rsi=y, rdx=str_ptr, rcx=fg, r8=bg
 constexpr pt::uint64_t SYS_FB_WIDTH  = 13; // returns framebuffer width
+constexpr pt::uint64_t SYS_FORK     = 14; // clone current task; returns child id (parent) or 0 (child)
+constexpr pt::uint64_t SYS_EXEC     = 15; // rdi=filename ptr; replace image; returns 0 or -1
+constexpr pt::uint64_t SYS_WAITPID  = 16; // rdi=child_id, rsi=exit_code_ptr; returns 0 or -1

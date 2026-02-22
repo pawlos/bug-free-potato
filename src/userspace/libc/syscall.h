@@ -15,6 +15,9 @@
 #define SYS_FILL_RECT 11  /* rdi=x, rsi=y, rdx=w, rcx=h, r8=0xRRGGBB     */
 #define SYS_DRAW_TEXT 12  /* rdi=x, rsi=y, rdx=str, rcx=fg, r8=bg         */
 #define SYS_FB_WIDTH  13  /* returns framebuffer width in pixels           */
+#define SYS_FORK      14  /* clone task; returns child id (parent) or 0 (child) */
+#define SYS_EXEC      15  /* rdi=filename ptr; replace image; returns 0 or -1   */
+#define SYS_WAITPID   16  /* rdi=child_id, rsi=exit_code_ptr; returns 0 or -1   */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -110,3 +113,12 @@ static inline void  sys_draw_text(long x, long y, const char *s, long fg, long b
 
 static inline long  sys_fb_width(void)
     { return __sc0(SYS_FB_WIDTH); }
+
+static inline long  sys_fork(void)
+    { return __sc0(SYS_FORK); }
+
+static inline long  sys_exec(const char* filename)
+    { return __sc1(SYS_EXEC, (long)filename); }
+
+static inline long  sys_waitpid(long child_pid, int* exit_code)
+    { return __sc2(SYS_WAITPID, child_pid, (long)exit_code); }

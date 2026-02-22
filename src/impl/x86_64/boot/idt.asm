@@ -98,8 +98,12 @@ _int_yield_stub:
 GLOBAL _int_yield_stub
 
 [extern syscall_handler]
+[extern g_syscall_rsp]
 _syscall_stub:
     PUSHALL
+    ; Save the kernel RSP (= pointer to PUSHALL+iretq frame) for fork/exec.
+    ; Safe on a single-core kernel: syscall gate is an interrupt gate (IF=0).
+    mov [rel g_syscall_rsp], rsp
     ; Caller's registers are still live after PUSHALL (saved above us on the stack).
     ; Syscall ABI: rax=nr, rdi=arg1, rsi=arg2, rdx=arg3, rcx=arg4, r8=arg5
     ; Shuffle into C calling convention: rdi=nr, rsi=arg1, rdx=arg2, rcx=arg3, r8=arg4, r9=arg5
@@ -148,6 +152,7 @@ GLOBAL isr8
 [extern isr6_handler]
 isr6:
     PUSHALL
+    mov rdi, rsp    ; pass frame pointer so handler can read faulting RIP/CS
     call isr6_handler
     POPALL
     iretq
