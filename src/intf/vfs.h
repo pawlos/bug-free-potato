@@ -25,6 +25,7 @@ public:
     virtual bool mount() = 0;
     virtual bool open_file(const char* filename, File* file) = 0;
     virtual pt::uint32_t read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) = 0;
+    virtual pt::uint32_t seek_file(File* file, pt::int32_t offset, int whence) = 0;
     virtual void close_file(File* file) = 0;
     virtual bool file_exists(const char* filename) = 0;
     virtual void list_root_directory() = 0;
@@ -41,6 +42,7 @@ public:
     static bool mount();
     static bool open_file(const char* filename, File* file);
     static pt::uint32_t read_file(File* file, void* buffer, pt::uint32_t bytes_to_read);
+    static pt::uint32_t seek_file(File* file, pt::int32_t offset, int whence);
     static void close_file(File* file);
     static bool file_exists(const char* filename);
     static void list_root_directory();

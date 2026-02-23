@@ -48,7 +48,9 @@ struct __attribute__((packed)) FAT12_DirEntry {
 
 // FAT12-private state stored in File::fs_data
 struct FAT12State {
-    pt::uint16_t current_cluster;
+    pt::uint16_t first_cluster;    // first cluster of the chain (never changes after open)
+    pt::uint16_t current_cluster;  // cluster reached after last read (optimisation hint)
+    pt::uint32_t current_cluster_idx; // which cluster-index current_cluster corresponds to
     pt::uint32_t start_sector;
 };
 static_assert(sizeof(FAT12State) <= 32, "FAT12State overflows fs_data");
@@ -58,6 +60,7 @@ public:
     bool mount() override;
     bool open_file(const char* filename, File* file) override;
     pt::uint32_t read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) override;
+    pt::uint32_t seek_file(File* file, pt::int32_t offset, int whence) override;
     void close_file(File* file) override;
     bool file_exists(const char* filename) override;
     void list_root_directory() override;

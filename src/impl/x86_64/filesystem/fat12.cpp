@@ -213,8 +213,10 @@ bool FAT12::open_file(const char* filename, File* file) {
             if (compare_filename(&entries[e], filename)) {
                 file->file_size = entries[e].file_size;
                 file->current_position = 0;
-                fat12_state(file)->current_cluster = entries[e].first_cluster_low;
-                fat12_state(file)->start_sector = cluster_to_sector(fat12_state(file)->current_cluster);
+                fat12_state(file)->first_cluster     = entries[e].first_cluster_low;
+                fat12_state(file)->current_cluster   = entries[e].first_cluster_low;
+                fat12_state(file)->current_cluster_idx = 0;
+                fat12_state(file)->start_sector = cluster_to_sector(entries[e].first_cluster_low);
                 file->open = true;
 
                 int k = 0;
@@ -258,9 +260,21 @@ pt::uint32_t FAT12::read_file(File* file, void* buffer, pt::uint32_t bytes_to_re
     pt::uint32_t cluster_offset = file->current_position / bytes_per_cluster;
     pt::uint32_t byte_offset = file->current_position % bytes_per_cluster;
 
-    pt::uint16_t current_cluster = fat12_state(file)->current_cluster;
-    for (pt::uint32_t i = 0; i < cluster_offset && current_cluster < 0xFF8; i++) {
-        current_cluster = get_next_cluster(current_cluster);
+    FAT12State* state = fat12_state(file);
+    pt::uint16_t current_cluster;
+    if (cluster_offset >= state->current_cluster_idx) {
+        // Seek forward from cached position
+        current_cluster = state->current_cluster;
+        for (pt::uint32_t i = state->current_cluster_idx;
+             i < cluster_offset && current_cluster < 0xFF8; i++) {
+            current_cluster = get_next_cluster(current_cluster);
+        }
+    } else {
+        // Backward seek — must restart from first cluster
+        current_cluster = state->first_cluster;
+        for (pt::uint32_t i = 0; i < cluster_offset && current_cluster < 0xFF8; i++) {
+            current_cluster = get_next_cluster(current_cluster);
+        }
     }
 
     while (bytes_read < bytes_to_read && current_cluster < 0xFF8) {
@@ -296,7 +310,8 @@ pt::uint32_t FAT12::read_file(File* file, void* buffer, pt::uint32_t bytes_to_re
     }
 
     file->current_position += bytes_read;
-    fat12_state(file)->current_cluster = current_cluster;
+    state->current_cluster     = current_cluster;
+    state->current_cluster_idx = file->current_position / bytes_per_cluster;
     return bytes_read;
 }
 
@@ -304,6 +319,21 @@ void FAT12::close_file(File* file) {
     if (file) {
         file->open = false;
     }
+}
+
+pt::uint32_t FAT12::seek_file(File* file, pt::int32_t offset, int whence) {
+    if (!file || !file->open) return (pt::uint32_t)-1;
+    pt::uint32_t new_pos;
+    switch (whence) {
+        case 0: new_pos = (pt::uint32_t)offset; break;                         // SEEK_SET
+        case 1: new_pos = (pt::uint32_t)((pt::int32_t)file->current_position + offset); break; // SEEK_CUR
+        case 2: new_pos = (pt::uint32_t)((pt::int32_t)file->file_size + offset); break; // SEEK_END
+        default: return (pt::uint32_t)-1;
+    }
+    if (new_pos > file->file_size) new_pos = file->file_size;
+    file->current_position = new_pos;
+    // Don't update cluster cache here; read_file will seek forward/backward as needed.
+    return new_pos;
 }
 
 void FAT12::list_root_directory() {

@@ -18,4 +18,7 @@ constexpr pt::uint64_t SYS_FB_WIDTH  = 13; // returns framebuffer width
 constexpr pt::uint64_t SYS_FORK     = 14; // clone current task; returns child id (parent) or 0 (child)
 constexpr pt::uint64_t SYS_EXEC     = 15; // rdi=filename ptr; replace image; returns 0 or -1
 constexpr pt::uint64_t SYS_WAITPID  = 16; // rdi=child_id, rsi=exit_code_ptr; returns 0 or -1
-constexpr pt::uint64_t SYS_PIPE     = 17; // rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd; returns 0 or -1
+constexpr pt::uint64_t SYS_PIPE        = 17; // rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd; returns 0 or -1
+constexpr pt::uint64_t SYS_LSEEK       = 18; // rdi=fd, rsi=offset, rdx=whence; returns new pos or -1
+constexpr pt::uint64_t SYS_FB_HEIGHT   = 19; // returns framebuffer height in pixels
+constexpr pt::uint64_t SYS_DRAW_PIXELS = 20; // rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixel buffer

@@ -76,6 +76,11 @@ pt::uint32_t VFS::read_file(File* file, void* buffer, pt::uint32_t bytes_to_read
     return active_fs->read_file(file, buffer, bytes_to_read);
 }
 
+pt::uint32_t VFS::seek_file(File* file, pt::int32_t offset, int whence) {
+    if (!active_fs) return (pt::uint32_t)-1;
+    return active_fs->seek_file(file, offset, whence);
+}
+
 void VFS::close_file(File* file) {
     if (!active_fs) return;
     active_fs->close_file(file);

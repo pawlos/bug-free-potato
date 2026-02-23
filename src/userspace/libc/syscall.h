@@ -18,7 +18,10 @@
 #define SYS_FORK      14  /* clone task; returns child id (parent) or 0 (child) */
 #define SYS_EXEC      15  /* rdi=filename ptr; replace image; returns 0 or -1   */
 #define SYS_WAITPID   16  /* rdi=child_id, rsi=exit_code_ptr; returns 0 or -1   */
-#define SYS_PIPE      17  /* rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd          */
+#define SYS_PIPE        17  /* rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd          */
+#define SYS_LSEEK       18  /* rdi=fd, rsi=offset, rdx=whence; returns new pos    */
+#define SYS_FB_HEIGHT   19  /* returns framebuffer height in pixels               */
+#define SYS_DRAW_PIXELS 20  /* rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixels  */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -126,3 +129,12 @@ static inline long  sys_waitpid(long child_pid, int* exit_code)
 
 static inline long  sys_pipe(int pipefd[2])
     { return __sc1(SYS_PIPE, (long)pipefd); }
+
+static inline long  sys_lseek(int fd, long offset, int whence)
+    { return __sc3(SYS_LSEEK, fd, offset, whence); }
+
+static inline long  sys_fb_height(void)
+    { return __sc0(SYS_FB_HEIGHT); }
+
+static inline void  sys_draw_pixels(const void *buf, long x, long y, long w, long h)
+    { __sc5(SYS_DRAW_PIXELS, (long)buf, x, y, w, h); }

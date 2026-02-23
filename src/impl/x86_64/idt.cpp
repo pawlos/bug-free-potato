@@ -271,8 +271,39 @@ ASMCALL void isr8_handler()
 	kernel_panic("Double fault", 8);
 }
 
-ASMCALL void isr13_handler()
+ASMCALL void isr13_handler(pt::uint64_t* frame)
 {
+	// frame[14] = rax = error code (popped before PUSHALL, stored at +112)
+	// frame[15] = faulting RIP (+120)
+	// frame[16] = CS (+128)
+	// frame[17] = RFLAGS (+136)
+	// frame[18] = user RSP (+144) — only valid if ring change (CS & 3)
+	// frame[19] = SS (+152)       — only valid if ring change
+	pt::uint64_t err_code = frame[14];
+	pt::uint64_t rip      = frame[15];
+	pt::uint64_t cs       = frame[16];
+	pt::uint64_t rflags   = frame[17];
+	klog("[ISR13] #GP errcode=%lx RIP=%lx CS=%lx RFLAGS=%lx (ring-%d)\n",
+	     err_code, rip, cs, rflags, (int)(cs & 3));
+	if (cs & 3) {
+		pt::uint64_t rsp = frame[18];
+		pt::uint64_t ss  = frame[19];
+		klog("[ISR13] ring-3 RSP=%lx SS=%lx\n", rsp, ss);
+		// Dump user stack around RSP
+		klog("[ISR13] user stack dump at RSP:\n");
+		for (int i = -1; i <= 4; i++) {
+			pt::uint64_t addr = rsp + (pt::uint64_t)(i * 8);
+			if (addr > 0x1000 && addr < 0xFFFFFFFFFFFFFF00ULL)
+				klog("[ISR13]   [RSP%+d] %lx = %lx\n", i*8, addr,
+				     *reinterpret_cast<pt::uint64_t*>(addr));
+		}
+	} else {
+		// Ring-0 fault: dump the 15 saved registers for context
+		klog("[ISR13] saved regs: rax=%lx rbx=%lx rcx=%lx rdx=%lx\n",
+		     frame[14], frame[13], frame[12], frame[11]);
+		klog("[ISR13]             rbp=%lx rsi=%lx rdi=%lx\n",
+		     frame[10], frame[9], frame[8]);
+	}
 	kernel_panic("General protection fault", 13);
 }
 
@@ -630,6 +661,32 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			pipefd[0] = rd_fd;
 			pipefd[1] = wr_fd;
 			klog("syscall: SYS_PIPE: rd=%d wr=%d\n", rd_fd, wr_fd);
+			return 0;
+		}
+
+		case SYS_LSEEK: {
+			int fd = (int)(pt::int8_t)arg1;
+			pt::int32_t offset = (pt::int32_t)(pt::int64_t)arg2;
+			int whence = (int)arg3;
+			Task* t = TaskScheduler::get_current_task();
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+				return (pt::uint64_t)-1;
+			File* f = &t->fd_table[fd];
+			if (f->type != FdType::FILE) return (pt::uint64_t)-1;
+			return (pt::uint64_t)VFS::seek_file(f, offset, whence);
+		}
+
+		case SYS_FB_HEIGHT: {
+			Framebuffer* fb = Framebuffer::get_instance();
+			return fb ? (pt::uint64_t)fb->get_height() : 0;
+		}
+
+		case SYS_DRAW_PIXELS: {
+			Framebuffer* fb = Framebuffer::get_instance();
+			if (!fb) return (pt::uint64_t)-1;
+			const pt::uint8_t* buf = reinterpret_cast<const pt::uint8_t*>(arg1);
+			fb->Draw(buf, (pt::uint32_t)arg2, (pt::uint32_t)arg3,
+			         (pt::uint32_t)arg4, (pt::uint32_t)arg5);
 			return 0;
 		}
 

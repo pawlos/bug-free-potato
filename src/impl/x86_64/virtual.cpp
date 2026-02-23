@@ -91,6 +91,10 @@ void* VMM::kmalloc(pt::size_t size)
             if (currentMemorySegment->nextFreeChunk != nullptr)
                 currentMemorySegment->nextFreeChunk->prevFreeChunk = currentMemorySegment->prevFreeChunk;
 
+            // Clear free-list links so kfree won't follow stale pointers.
+            currentMemorySegment->prevFreeChunk = nullptr;
+            currentMemorySegment->nextFreeChunk = nullptr;
+
             return currentMemorySegment + 1;
         }
         if (currentMemorySegment->nextFreeChunk == nullptr)
@@ -174,41 +178,38 @@ void VMM::kfree(void *address)
         return;
     }
 
-    kMemoryRegion* currentMemorySegment = static_cast<kMemoryRegion *>(address) - 1;
-    currentMemorySegment->free = true;
-
+    kMemoryRegion* seg = static_cast<kMemoryRegion *>(address) - 1;
+    seg->free = true;
 
     klog("[VMM] Freeing bytes memory at %p.\n", address);
-    if (currentMemorySegment < firstFreeMemoryRegion)
-    {
-        firstFreeMemoryRegion = currentMemorySegment;
+
+    // Insert seg into the address-ordered free list.
+    // prevFreeChunk/nextFreeChunk were cleared to null at allocation time,
+    // so we never follow stale pointers here.
+    kMemoryRegion* prev = nullptr;
+    kMemoryRegion* next = firstFreeMemoryRegion;
+    while (next != nullptr && next < seg) {
+        prev = next;
+        next = next->nextFreeChunk;
     }
 
-    if (currentMemorySegment->nextFreeChunk != nullptr)
-    {
-        if (currentMemorySegment->nextFreeChunk->prevFreeChunk < currentMemorySegment)
-        {
-            currentMemorySegment->nextFreeChunk->prevFreeChunk = currentMemorySegment;
-        }
+    seg->prevFreeChunk = prev;
+    seg->nextFreeChunk = next;
+    if (prev != nullptr) prev->nextFreeChunk = seg;
+    else firstFreeMemoryRegion = seg;
+    if (next != nullptr) next->prevFreeChunk = seg;
+
+    // Coalesce with physically adjacent next block if it is free.
+    if (seg->nextChunk != nullptr) {
+        seg->nextChunk->prevChunk = seg;
+        if (seg->nextChunk->free)
+            combineFreeSegments(seg, seg->nextChunk);
     }
-    if (currentMemorySegment->prevFreeChunk != nullptr)
-    {
-        if (currentMemorySegment->prevFreeChunk->nextFreeChunk > currentMemorySegment)
-        {
-            currentMemorySegment->prevFreeChunk->nextFreeChunk = currentMemorySegment;
-        }
-    }
-    if (currentMemorySegment->nextChunk != nullptr)
-    {
-        currentMemorySegment->nextChunk->prevChunk = currentMemorySegment;
-        if (currentMemorySegment->nextChunk->free)
-            combineFreeSegments(currentMemorySegment, currentMemorySegment->nextChunk);
-    }
-    if (currentMemorySegment->prevChunk != nullptr)
-    {
-        currentMemorySegment->prevChunk->nextChunk = currentMemorySegment;
-        if (currentMemorySegment->prevChunk->free)
-            combineFreeSegments(currentMemorySegment, currentMemorySegment->prevChunk);
+    // Coalesce with physically adjacent prev block if it is free.
+    if (seg->prevChunk != nullptr) {
+        seg->prevChunk->nextChunk = seg;
+        if (seg->prevChunk->free)
+            combineFreeSegments(seg, seg->prevChunk);
     }
 }
 

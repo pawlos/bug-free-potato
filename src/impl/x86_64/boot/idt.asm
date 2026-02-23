@@ -133,8 +133,9 @@ GLOBAL isr14
 
 [extern isr13_handler]
 isr13:
-    pop rax
+    pop rax                 ; pop error code (saved into rax, PUSHALL stores it at [RSP+112])
     PUSHALL
+    mov rdi, rsp            ; pass frame pointer: faulting RIP at [rdi+120], CS at [rdi+128]
     call isr13_handler
     POPALL
     iretq

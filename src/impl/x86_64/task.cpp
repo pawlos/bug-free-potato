@@ -455,9 +455,14 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
 
     // 3. Allocate private PDPT, PD, PT frames; copy boot tables so all
     //    other higher-half mappings (kernel heap, stack, etc.) are preserved.
+    klog("[ELF_TASK] allocating priv_pdpt\n");
     pt::uintptr_t priv_pdpt_frame = vmm.allocate_frame();
+    klog("[ELF_TASK] allocating priv_pd\n");
     pt::uintptr_t priv_pd_frame   = vmm.allocate_frame();
+    klog("[ELF_TASK] allocating priv_pt\n");
     pt::uintptr_t priv_pt_frame   = vmm.allocate_frame();
+    klog("[ELF_TASK] priv frames: pdpt=%lx pd=%lx pt=%lx\n",
+         priv_pdpt_frame, priv_pd_frame, priv_pt_frame);
 
     memcpy(reinterpret_cast<void*>(priv_pdpt_frame),
            reinterpret_cast<void*>(boot_pdpt_phys), 4096);
@@ -470,6 +475,7 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
 
     // 4. Allocate private code frames; copy ELF code from staging area.
     //    The staging area lives at its identity-mapped physical address.
+    klog("[ELF_TASK] allocating %d code frames\n", (int)num_code_frames);
     for (pt::size_t i = 0; i < num_code_frames; i++) {
         pt::uintptr_t frame = vmm.allocate_frame();
         memcpy(reinterpret_cast<void*>(frame),
@@ -477,6 +483,7 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
                4096);
         priv_pt[i] = frame | 0x07;  // Present | Writable | User
     }
+    klog("[ELF_TASK] code frames allocated; calling create_task\n");
 
     // 5. Wire private page tables:
     //    priv_pd[192]  → priv_pt  (4KB pages, PS bit clear)
@@ -637,6 +644,8 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
         klog("[FORK] Failed to allocate child user stack\n");
         return (pt::uint32_t)-1;
     }
+    klog("[FORK] copying ustack: src=%lx dst=%lx size=%d\n",
+         parent->user_stack_base, (pt::uintptr_t)child_ustack_mem, (int)USER_STACK_SIZE);
     memcpy(child_ustack_mem, (void*)parent->user_stack_base, USER_STACK_SIZE);
 
 #ifdef FORK_DEBUG
@@ -647,15 +656,21 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
 #endif
 
     // ── Clone PML4 ──────────────────────────────────────────────────────────
+
+    klog("[FORK] allocating child PML4\n");
     pt::uintptr_t child_pml4_frame = vmm.allocate_frame();
+    klog("[FORK] child PML4 frame=%lx, copying parent cr3=%lx\n", child_pml4_frame, parent->cr3);
     memcpy((void*)child_pml4_frame, (void*)parent->cr3, 4096);
 
     // ── Deep-copy private ELF code page table frames ─────────────────────
+    klog("[FORK] allocating new PDPT/PD/PT frames\n");
     pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
     pt::uintptr_t new_pd_frame   = vmm.allocate_frame();
     pt::uintptr_t new_pt_frame   = vmm.allocate_frame();
-
+    klog("[FORK] new_pdpt=%lx new_pd=%lx new_pt=%lx\n", new_pdpt_frame, new_pd_frame, new_pt_frame);
+    klog("[FORK] copying parent priv_pdpt=%lx\n", parent->priv_pdpt);
     memcpy((void*)new_pdpt_frame, (void*)parent->priv_pdpt, 4096);
+    klog("[FORK] copying parent priv_pd=%lx\n", parent->priv_pd);
     memcpy((void*)new_pd_frame,   (void*)parent->priv_pd,   4096);
 
     pt::uint64_t* parent_pt = reinterpret_cast<pt::uint64_t*>(parent->priv_pt);
@@ -681,8 +696,11 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
 
     // ── Build child kernel stack frame ───────────────────────────────────────
     // Copy the parent's 160-byte PUSHALL+iretq frame verbatim, then patch it.
+    klog("[FORK] page tables wired; building child kernel stack frame\n");
     pt::uint8_t* child_kstack_top =
         (pt::uint8_t*)child_kstack_mem + TASK_STACK_SIZE - 160;
+    klog("[FORK] syscall_frame_rsp=%lx child_kstack_top=%lx\n",
+         syscall_frame_rsp, (pt::uintptr_t)child_kstack_top);
     memcpy(child_kstack_top, (void*)syscall_frame_rsp, 160);
 
     pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(child_kstack_top);
@@ -697,6 +715,8 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     pt::uint64_t child_user_rsp =
         child_ustack_base + (parent_user_rsp - parent_ustack_base);
     frame[18] = child_user_rsp;
+    klog("[FORK] parent_user_rsp=%lx parent_ustack_base=%lx child_ustack_base=%lx child_user_rsp=%lx\n",
+         parent_user_rsp, parent_ustack_base, child_ustack_base, child_user_rsp);
 
     // frame[10] = rbp slot → also needs adjustment, for the same reason as RSP.
     //

@@ -73,7 +73,8 @@ CFLAGS_USER = -ffreestanding -fno-stack-protector -fno-builtin \
 
 LIBC_SRCS = src/userspace/libc/stdio.c \
             src/userspace/libc/stdlib.c \
-            src/userspace/libc/string.c
+            src/userspace/libc/string.c \
+            src/userspace/libc/file.c
 LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
 LIBC_CRT0 = build/userspace/crt0.o
 LIBC_A    = build/userspace/libc.a
