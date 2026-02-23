@@ -32,6 +32,10 @@ pt::uint32_t TaskScheduler::current_task_id = 0;
 pt::uint64_t TaskScheduler::scheduler_ticks = 0;
 static pt::uintptr_t kernel_cr3 = 0;  // Boot PML4 physical address
 
+// FXSAVE template captured once at scheduler init (after fninit in enable_sse).
+// Copied into every new task so they all start with a clean FPU/SSE state.
+static pt::uint8_t default_fxsave[512] __attribute__((aligned(16)));
+
 // Kernel RSP captured by _syscall_stub immediately after PUSHALL.
 // Declared extern in task.h and idt.asm.
 pt::uintptr_t g_syscall_rsp = 0;
@@ -73,6 +77,9 @@ void TaskScheduler::initialize()
     task_count = 1;
     current_task_id = 0;
     scheduler_ticks = 0;
+
+    // Capture the post-fninit FPU state as the clean template for new tasks.
+    asm volatile("fxsave %0" : "=m"(default_fxsave) :: "memory");
 
     klog("[SCHEDULER] Scheduler ready (kernel as task 0)\n");
 }
@@ -140,6 +147,9 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
         new_task->fd_table[i].open = false;
+
+    // Give the new task a clean FPU/SSE state (copy of post-fninit snapshot).
+    memcpy(new_task->fxsave_area, default_fxsave, 512);
 
     void* stack_mem = vmm.kmalloc(stack_size);
     if (stack_mem == nullptr)
@@ -265,6 +275,7 @@ Task* TaskScheduler::get_task(pt::uint32_t id)
 // Returns the RSP to load (unchanged if no switch happened).
 pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
 {
+    pt::uint32_t old_id  = current_task_id;
     pt::uint32_t next_id = current_task_id;
     for (pt::uint32_t i = 0; i < MAX_TASKS; i++)
     {
@@ -317,6 +328,11 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
 #endif
         asm volatile("mov cr3, %0" : : "r"(tasks[next_id].cr3) : "memory");
     }
+
+    // Save outgoing task's x87/SSE state and restore the incoming task's.
+    // FXSAVE/FXRSTOR require a 16-byte aligned operand (guaranteed by alignas(16)).
+    asm volatile("fxsave %0"  : "=m"(tasks[old_id].fxsave_area)  :: "memory");
+    asm volatile("fxrstor %0" :      : "m"(tasks[next_id].fxsave_area) : "memory");
 
     return tasks[next_id].preempt_rsp;
 }

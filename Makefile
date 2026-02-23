@@ -64,6 +64,7 @@ clean:
 	-rm -f $(LIBC_CRT0) $(LIBC_A) $(HELLO_ELF_BIN)
 	-rm -f $(FORK_TEST_OBJ) $(FORK_TEST_BIN)
 	-rm -f $(PIPE_TEST_OBJ) $(PIPE_TEST_BIN)
+	-rm -f $(MATHTEST_OBJ)  $(MATHTEST_BIN)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -74,7 +75,8 @@ CFLAGS_USER = -ffreestanding -fno-stack-protector -fno-builtin \
 LIBC_SRCS = src/userspace/libc/stdio.c \
             src/userspace/libc/stdlib.c \
             src/userspace/libc/string.c \
-            src/userspace/libc/file.c
+            src/userspace/libc/file.c \
+            src/userspace/libc/math.c
 LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
 LIBC_CRT0 = build/userspace/crt0.o
 LIBC_A    = build/userspace/libc.a
@@ -120,6 +122,16 @@ $(PIPE_TEST_OBJ): src/userspace/pipe_test.c $(LIBC_A)
 $(PIPE_TEST_BIN): $(PIPE_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PIPE_TEST_OBJ) $(LIBC_A)
 
+# ── math test ─────────────────────────────────────────────────────────────────
+MATHTEST_OBJ = build/userspace/mathtest.o
+MATHTEST_BIN = src/impl/x86_64/bins/mathtest.elf
+
+$(MATHTEST_OBJ): src/userspace/mathtest.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(MATHTEST_BIN): $(MATHTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(MATHTEST_OBJ) $(LIBC_A)
+
 # Files to copy to disk image from bins folder
 BIN_FILES := $(wildcard src/impl/x86_64/bins/*)
 
@@ -146,7 +158,7 @@ $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
 # Create FAT32 disk image with test files from bins folder
-disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN)
+disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN)
 	@echo "Creating FAT32 disk image..."
 	@# Create 64MB disk image (room for WAD files etc.)
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
@@ -165,6 +177,7 @@ disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_
 	@mcopy -i disk.img $(HELLO_ELF_BIN)      ::HELLO.ELF     2>/dev/null || true
 	@mcopy -i disk.img $(FORK_TEST_BIN)  ::FORK_TEST.ELF 2>/dev/null || true
 	@mcopy -i disk.img $(PIPE_TEST_BIN)  ::PIPE_TEST.ELF 2>/dev/null || true
+	@mcopy -i disk.img $(MATHTEST_BIN)  ::MATHTEST.ELF  2>/dev/null || true
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 

@@ -6,6 +6,7 @@ bits 64
 long_mode_start:
     ; do we need to remap page tables here for 64-bit?
 	cli
+	call enable_sse
 	call enable_syscalls
 	mov ax, 0x10
 	mov ss, ax
@@ -21,6 +22,24 @@ long_mode_start:
 
 	hlt
 
+
+enable_sse:
+    ; Clear CR0.EM (bit 2) — no FPU emulation
+    ; Set   CR0.MP (bit 1) — monitor coprocessor
+    mov rax, cr0
+    and rax, ~(1 << 2)
+    or  rax, (1 << 1)
+    mov cr0, rax
+
+    ; Set CR4.OSFXSR (bit 9)  — OS supports FXSAVE/FXRSTOR
+    ; Set CR4.OSXMMEXCPT (bit 10) — OS handles SSE exceptions
+    mov rax, cr4
+    or  rax, (3 << 9)
+    mov cr4, rax
+
+    ; Initialise x87 FPU to a clean state
+    fninit
+    ret
 
 enable_syscalls:
 	mov rcx, 0xc0000080

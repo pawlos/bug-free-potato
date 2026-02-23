@@ -74,6 +74,11 @@ struct Task {
     pt::uint32_t waiting_for;  // child task ID we're blocked on; 0xFFFFFFFF = none
     int  exit_code;    // populated by task_exit() / SYS_EXIT
 
+    // 512-byte FXSAVE area for x87/SSE state (must be 16-byte aligned).
+    // Saved/restored by the scheduler on every context switch so tasks
+    // don't corrupt each other's floating-point state.
+    pt::uint8_t fxsave_area[512] __attribute__((aligned(16)));
+
     // Per-task snapshot of g_syscall_rsp captured at the START of every syscall
     // handler invocation (before any blocking that would let other tasks
     // overwrite the global).  fork_task and exec_task use this instead of the
