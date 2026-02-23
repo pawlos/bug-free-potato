@@ -65,6 +65,7 @@ clean:
 	-rm -f $(FORK_TEST_OBJ) $(FORK_TEST_BIN)
 	-rm -f $(PIPE_TEST_OBJ) $(PIPE_TEST_BIN)
 	-rm -f $(MATHTEST_OBJ)  $(MATHTEST_BIN)
+	-rm -f $(KEYTEST_OBJ)   $(KEYTEST_BIN)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -122,6 +123,16 @@ $(PIPE_TEST_OBJ): src/userspace/pipe_test.c $(LIBC_A)
 $(PIPE_TEST_BIN): $(PIPE_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PIPE_TEST_OBJ) $(LIBC_A)
 
+# ── key event test ────────────────────────────────────────────────────────────
+KEYTEST_OBJ = build/userspace/keytest.o
+KEYTEST_BIN = src/impl/x86_64/bins/keytest.elf
+
+$(KEYTEST_OBJ): src/userspace/keytest.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(KEYTEST_BIN): $(KEYTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(KEYTEST_OBJ) $(LIBC_A)
+
 # ── math test ─────────────────────────────────────────────────────────────────
 MATHTEST_OBJ = build/userspace/mathtest.o
 MATHTEST_BIN = src/impl/x86_64/bins/mathtest.elf
@@ -158,7 +169,7 @@ $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
 # Create FAT32 disk image with test files from bins folder
-disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN)
+disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN)
 	@echo "Creating FAT32 disk image..."
 	@# Create 64MB disk image (room for WAD files etc.)
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
@@ -178,6 +189,7 @@ disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_
 	@mcopy -i disk.img $(FORK_TEST_BIN)  ::FORK_TEST.ELF 2>/dev/null || true
 	@mcopy -i disk.img $(PIPE_TEST_BIN)  ::PIPE_TEST.ELF 2>/dev/null || true
 	@mcopy -i disk.img $(MATHTEST_BIN)  ::MATHTEST.ELF  2>/dev/null || true
+	@mcopy -i disk.img $(KEYTEST_BIN)   ::KEYTEST.ELF   2>/dev/null || true
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 

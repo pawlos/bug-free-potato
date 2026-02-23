@@ -690,6 +690,14 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return 0;
 		}
 
+		case SYS_GET_KEY_EVENT: {
+			KeyEvent ev;
+			if (!get_key_event(&ev))
+				return (pt::uint64_t)-1;
+			// Encoding: bit 8 = pressed, bits 7:0 = PS/2 scancode.
+			return (pt::uint64_t)ev.scancode | (ev.pressed ? 0x100u : 0u);
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

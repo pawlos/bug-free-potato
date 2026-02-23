@@ -21,4 +21,6 @@ constexpr pt::uint64_t SYS_WAITPID  = 16; // rdi=child_id, rsi=exit_code_ptr; re
 constexpr pt::uint64_t SYS_PIPE        = 17; // rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd; returns 0 or -1
 constexpr pt::uint64_t SYS_LSEEK       = 18; // rdi=fd, rsi=offset, rdx=whence; returns new pos or -1
 constexpr pt::uint64_t SYS_FB_HEIGHT   = 19; // returns framebuffer height in pixels
-constexpr pt::uint64_t SYS_DRAW_PIXELS = 20; // rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixel buffer
+constexpr pt::uint64_t SYS_DRAW_PIXELS   = 20; // rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixel buffer
+// Returns (scancode | 0x100) if pressed, scancode if released, (uint64)-1 if queue empty.
+constexpr pt::uint64_t SYS_GET_KEY_EVENT = 21; // no args

@@ -21,7 +21,9 @@
 #define SYS_PIPE        17  /* rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd          */
 #define SYS_LSEEK       18  /* rdi=fd, rsi=offset, rdx=whence; returns new pos    */
 #define SYS_FB_HEIGHT   19  /* returns framebuffer height in pixels               */
-#define SYS_DRAW_PIXELS 20  /* rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixels  */
+#define SYS_DRAW_PIXELS   20  /* rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixels  */
+/* Returns (scancode | 0x100) if pressed, scancode if released, -1 if empty. */
+#define SYS_GET_KEY_EVENT 21  /* no args                                            */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -138,3 +140,10 @@ static inline long  sys_fb_height(void)
 
 static inline void  sys_draw_pixels(const void *buf, long x, long y, long w, long h)
     { __sc5(SYS_DRAW_PIXELS, (long)buf, x, y, w, h); }
+
+/* Returns (scancode | 0x100) if key pressed, bare scancode if released,
+   or -1 when the event queue is empty.
+   PS/2 set-1 scancodes: 0x01=Esc, 0x1C=Enter, 0x39=Space, 0x48=Up, 0x50=Down,
+                         0x4B=Left, 0x4D=Right, 0x1D=LCtrl, 0x38=LAlt, etc. */
+static inline long  sys_get_key_event(void)
+    { return __sc0(SYS_GET_KEY_EVENT); }

@@ -49,6 +49,23 @@ static char keyboard_buffer[128] = {0};
 static int write_pos = 0;
 static int read_pos = 0;
 
+// Raw key-event ring buffer (press + release, for Doom / game input).
+static KeyEvent event_buffer[128];
+static int event_write = 0;
+static int event_read  = 0;
+
+static void push_key_event(pt::uint8_t scancode, bool pressed) {
+    event_buffer[event_write % 128] = { scancode, pressed };
+    event_write++;
+}
+
+bool get_key_event(KeyEvent* out) {
+    if (event_read >= event_write) return false;
+    *out = event_buffer[event_read % 128];
+    event_read++;
+    return true;
+}
+
 void keyboard_log(const char *str, ...) {
 #ifdef KEYBOARD_LOG
 	va_list arg_ptr;
@@ -74,6 +91,7 @@ void keyboard_routine(const pt::uint8_t scancode)
 	{
 		//Key released
 		const pt::uint8_t code = scancode & ~0x80;
+		push_key_event(code, false);
 		if (code == L_SHIFT || code == R_SHIFT)
 		{
 			shiftPressed = false;
@@ -90,6 +108,7 @@ void keyboard_routine(const pt::uint8_t scancode)
 	else
 	{
 		//Key pressed
+		push_key_event(scancode, true);
 		if (scancode == L_SHIFT || scancode == R_SHIFT)
 		{
 			shiftPressed = true;
