@@ -24,6 +24,7 @@
 #define SYS_DRAW_PIXELS   20  /* rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixels  */
 /* Returns (scancode | 0x100) if pressed, scancode if released, -1 if empty. */
 #define SYS_GET_KEY_EVENT 21  /* no args                                            */
+#define SYS_CREATE        22  /* rdi=filename; create/truncate for writing; returns fd or -1 */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -147,3 +148,6 @@ static inline void  sys_draw_pixels(const void *buf, long x, long y, long w, lon
                          0x4B=Left, 0x4D=Right, 0x1D=LCtrl, 0x38=LAlt, etc. */
 static inline long  sys_get_key_event(void)
     { return __sc0(SYS_GET_KEY_EVENT); }
+
+static inline int   sys_create(const char *name)
+    { return (int)__sc1(SYS_CREATE, (long)name); }

@@ -84,6 +84,16 @@ pt::uint32_t VFS::read_file(File* file, void* buffer, pt::uint32_t bytes_to_read
     return active_fs->read_file(file, buffer, bytes_to_read);
 }
 
+pt::uint32_t VFS::write_file(File* file, const void* buffer, pt::uint32_t bytes_to_write) {
+    if (!active_fs) return 0;
+    return active_fs->write_file(file, buffer, bytes_to_write);
+}
+
+bool VFS::open_file_write(const char* filename, File* out) {
+    if (!active_fs) return false;
+    return active_fs->open_file_write(filename, out);
+}
+
 pt::uint32_t VFS::seek_file(File* file, pt::int32_t offset, int whence) {
     if (!active_fs) return (pt::uint32_t)-1;
     return active_fs->seek_file(file, offset, whence);

@@ -1,6 +1,7 @@
 #include "stdlib.h"
 #include "string.h"
 #include "syscall.h"
+#include "time.h"
 #include <stdarg.h>
 
 /* ── heap allocator ──────────────────────────────────────────────────────── *
@@ -238,6 +239,44 @@ int rand(void)
     return (int)((rand_state >> 33) & 0x7fffffff);
 }
 void srand(unsigned int seed) { rand_state = seed; }
+
+/* ── time ─────────────────────────────────────────────────────────────────── */
+
+/* errno stub (declared in errno.h; Doom links against it) */
+int errno = 0;
+
+time_t time(time_t *t)
+{
+    /* Convert 50 Hz ticks to seconds. */
+    time_t sec = (time_t)(sys_get_ticks() / 50L);
+    if (t) *t = sec;
+    return sec;
+}
+
+clock_t clock(void)
+{
+    return (clock_t)sys_get_ticks();
+}
+
+double atof(const char *s)
+{
+    while (*s == ' ' || *s == '\t') s++;
+    double val = 0.0;
+    int neg = 0;
+    if (*s == '-') { neg = 1; s++; } else if (*s == '+') s++;
+    while (*s >= '0' && *s <= '9') val = val * 10.0 + (*s++ - '0');
+    if (*s == '.') {
+        s++; double f = 0.1;
+        while (*s >= '0' && *s <= '9') { val += (*s++ - '0') * f; f *= 0.1; }
+    }
+    return neg ? -val : val;
+}
+
+/* Doom uses system() only for zenity error dialogs — not available. */
+int system(const char *cmd) { (void)cmd; return -1; }
+
+/* Doom uses mkdir to create save-game directories. Our VFS is read-only. */
+int mkdir(const char *path, unsigned int mode) { (void)path; (void)mode; return -1; }
 
 /* ── qsort (iterative quicksort) ─────────────────────────────────────────── */
 

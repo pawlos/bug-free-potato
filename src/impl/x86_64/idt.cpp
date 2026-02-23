@@ -285,6 +285,17 @@ ASMCALL void isr13_handler(pt::uint64_t* frame)
 	pt::uint64_t rflags   = frame[17];
 	klog("[ISR13] #GP errcode=%lx RIP=%lx CS=%lx RFLAGS=%lx (ring-%d)\n",
 	     err_code, rip, cs, rflags, (int)(cs & 3));
+	// Dump opcodes at the faulting address
+	const pt::uint8_t* code = reinterpret_cast<const pt::uint8_t*>(rip);
+	klog("[ISR13] opcodes @ RIP: %x %x %x %x %x %x %x %x\n",
+	     (unsigned)code[0], (unsigned)code[1], (unsigned)code[2], (unsigned)code[3],
+	     (unsigned)code[4], (unsigned)code[5], (unsigned)code[6], (unsigned)code[7]);
+	// PUSHALL order (idt.asm): rax rbx rcx rdx rbp rsi rdi r8..r15
+	// After PUSHALL, frame[0]=r15 [1]=r14 [2]=r13 [3]=r12 [4]=r11 [5]=r10
+	// [6]=r9 [7]=r8 [8]=rdi [9]=rsi [10]=rbp [11]=rdx [12]=rcx [13]=rbx
+	// [14]=rax(=errcode for isr13) [15]=RIP [16]=CS [17]=RFLAGS [18]=RSP [19]=SS
+	klog("[ISR13] rdi=%lx rsi=%lx rbp=%lx rdx=%lx rcx=%lx rbx=%lx\n",
+	     frame[8], frame[9], frame[10], frame[11], frame[12], frame[13]);
 	if (cs & 3) {
 		pt::uint64_t rsp = frame[18];
 		pt::uint64_t ss  = frame[19];
@@ -292,17 +303,12 @@ ASMCALL void isr13_handler(pt::uint64_t* frame)
 		// Dump user stack around RSP
 		klog("[ISR13] user stack dump at RSP:\n");
 		for (int i = -1; i <= 4; i++) {
-			pt::uint64_t addr = rsp + (pt::uint64_t)(i * 8);
+			pt::int64_t offset = (pt::int64_t)(i * 8);
+			pt::uint64_t addr = (pt::uint64_t)((pt::int64_t)rsp + offset);
 			if (addr > 0x1000 && addr < 0xFFFFFFFFFFFFFF00ULL)
-				klog("[ISR13]   [RSP%+d] %lx = %lx\n", i*8, addr,
+				klog("[ISR13]   [RSP+%d] %lx = %lx\n", (int)offset, addr,
 				     *reinterpret_cast<pt::uint64_t*>(addr));
 		}
-	} else {
-		// Ring-0 fault: dump the 15 saved registers for context
-		klog("[ISR13] saved regs: rax=%lx rbx=%lx rcx=%lx rdx=%lx\n",
-		     frame[14], frame[13], frame[12], frame[11]);
-		klog("[ISR13]             rbp=%lx rsi=%lx rdi=%lx\n",
-		     frame[10], frame[9], frame[8]);
 	}
 	kernel_panic("General protection fault", 13);
 }
@@ -451,6 +457,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				return (pt::uint64_t)-1;
 			{
 				File* f = &t->fd_table[fd];
+				if (f->type == FdType::FILE)
+					return (pt::uint64_t)VFS::write_file(f, buf, n);
 				if (f->type == FdType::PIPE_WR) {
 					PipeBuffer* pipe = pipe_get_buf(f->fs_data);
 					pt::uint32_t written = 0;
@@ -685,6 +693,17 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			Framebuffer* fb = Framebuffer::get_instance();
 			if (!fb) return (pt::uint64_t)-1;
 			const pt::uint8_t* buf = reinterpret_cast<const pt::uint8_t*>(arg1);
+			// Rate-limited log: every 100 frames, log call count + first pixel
+			{
+				static pt::uint32_t dp_count = 0;
+				dp_count++;
+				if (dp_count % 100 == 1) {
+					klog("[DRAW_PIXELS] call#%d x=%d y=%d w=%d h=%d px0=[%x,%x,%x]\n",
+					     (int)dp_count, (int)arg2, (int)arg3,
+					     (int)arg4, (int)arg5,
+					     (unsigned)buf[0], (unsigned)buf[1], (unsigned)buf[2]);
+				}
+			}
 			fb->Draw(buf, (pt::uint32_t)arg2, (pt::uint32_t)arg3,
 			         (pt::uint32_t)arg4, (pt::uint32_t)arg5);
 			return 0;
@@ -696,6 +715,26 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				return (pt::uint64_t)-1;
 			// Encoding: bit 8 = pressed, bits 7:0 = PS/2 scancode.
 			return (pt::uint64_t)ev.scancode | (ev.pressed ? 0x100u : 0u);
+		}
+
+		case SYS_CREATE: {
+			const char* filename = reinterpret_cast<const char*>(arg1);
+			Task* t = TaskScheduler::get_current_task();
+			int fd = -1;
+			for (int i = 0; i < (int)Task::MAX_FDS; i++) {
+				if (!t->fd_table[i].open) { fd = i; break; }
+			}
+			if (fd == -1) {
+				klog("syscall: SYS_CREATE: no free fd\n");
+				return (pt::uint64_t)-1;
+			}
+			if (!VFS::open_file_write(filename, &t->fd_table[fd])) {
+				klog("syscall: SYS_CREATE: '%s' failed\n", filename);
+				return (pt::uint64_t)-1;
+			}
+			t->fd_table[fd].type = FdType::FILE;
+			klog("syscall: SYS_CREATE: '%s' -> fd %d\n", filename, fd);
+			return (pt::uint64_t)fd;
 		}
 
 		default:

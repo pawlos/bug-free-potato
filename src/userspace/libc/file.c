@@ -56,7 +56,18 @@ FILE *fopen(const char *path, const char *mode)
         }
     }
 
-    int fd = sys_open(path);
+    int fd;
+    if (write_mode) {
+        /* "w": create new or truncate existing */
+        fd = sys_create(path);
+    } else if (append_mode) {
+        /* "a": open existing (keeping content) or create fresh */
+        fd = sys_open(path);
+        if (fd < 0) fd = sys_create(path);
+    } else {
+        /* "r": read-only, existing file */
+        fd = sys_open(path);
+    }
     if (fd < 0) return (FILE *)0;
 
     FILE *f = pool_alloc();
@@ -66,7 +77,10 @@ FILE *fopen(const char *path, const char *mode)
     f->flags      = 0;
     f->unget_char = -1;
     if (write_mode)  f->flags |= _FILE_WRITE;
-    if (append_mode) f->flags |= _FILE_APPEND | _FILE_WRITE;
+    if (append_mode) {
+        f->flags |= _FILE_APPEND | _FILE_WRITE;
+        sys_lseek(fd, 0, SEEK_END);   /* position at end of file */
+    }
     return f;
 }
 
@@ -221,3 +235,12 @@ int fprintf(FILE *f, const char *fmt, ...)
     int r = vfprintf(f, fmt, ap);
     va_end(ap); return r;
 }
+
+/* ── POSIX stubs ─────────────────────────────────────────────────────────── */
+
+/* Unbuffered I/O — fflush is a no-op. */
+int fflush(FILE *f) { (void)f; return 0; }
+
+/* VFS is read-only; save-game operations fail gracefully. */
+int remove(const char *path) { (void)path; return -1; }
+int rename(const char *old, const char *new_name) { (void)old; (void)new_name; return -1; }

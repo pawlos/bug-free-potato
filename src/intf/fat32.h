@@ -81,6 +81,9 @@ struct FAT32State {
     pt::uint32_t first_cluster;        // first cluster of the file (constant)
     pt::uint32_t current_cluster;      // cluster reached after last operation
     pt::uint32_t current_cluster_idx;  // which cluster index current_cluster is
+    pt::uint32_t dir_entry_sector;     // disk sector holding this file's dir entry
+    pt::uint16_t dir_entry_offset;     // byte offset of the entry within that sector
+    pt::uint8_t  _pad[2];
 };
 static_assert(sizeof(FAT32State) <= 32, "FAT32State overflows File::fs_data");
 
@@ -89,10 +92,12 @@ public:
     bool mount() override;
     bool open_file(const char* filename, File* file) override;
     pt::uint32_t read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) override;
+    pt::uint32_t write_file(File* file, const void* buffer, pt::uint32_t bytes_to_write) override;
     pt::uint32_t seek_file(File* file, pt::int32_t offset, int whence) override;
     void close_file(File* file) override;
     bool file_exists(const char* filename) override;
     void list_root_directory() override;
+    bool open_file_write(const char* filename, File* out) override;
     bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) override;
     bool delete_file(const char* filename) override;
     pt::uint32_t get_bytes_per_cluster() override;
@@ -112,6 +117,11 @@ private:
     bool scan_directory(pt::uint32_t start_cluster,
                         const char*  filename,
                         File*        out);
+
+    pt::uint32_t allocate_cluster();
+    bool write_fat_entry(pt::uint32_t cluster, pt::uint32_t value);
+    bool update_dir_entry(File* file);
+    bool create_dir_entry(const char* filename, File* out);
 
     FAT32_BPB    bpb;
     pt::uint32_t* fat_table         = nullptr;  // cached FAT (array of uint32)

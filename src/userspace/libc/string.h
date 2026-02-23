@@ -18,3 +18,9 @@ void  *memset (void *dst, int c, size_t n);
 void  *memmove(void *dst, const void *src, size_t n);
 int    memcmp (const void *a, const void *b, size_t n);
 void  *memchr (const void *s, int c, size_t n);
+
+char  *strtok (char *s, const char *delim);
+char  *strtok_r(char *s, const char *delim, char **saveptr);
+
+int    strcasecmp (const char *a, const char *b);
+int    strncasecmp(const char *a, const char *b, size_t n);

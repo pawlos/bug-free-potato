@@ -10,3 +10,10 @@ int snprintf(char *buf, size_t size,  const char *fmt, ...) __attribute__((forma
 int vprintf (const char *fmt, va_list ap);
 int vsprintf (char *buf,              const char *fmt, va_list ap);
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
+
+int sscanf (const char *str, const char *fmt, ...);
+int vsscanf(const char *str, const char *fmt, va_list ap);
+
+/* Pull in FILE*, fopen, fclose, fread, fprintf etc. — must be last to
+   avoid circular-include ordering issues (file.h includes stdio.h). */
+#include "file.h"

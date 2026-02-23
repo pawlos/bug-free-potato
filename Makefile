@@ -66,6 +66,9 @@ clean:
 	-rm -f $(PIPE_TEST_OBJ) $(PIPE_TEST_BIN)
 	-rm -f $(MATHTEST_OBJ)  $(MATHTEST_BIN)
 	-rm -f $(KEYTEST_OBJ)   $(KEYTEST_BIN)
+	-rm -f $(FSWRITE_OBJ)   $(FSWRITE_BIN)
+	-rm -rf $(DOOM_BUILD)
+	-rm -f  $(DOOM_ELF)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -123,6 +126,16 @@ $(PIPE_TEST_OBJ): src/userspace/pipe_test.c $(LIBC_A)
 $(PIPE_TEST_BIN): $(PIPE_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PIPE_TEST_OBJ) $(LIBC_A)
 
+# ── filesystem write test ─────────────────────────────────────────────────────
+FSWRITE_OBJ = build/userspace/fswrite_test.o
+FSWRITE_BIN = src/impl/x86_64/bins/fswrite_test.elf
+
+$(FSWRITE_OBJ): src/userspace/fswrite_test.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(FSWRITE_BIN): $(FSWRITE_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(FSWRITE_OBJ) $(LIBC_A)
+
 # ── key event test ────────────────────────────────────────────────────────────
 KEYTEST_OBJ = build/userspace/keytest.o
 KEYTEST_BIN = src/impl/x86_64/bins/keytest.elf
@@ -142,9 +155,6 @@ $(MATHTEST_OBJ): src/userspace/mathtest.c $(LIBC_A)
 
 $(MATHTEST_BIN): $(MATHTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(MATHTEST_OBJ) $(LIBC_A)
-
-# Files to copy to disk image from bins folder
-BIN_FILES := $(wildcard src/impl/x86_64/bins/*)
 
 # Userspace test ELF
 TEST_ELF_OBJ  = build/userspace/test.o
@@ -168,28 +178,109 @@ $(BLINK_ELF_OBJ): src/userspace/blink.asm
 $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
+# ── Doom ──────────────────────────────────────────────────────────────────────
+DOOM_DIR    = src/userspace/doom
+DOOMGEN_DIR = $(DOOM_DIR)/doomgeneric/doomgeneric
+DOOM_BUILD  = build/userspace/doom
+DOOM_ELF    = src/impl/x86_64/bins/doom.elf
+DOOM_WAD    = src/impl/x86_64/bins/doom1.wad
+
+# Compile flags: suppress all warnings (-w) so old Doom C doesn't drown the build.
+# -I src/userspace/libc makes #include <stdio.h> etc. find our freestanding libc.
+# -I src/userspace lets potato.c do #include "libc/syscall.h".
+CFLAGS_DOOM = -ffreestanding -fno-stack-protector -fno-builtin \
+              -fno-asynchronous-unwind-tables \
+              -m64 -nostdlib -w \
+              -include stddef.h \
+              -I src/userspace/libc \
+              -I src/userspace \
+              -I $(DOOMGEN_DIR)
+
+# Fetch doomgeneric source on demand (depth-1 clone, ~2 MB).
+# The repo nests sources under doomgeneric/doomgeneric/, so clone to
+# src/userspace/doom/doomgeneric (the repo root).
+$(DOOMGEN_DIR)/doomgeneric.h:
+	git clone --depth=1 https://github.com/ozkl/doomgeneric.git $(DOOM_DIR)/doomgeneric
+
+# All doomgeneric .c files — exclude other platform implementations and
+# platform-specific audio drivers (Allegro, SDL).
+DOOMGEN_SRCS := $(filter-out \
+    $(DOOMGEN_DIR)/doomgeneric_allegro.c \
+    $(DOOMGEN_DIR)/doomgeneric_emscripten.c \
+    $(DOOMGEN_DIR)/doomgeneric_linuxvt.c \
+    $(DOOMGEN_DIR)/doomgeneric_sdl.c \
+    $(DOOMGEN_DIR)/doomgeneric_soso.c \
+    $(DOOMGEN_DIR)/doomgeneric_sosox.c \
+    $(DOOMGEN_DIR)/doomgeneric_win.c \
+    $(DOOMGEN_DIR)/doomgeneric_xlib.c \
+    $(DOOMGEN_DIR)/i_allegromusic.c \
+    $(DOOMGEN_DIR)/i_allegrosound.c \
+    $(DOOMGEN_DIR)/i_sdlmusic.c \
+    $(DOOMGEN_DIR)/i_sdlsound.c, \
+    $(wildcard $(DOOMGEN_DIR)/*.c))
+DOOMGEN_OBJS := $(patsubst $(DOOMGEN_DIR)/%.c, $(DOOM_BUILD)/dg_%.o, $(DOOMGEN_SRCS))
+
+# doomgeneric.c has its own main() — rename it so ours in potato.c wins.
+$(DOOM_BUILD)/dg_doomgeneric.o: $(DOOMGEN_DIR)/doomgeneric.c $(DOOMGEN_DIR)/doomgeneric.h
+	mkdir -p $(DOOM_BUILD)
+	$(CC) -c $(CFLAGS_DOOM) -Dmain=_dg_unused_main -o $@ $<
+
+# All other doomgeneric sources compile normally
+$(DOOM_BUILD)/dg_%.o: $(DOOMGEN_DIR)/%.c $(DOOMGEN_DIR)/doomgeneric.h
+	mkdir -p $(DOOM_BUILD)
+	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
+
+# Our platform layer
+$(DOOM_BUILD)/doomgeneric_potato.o: $(DOOM_DIR)/doomgeneric_potato.c $(DOOMGEN_DIR)/doomgeneric.h
+	mkdir -p $(DOOM_BUILD)
+	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
+
+$(DOOM_ELF): $(DOOMGEN_OBJS) $(DOOM_BUILD)/doomgeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
+	      $(LIBC_CRT0) $(DOOM_BUILD)/doomgeneric_potato.o $(DOOMGEN_OBJS) $(LIBC_A)
+
+# Download shareware DOOM1.WAD (id Software freeware release)
+$(DOOM_WAD):
+	@echo "Downloading shareware doom1.wad..."
+	curl -L -o $@ "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad" || \
+	  { echo "ERROR: Could not download doom1.wad. Place it manually at $(DOOM_WAD)"; exit 1; }
+
+doom: $(DOOM_ELF)
+
+doom-disk: $(DOOM_ELF) $(DOOM_WAD)
+	@echo "doom.elf and doom1.wad ready for disk image"
+
 # Create FAT32 disk image with test files from bins folder
-disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN)
+ASSET_FILES = src/impl/x86_64/bins/font.psf \
+              src/impl/x86_64/bins/potato.raw \
+              src/impl/x86_64/bins/potato.txt \
+              src/impl/x86_64/bins/boot.raw
+
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(DOOM_ELF) $(DOOM_WAD)
 	@echo "Creating FAT32 disk image..."
-	@# Create 64MB disk image (room for WAD files etc.)
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
-	@# Format as FAT32
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
-	@# Copy all files from bins folder
-	@for file in $(BIN_FILES); do \
-		filename=$$(basename $$file); \
-		uppername=$$(echo $$filename | tr '[:lower:]' '[:upper:]'); \
-		echo "  Copying $$filename -> $$uppername"; \
-		mcopy -i disk.img $$file ::$$uppername; \
-	done
-	@# Also copy the test/blink ELFs explicitly (in case they weren't in BIN_FILES wildcard)
-	@mcopy -i disk.img $(TEST_ELF_BIN)  ::TEST.ELF  2>/dev/null || true
-	@mcopy -i disk.img $(BLINK_ELF_BIN) ::BLINK.ELF 2>/dev/null || true
-	@mcopy -i disk.img $(HELLO_ELF_BIN)      ::HELLO.ELF     2>/dev/null || true
-	@mcopy -i disk.img $(FORK_TEST_BIN)  ::FORK_TEST.ELF 2>/dev/null || true
-	@mcopy -i disk.img $(PIPE_TEST_BIN)  ::PIPE_TEST.ELF 2>/dev/null || true
-	@mcopy -i disk.img $(MATHTEST_BIN)  ::MATHTEST.ELF  2>/dev/null || true
-	@mcopy -i disk.img $(KEYTEST_BIN)   ::KEYTEST.ELF   2>/dev/null || true
+	@copy_file() { \
+	  src="$$1"; dst="$$2"; \
+	  [ -f "$$src" ] || return 0; \
+	  size=$$(du -sh "$$src" | cut -f1); \
+	  printf "  %-30s %6s  ->  %s\n" "$$(basename $$src)" "$$size" "$$dst"; \
+	  mcopy -i disk.img "$$src" "::$$dst"; \
+	}; \
+	copy_file src/impl/x86_64/bins/font.psf   FONT.PSF; \
+	copy_file src/impl/x86_64/bins/potato.raw POTATO.RAW; \
+	copy_file src/impl/x86_64/bins/potato.txt POTATO.TXT; \
+	copy_file src/impl/x86_64/bins/boot.raw   BOOT.RAW; \
+	copy_file $(TEST_ELF_BIN)   TEST.ELF; \
+	copy_file $(BLINK_ELF_BIN)  BLINK.ELF; \
+	copy_file $(HELLO_ELF_BIN)  HELLO.ELF; \
+	copy_file $(FORK_TEST_BIN)  FORK_TEST.ELF; \
+	copy_file $(PIPE_TEST_BIN)  PIPE_TEST.ELF; \
+	copy_file $(MATHTEST_BIN)   MATHTEST.ELF; \
+	copy_file $(KEYTEST_BIN)    KEYTEST.ELF; \
+	copy_file $(FSWRITE_BIN)    FSWRITE.ELF; \
+	copy_file $(DOOM_ELF)       DOOM.ELF; \
+	copy_file $(DOOM_WAD)       DOOM1.WAD
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 

@@ -24,3 +24,4 @@ constexpr pt::uint64_t SYS_FB_HEIGHT   = 19; // returns framebuffer height in pi
 constexpr pt::uint64_t SYS_DRAW_PIXELS   = 20; // rdi=buf, rsi=x, rdx=y, rcx=w, r8=h — blit pixel buffer
 // Returns (scancode | 0x100) if pressed, scancode if released, (uint64)-1 if queue empty.
 constexpr pt::uint64_t SYS_GET_KEY_EVENT = 21; // no args
+constexpr pt::uint64_t SYS_CREATE        = 22; // rdi=filename; create/truncate for writing; returns fd or -1

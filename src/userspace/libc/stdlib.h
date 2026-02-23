@@ -1,5 +1,6 @@
 #pragma once
 #include "syscall.h"  /* for size_t */
+#include "time.h"     /* time_t     */
 
 void  *malloc(size_t size);
 void  *calloc(size_t nmemb, size_t size);
@@ -24,3 +25,7 @@ int    rand(void);
 void   srand(unsigned int seed);
 void   qsort(void *base, size_t nmemb, size_t size,
              int (*cmp)(const void *, const void *));
+
+double atof(const char *s);
+int    system(const char *cmd);
+int    mkdir(const char *path, unsigned int mode);

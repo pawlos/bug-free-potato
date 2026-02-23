@@ -493,10 +493,14 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     //    The staging area lives at its identity-mapped physical address.
     klog("[ELF_TASK] allocating %d code frames\n", (int)num_code_frames);
     for (pt::size_t i = 0; i < num_code_frames; i++) {
+        if (i % 50 == 0) klog("[ELF_TASK] frame loop i=%d\n", (int)i);
         pt::uintptr_t frame = vmm.allocate_frame();
+        if (!frame) { klog("[ELF_TASK] allocate_frame returned 0 at i=%d\n", (int)i); break; }
+        if (i % 50 == 0) klog("[ELF_TASK] got frame %lx, memcpy src=%lx\n", frame, ELF_STAGING_PHYS + i * 4096);
         memcpy(reinterpret_cast<void*>(frame),
                reinterpret_cast<void*>(ELF_STAGING_PHYS + i * 4096),
                4096);
+        if (i % 50 == 0) klog("[ELF_TASK] memcpy done i=%d\n", (int)i);
         priv_pt[i] = frame | 0x07;  // Present | Writable | User
     }
     klog("[ELF_TASK] code frames allocated; calling create_task\n");

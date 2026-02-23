@@ -258,10 +258,13 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
                     out->current_position = 0;
                     out->open             = true;
 
-                    FAT32State* st        = fat32_state(out);
-                    st->first_cluster     = first_cluster;
-                    st->current_cluster   = first_cluster;
+                    FAT32State* st          = fat32_state(out);
+                    st->first_cluster       = first_cluster;
+                    st->current_cluster     = first_cluster;
                     st->current_cluster_idx = 0;
+                    st->dir_entry_sector    = sector + s;
+                    st->dir_entry_offset    = (pt::uint16_t)(e * 32);
+                    st->_pad[0] = st->_pad[1] = 0;
 
                     // Copy 8.3 name into out->filename
                     int k = 0;
@@ -367,9 +370,16 @@ pt::uint32_t FAT32::read_file(File* file, void* buffer,
             current_cluster = get_next_cluster(current_cluster);
     }
 
-    file->current_position    += bytes_read;
-    state->current_cluster     = current_cluster;
-    state->current_cluster_idx = file->current_position / bytes_per_cluster;
+    file->current_position += bytes_read;
+    state->current_cluster = current_cluster;
+    // Store the cluster index of the *last byte read* (position-1), not the
+    // current position.  If a read ends exactly at a cluster boundary,
+    // file->current_position / bytes_per_cluster == next_cluster_idx, but
+    // current_cluster still points to the previous cluster.  Subsequent forward
+    // navigation would then start from the wrong cluster (off by one), silently
+    // re-reading the previous cluster's data instead of the next cluster.
+    if (bytes_read > 0)
+        state->current_cluster_idx = (file->current_position - 1) / bytes_per_cluster;
     return bytes_read;
 }
 
@@ -392,12 +402,234 @@ void FAT32::close_file(File* file) {
     if (file) file->open = false;
 }
 
-// Write support not yet implemented
-bool FAT32::create_file(const char* filename,
-                        const pt::uint8_t* data, pt::uint32_t size) {
-    (void)filename; (void)data; (void)size;
-    klog("[FAT32] create_file: not implemented\n");
+// ── Write helpers ─────────────────────────────────────────────────────────
+
+// Find a free cluster in the FAT, mark it EOC, flush the FAT sector to disk.
+// Returns the cluster number, or 0 on failure (disk full).
+pt::uint32_t FAT32::allocate_cluster()
+{
+    for (pt::uint32_t c = 2; c < total_clusters + 2; c++) {
+        if ((fat_table[c] & 0x0FFFFFFF) == 0) {
+            write_fat_entry(c, 0x0FFFFFFF);  // marks as EOC
+            return c;
+        }
+    }
+    klog("[FAT32] allocate_cluster: disk full\n");
+    return 0;
+}
+
+// Update one FAT entry in memory and flush the affected FAT sector (both copies).
+bool FAT32::write_fat_entry(pt::uint32_t cluster, pt::uint32_t value)
+{
+    if (!fat_table || cluster < 2 || cluster >= total_clusters + 2) return false;
+    fat_table[cluster] = (fat_table[cluster] & 0xF0000000) | (value & 0x0FFFFFFF);
+
+    pt::uint32_t eps         = bpb.bytes_per_sector / 4;   // FAT entries per sector
+    pt::uint32_t fat_sec_idx = cluster / eps;
+    const pt::uint8_t* data  = (const pt::uint8_t*)fat_table
+                               + fat_sec_idx * bpb.bytes_per_sector;
+    for (pt::uint8_t i = 0; i < bpb.fat_count; i++) {
+        pt::uint32_t lba = fat_start_sector + i * fat_sectors + fat_sec_idx;
+        if (!Disk::write_sector(lba, data)) {
+            klog("[FAT32] write_fat_entry: write failed lba=%d\n", lba);
+            return false;
+        }
+    }
+    return true;
+}
+
+// Read the directory sector, patch the size and first-cluster fields, write back.
+bool FAT32::update_dir_entry(File* file)
+{
+    FAT32State* st = fat32_state(file);
+    if (st->dir_entry_sector == 0) return false;
+
+    if (!Disk::read_sector(st->dir_entry_sector, fat32_sector_buf)) return false;
+    FAT32_DirEntry* e = (FAT32_DirEntry*)(fat32_sector_buf + st->dir_entry_offset);
+    e->file_size          = file->file_size;
+    e->first_cluster_high = (pt::uint16_t)(st->first_cluster >> 16);
+    e->first_cluster_low  = (pt::uint16_t)(st->first_cluster & 0xFFFF);
+    return Disk::write_sector(st->dir_entry_sector, fat32_sector_buf);
+}
+
+// Find a free (or deleted) slot in the root directory and write a new 8.3 entry.
+bool FAT32::create_dir_entry(const char* filename, File* out)
+{
+    char fmt[12];
+    format_filename_83(filename, fmt);
+
+    pt::uint32_t cluster = root_cluster;
+    while (cluster >= 2 && !is_eoc(cluster)) {
+        pt::uint32_t sector = cluster_to_sector(cluster);
+        for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            if (!Disk::read_sector(sector + s, fat32_sector_buf)) continue;
+            pt::uint32_t eps = bpb.bytes_per_sector / 32;
+            FAT32_DirEntry* ents = (FAT32_DirEntry*)fat32_sector_buf;
+            for (pt::uint32_t e = 0; e < eps; e++) {
+                pt::uint8_t first = ents[e].filename[0];
+                if (first != 0x00 && first != 0xE5) continue;
+
+                // Found a free slot — initialise it
+                memset(&ents[e], 0, 32);
+                for (int i = 0; i < 8; i++) ents[e].filename[i]  = (pt::uint8_t)fmt[i];
+                for (int i = 0; i < 3; i++) ents[e].extension[i] = (pt::uint8_t)fmt[8 + i];
+                ents[e].attributes = 0x20;   // Archive flag
+
+                if (!Disk::write_sector(sector + s, fat32_sector_buf)) return false;
+
+                out->file_size        = 0;
+                out->current_position = 0;
+                out->open             = true;
+                FAT32State* st        = fat32_state(out);
+                st->first_cluster     = 0;
+                st->current_cluster   = 0;
+                st->current_cluster_idx = 0;
+                st->dir_entry_sector  = sector + s;
+                st->dir_entry_offset  = (pt::uint16_t)(e * 32);
+                st->_pad[0] = st->_pad[1] = 0;
+
+                int k = 0;
+                for (int i = 0; i < 8 && fmt[i] != ' '; i++) out->filename[k++] = fmt[i];
+                if (fmt[8] != ' ') {
+                    out->filename[k++] = '.';
+                    for (int i = 8; i < 11 && fmt[i] != ' '; i++) out->filename[k++] = fmt[i];
+                }
+                out->filename[k] = '\0';
+                return true;
+            }
+        }
+        cluster = get_next_cluster(cluster);
+    }
+    klog("[FAT32] create_dir_entry: no free directory slot\n");
     return false;
+}
+
+// ── open_file_write ───────────────────────────────────────────────────────
+// Create the file if it doesn't exist; truncate it if it does.
+bool FAT32::open_file_write(const char* filename, File* out)
+{
+    if (!mounted) return false;
+
+    if (scan_directory(root_cluster, filename, out)) {
+        // File exists — truncate: free every cluster in its chain
+        FAT32State* st = fat32_state(out);
+        pt::uint32_t c = st->first_cluster;
+        while (c >= 2 && !is_eoc(c)) {
+            pt::uint32_t next = get_next_cluster(c);
+            write_fat_entry(c, 0);   // mark as free
+            c = next;
+        }
+        st->first_cluster       = 0;
+        st->current_cluster     = 0;
+        st->current_cluster_idx = 0;
+        out->file_size          = 0;
+        out->current_position   = 0;
+        update_dir_entry(out);
+        return true;
+    }
+
+    return create_dir_entry(filename, out);
+}
+
+// ── write_file ────────────────────────────────────────────────────────────
+pt::uint32_t FAT32::write_file(File* file, const void* buffer,
+                                pt::uint32_t bytes_to_write)
+{
+    if (!mounted || !file || !file->open || bytes_to_write == 0) return 0;
+
+    const pt::uint8_t* src = (const pt::uint8_t*)buffer;
+    pt::uint32_t bytes_written = 0;
+    pt::uint32_t bpc   = (pt::uint32_t)bpb.sectors_per_cluster * bpb.bytes_per_sector;
+    FAT32State*  state = fat32_state(file);
+
+    pt::uint32_t cluster_idx = file->current_position / bpc;
+    pt::uint32_t byte_offset = file->current_position % bpc;
+    pt::uint32_t current_cluster = 0;
+
+    // Navigate to (or allocate) the starting cluster
+    if (state->first_cluster == 0) {
+        current_cluster = allocate_cluster();
+        if (current_cluster == 0) return 0;
+        state->first_cluster       = current_cluster;
+        state->current_cluster     = current_cluster;
+        state->current_cluster_idx = 0;
+        update_dir_entry(file);
+    } else if (cluster_idx >= state->current_cluster_idx) {
+        current_cluster = state->current_cluster;
+        for (pt::uint32_t i = state->current_cluster_idx; i < cluster_idx; i++) {
+            pt::uint32_t next = get_next_cluster(current_cluster);
+            if (is_eoc(next) || next < 2) {
+                next = allocate_cluster();
+                if (next == 0) return bytes_written;
+                write_fat_entry(current_cluster, next);
+            }
+            current_cluster = next;
+        }
+    } else {
+        current_cluster = state->first_cluster;
+        for (pt::uint32_t i = 0; i < cluster_idx; i++)
+            current_cluster = get_next_cluster(current_cluster);
+    }
+
+    // Write loop
+    while (bytes_written < bytes_to_write) {
+        pt::uint32_t sector   = cluster_to_sector(current_cluster);
+        pt::uint32_t sec_off  = byte_offset / bpb.bytes_per_sector;
+        pt::uint32_t sec_byte = byte_offset % bpb.bytes_per_sector;
+        bool err = false;
+
+        for (pt::uint32_t s = sec_off;
+             s < (pt::uint32_t)bpb.sectors_per_cluster && bytes_written < bytes_to_write;
+             s++) {
+            pt::uint32_t avail    = (pt::uint32_t)bpb.bytes_per_sector - sec_byte;
+            pt::uint32_t to_write = bytes_to_write - bytes_written;
+            if (to_write > avail) to_write = avail;
+
+            // Partial sector: read first so we don't clobber surrounding bytes
+            if (sec_byte != 0 || to_write < (pt::uint32_t)bpb.bytes_per_sector)
+                Disk::read_sector(sector + s, fat32_sector_buf);
+
+            memcpy(fat32_sector_buf + sec_byte, src + bytes_written, to_write);
+            if (!Disk::write_sector(sector + s, fat32_sector_buf)) { err = true; break; }
+
+            bytes_written += to_write;
+            sec_byte = 0;
+        }
+        if (err) break;
+
+        byte_offset = 0;
+        if (bytes_written < bytes_to_write) {
+            pt::uint32_t next = get_next_cluster(current_cluster);
+            if (is_eoc(next) || next < 2) {
+                next = allocate_cluster();
+                if (next == 0) break;
+                write_fat_entry(current_cluster, next);
+            }
+            current_cluster = next;
+        }
+    }
+
+    // Update state
+    file->current_position += bytes_written;
+    if (file->current_position > file->file_size)
+        file->file_size = file->current_position;
+    if (bytes_written > 0) {
+        state->current_cluster     = current_cluster;
+        state->current_cluster_idx = (file->current_position - 1) / bpc;
+        update_dir_entry(file);
+    }
+    return bytes_written;
+}
+
+// create_file: one-shot bulk create (used by kernel-internal callers).
+bool FAT32::create_file(const char* filename,
+                        const pt::uint8_t* data, pt::uint32_t size)
+{
+    File tmp;
+    if (!open_file_write(filename, &tmp)) return false;
+    if (data && size) write_file(&tmp, data, size);
+    close_file(&tmp);
+    return true;
 }
 
 bool FAT32::delete_file(const char* filename) {

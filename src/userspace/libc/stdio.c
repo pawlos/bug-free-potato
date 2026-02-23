@@ -224,3 +224,184 @@ int puts(const char *s)
     sys_write(1, "\n", 1);
     return 0;
 }
+
+/* ── vsscanf / sscanf ────────────────────────────────────────────────────── *
+ * Supports: %d %i %u %o %x %X %s %c %f %e %g %% %n %[...] %[^...]
+ * Flags:    * (suppress), width, l (long / double)
+ * ─────────────────────────────────────────────────────────────────────── */
+
+static int is_ws(char c) { return c==' '||c=='\t'||c=='\n'||c=='\r'||c=='\v'||c=='\f'; }
+
+int vsscanf(const char *str, const char *fmt, va_list ap)
+{
+    const char *s = str;
+    int count = 0;
+
+    while (*fmt) {
+        if (*fmt != '%') {
+            if (is_ws(*fmt)) {
+                while (is_ws(*s)) s++;
+                fmt++;
+            } else {
+                if (*s != *fmt) return count;
+                s++; fmt++;
+            }
+            continue;
+        }
+        fmt++; /* skip '%' */
+
+        int suppress = 0;
+        if (*fmt == '*') { suppress = 1; fmt++; }
+
+        int width = 0;
+        while (*fmt >= '0' && *fmt <= '9') width = width*10 + (*fmt++ - '0');
+
+        int is_long = 0;
+        if      (*fmt == 'l') { is_long = 1; fmt++; }
+        else if (*fmt == 'h') { fmt++; if (*fmt == 'h') fmt++; }
+
+        char spec = *fmt++;
+
+        if (spec == '%') { if (*s != '%') return count; s++; continue; }
+
+        if (spec == 'c') {
+            if (!*s) return count;
+            if (!suppress) { *va_arg(ap, char*) = *s; count++; }
+            s++;
+            continue;
+        }
+        if (spec == 'n') {
+            if (!suppress) *va_arg(ap, int*) = (int)(s - str);
+            continue;
+        }
+
+        /* all others: skip leading whitespace */
+        while (is_ws(*s)) s++;
+        if (!*s) return count;
+
+        if (spec == 's') {
+            char *dst = suppress ? (char*)0 : va_arg(ap, char*);
+            int n = 0;
+            while (*s && !is_ws(*s)) {
+                if (width && n >= width) break;
+                if (dst) dst[n] = *s;
+                n++; s++;
+            }
+            if (dst) dst[n] = '\0';
+            if (!suppress) count++;
+            continue;
+        }
+
+        if (spec == '[') {
+            int negate = 0;
+            if (*fmt == '^') { negate = 1; fmt++; }
+            char cls[256] = {0};
+            if (*fmt == ']') { cls[(unsigned char)']'] = 1; fmt++; }
+            while (*fmt && *fmt != ']') { cls[(unsigned char)*fmt++] = 1; }
+            if (*fmt == ']') fmt++;
+            char *dst = suppress ? (char*)0 : va_arg(ap, char*);
+            int n = 0;
+            while (*s) {
+                int in = cls[(unsigned char)*s];
+                if (negate ? in : !in) break;
+                if (width && n >= width) break;
+                if (dst) dst[n] = *s;
+                n++; s++;
+            }
+            if (dst) dst[n] = '\0';
+            if (!suppress) count++;
+            continue;
+        }
+
+        if (spec == 'd' || spec == 'i') {
+            long val = 0; int neg = 0;
+            if (*s == '-') { neg = 1; s++; }
+            else if (*s == '+') s++;
+            int base = 10;
+            if (spec == 'i') {
+                if (*s == '0') {
+                    s++;
+                    if (*s == 'x' || *s == 'X') { base = 16; s++; }
+                    else base = 8;
+                }
+            }
+            int n = 0;
+            while (*s) {
+                int d;
+                if (*s>='0'&&*s<='9') d = *s-'0';
+                else if (base==16&&*s>='a'&&*s<='f') d = *s-'a'+10;
+                else if (base==16&&*s>='A'&&*s<='F') d = *s-'A'+10;
+                else break;
+                if (d >= base) break;
+                val = val*base + d; s++; n++;
+                if (width && n >= width) break;
+            }
+            if (!n) return count;
+            if (neg) val = -val;
+            if (!suppress) {
+                if (is_long) *va_arg(ap, long*)        = val;
+                else         *va_arg(ap, int*)          = (int)val;
+                count++;
+            }
+            continue;
+        }
+
+        if (spec == 'u' || spec == 'o' || spec == 'x' || spec == 'X') {
+            int base = (spec=='o') ? 8 : (spec=='u') ? 10 : 16;
+            unsigned long val = 0;
+            if (base==16 && *s=='0' && (*(s+1)=='x'||*(s+1)=='X')) s+=2;
+            int n = 0;
+            while (*s) {
+                int d;
+                if (*s>='0'&&*s<='9') d = *s-'0';
+                else if (base==16&&*s>='a'&&*s<='f') d = *s-'a'+10;
+                else if (base==16&&*s>='A'&&*s<='F') d = *s-'A'+10;
+                else break;
+                if (d >= base) break;
+                val = val*base + d; s++; n++;
+                if (width && n >= width) break;
+            }
+            if (!n) return count;
+            if (!suppress) {
+                if (is_long) *va_arg(ap, unsigned long*) = val;
+                else         *va_arg(ap, unsigned int*)  = (unsigned int)val;
+                count++;
+            }
+            continue;
+        }
+
+        if (spec=='f' || spec=='e' || spec=='g' || spec=='E' || spec=='G') {
+            double val = 0.0; int neg = 0;
+            if (*s=='-') { neg=1; s++; } else if (*s=='+') s++;
+            while (*s>='0' && *s<='9') { val = val*10.0 + (*s++ - '0'); }
+            if (*s == '.') {
+                s++; double frac = 0.1;
+                while (*s>='0' && *s<='9') { val += (*s++ - '0')*frac; frac *= 0.1; }
+            }
+            /* exponent */
+            if (*s=='e' || *s=='E') {
+                s++; int eneg=0, exp=0;
+                if (*s=='-') { eneg=1; s++; } else if (*s=='+') s++;
+                while (*s>='0' && *s<='9') exp = exp*10 + (*s++ - '0');
+                double scale = 1.0;
+                while (exp--) scale *= 10.0;
+                if (eneg) val /= scale; else val *= scale;
+            }
+            if (neg) val = -val;
+            if (!suppress) {
+                if (is_long) *va_arg(ap, double*) = val;
+                else         *va_arg(ap, float*)  = (float)val;
+                count++;
+            }
+            continue;
+        }
+    }
+    return count;
+}
+
+int sscanf(const char *str, const char *fmt, ...)
+{
+    va_list ap; va_start(ap, fmt);
+    int r = vsscanf(str, fmt, ap);
+    va_end(ap); return r;
+}

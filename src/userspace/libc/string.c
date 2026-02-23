@@ -133,3 +133,45 @@ void *memmove(void *dst, const void *src, size_t n)
     }
     return dst;
 }
+
+char *strtok_r(char *s, const char *delim, char **saveptr)
+{
+    if (!s) s = *saveptr;
+    /* skip leading delimiters */
+    while (*s && strchr(delim, *s)) s++;
+    if (!*s) { *saveptr = s; return (char *)0; }
+    char *tok = s;
+    while (*s && !strchr(delim, *s)) s++;
+    if (*s) { *s++ = '\0'; }
+    *saveptr = s;
+    return tok;
+}
+
+static char *strtok_ptr;
+char *strtok(char *s, const char *delim)
+{
+    return strtok_r(s, delim, &strtok_ptr);
+}
+
+static int to_lower(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
+
+int strcasecmp(const char *a, const char *b)
+{
+    while (*a && *b) {
+        int d = to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
+        if (d) return d;
+        a++; b++;
+    }
+    return to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
+}
+
+int strncasecmp(const char *a, const char *b, size_t n)
+{
+    while (n-- && *a && *b) {
+        int d = to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
+        if (d) return d;
+        a++; b++;
+    }
+    return n == (size_t)-1 ? 0 :
+           to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
+}
