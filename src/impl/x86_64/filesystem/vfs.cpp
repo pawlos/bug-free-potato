@@ -1,5 +1,6 @@
 #include "vfs.h"
 #include "fat12.h"
+#include "fat32.h"
 #include "disk.h"
 #include "kernel.h"
 
@@ -8,10 +9,9 @@
 // kernel does not invoke.
 inline void* operator new(__SIZE_TYPE__, void* p) noexcept { return p; }
 
-// Raw storage for the FAT12 instance.  Using a char buffer (not a typed
-// global) means no global constructor runs — the object is placement-new'd
-// inside VFS::mount() the first time it is needed.
+// Raw storage for filesystem instances — placement-new'd in VFS::mount().
 static char fat12_storage[sizeof(FAT12)] __attribute__((aligned(__alignof__(FAT12))));
+static char fat32_storage[sizeof(FAT32)] __attribute__((aligned(__alignof__(FAT32))));
 
 Filesystem* VFS::active_fs = nullptr;
 
@@ -29,7 +29,8 @@ bool VFS::mount() {
         return false;
     }
 
-    // Parse BPB fields needed to determine FAT type
+    // Parse BPB fields needed to determine FAT type.
+    // The first 36 bytes are identical for FAT12/16/32.
     const FAT12_BPB* bpb = reinterpret_cast<const FAT12_BPB*>(vfs_sector_buf);
 
     if (bpb->bytes_per_sector == 0 || bpb->sectors_per_cluster == 0) {
@@ -37,11 +38,21 @@ bool VFS::mount() {
         return false;
     }
 
+    // sectors_per_fat is 0 for FAT32; use the 32-bit field at offset 36 instead.
+    pt::uint32_t sectors_per_fat;
+    if (bpb->sectors_per_fat != 0) {
+        sectors_per_fat = bpb->sectors_per_fat;
+    } else {
+        // FAT32: sectors_per_fat_32 lives at offset 36 in the boot sector.
+        sectors_per_fat = *reinterpret_cast<const pt::uint32_t*>(vfs_sector_buf + 36);
+    }
+
+    // root_entry_count == 0 for FAT32, so root_dir_sectors == 0 there too.
     pt::uint32_t root_dir_sectors = ((bpb->root_entry_count * 32) + (bpb->bytes_per_sector - 1))
                                     / bpb->bytes_per_sector;
     pt::uint32_t fat_start        = bpb->reserved_sector_count;
     pt::uint32_t data_start       = fat_start
-                                    + (bpb->fat_count * bpb->sectors_per_fat)
+                                    + (bpb->fat_count * sectors_per_fat)
                                     + root_dir_sectors;
     pt::uint32_t total_sectors    = (bpb->total_sectors_16 != 0)
                                     ? bpb->total_sectors_16
@@ -51,16 +62,13 @@ bool VFS::mount() {
 
     if (total_clusters < 4085) {
         klog("[VFS] total_clusters=%d -> FAT12\n", total_clusters);
-        // Placement-construct FAT12 into the pre-allocated buffer.
-        // This sets the vtable pointer and zero-initialises all fields
-        // (matching their in-class initialisers) without needing a global ctor.
         active_fs = new (fat12_storage) FAT12();
     } else if (total_clusters < 65525) {
         klog("[VFS] total_clusters=%d -> FAT16 (not yet supported)\n", total_clusters);
         return false;
     } else {
-        klog("[VFS] total_clusters=%d -> FAT32 (not yet supported)\n", total_clusters);
-        return false;
+        klog("[VFS] total_clusters=%d -> FAT32\n", total_clusters);
+        active_fs = new (fat32_storage) FAT32();
     }
 
     return active_fs->mount();

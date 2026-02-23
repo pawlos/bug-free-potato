@@ -145,13 +145,13 @@ $(BLINK_ELF_OBJ): src/userspace/blink.asm
 $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
-# Create FAT12 disk image with test files from bins folder
+# Create FAT32 disk image with test files from bins folder
 disk.img: $(BIN_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN)
-	@echo "Creating FAT12 disk image..."
-	@# Create 10MB disk image (large enough for testing)
-	dd if=/dev/zero of=disk.img bs=512 count=20480 2>/dev/null
-	@# Format as FAT12 (1.44MB floppy geometry)
-	mkfs.vfat -F 12 -n "POTATDISK" disk.img
+	@echo "Creating FAT32 disk image..."
+	@# Create 64MB disk image (room for WAD files etc.)
+	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
+	@# Format as FAT32
+	mkfs.vfat -F 32 -n "POTATDISK" disk.img
 	@# Copy all files from bins folder
 	@for file in $(BIN_FILES); do \
 		filename=$$(basename $$file); \
