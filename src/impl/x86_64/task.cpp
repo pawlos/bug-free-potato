@@ -5,6 +5,7 @@
 #include "vfs.h"
 #include "pipe.h"
 #include "elf_loader.h"
+#include "timer.h"
 
 // Close a single file descriptor, dispatching on its type.
 // Handles FILE (VFS), PIPE_RD and PIPE_WR (ref-count, kfree on last close).
@@ -64,6 +65,7 @@ void TaskScheduler::initialize()
         tasks[i].parent_id        = 0xFFFFFFFF;
         tasks[i].waiting_for      = 0xFFFFFFFF;
         tasks[i].exit_code        = 0;
+        tasks[i].sleep_deadline   = 0;
         tasks[i].syscall_frame_rsp = 0;
     }
 
@@ -143,6 +145,8 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         vmm.free_frame(new_task->priv_pdpt);
         new_task->priv_pdpt = 0;
     }
+
+    new_task->sleep_deadline = 0;
 
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -347,10 +351,37 @@ pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
     tasks[current_task_id].preempt_rsp = rsp;
     tasks[current_task_id].ticks_alive++;
 
+    // Wake any sleeping tasks whose deadline has expired.
+    // This runs every tick (not just at quantum boundaries) for prompt wake-up.
+    pt::uint64_t now = get_ticks();
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        if (tasks[i].state == TASK_BLOCKED &&
+            tasks[i].sleep_deadline != 0 &&
+            now >= tasks[i].sleep_deadline) {
+            tasks[i].sleep_deadline = 0;
+            tasks[i].state = TASK_READY;
+        }
+    }
+
     if (scheduler_ticks % SCHEDULER_QUANTUM != 0)
         return rsp;  // quantum not expired — stay with current task
 
     return do_switch_to_next(rsp);
+}
+
+// Block the current task for at least ms milliseconds.
+void TaskScheduler::sleep_task(pt::uint64_t ms)
+{
+    if (ms == 0) return;
+
+    Task* t = &tasks[current_task_id];
+    // Timer runs at 50 Hz → 20 ms per tick; round up to at least 1 tick.
+    pt::uint64_t ticks_needed = ms / 20;
+    if (ticks_needed == 0) ticks_needed = 1;
+
+    t->sleep_deadline = get_ticks() + ticks_needed;
+    t->state = TASK_BLOCKED;
+    task_yield();  // switch away; preempt() will wake us when deadline expires
 }
 
 // Called from yield_schedule (int 0x81 boundary).
@@ -790,6 +821,7 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->parent_id          = parent->id;
     child->waiting_for        = 0xFFFFFFFF;
     child->exit_code          = 0;
+    child->sleep_deadline     = 0;
     child->syscall_frame_rsp  = 0;
 
     // Copy open file descriptors (shallow copy — positions are independent).

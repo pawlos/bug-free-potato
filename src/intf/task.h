@@ -74,6 +74,10 @@ struct Task {
     pt::uint32_t waiting_for;  // child task ID we're blocked on; 0xFFFFFFFF = none
     int  exit_code;    // populated by task_exit() / SYS_EXIT
 
+    // Timed sleep: absolute tick deadline set by sleep_task().
+    // 0 means the task is not sleeping (default).
+    pt::uint64_t sleep_deadline;
+
     // 512-byte FXSAVE area for x87/SSE state (must be 16-byte aligned).
     // Saved/restored by the scheduler on every context switch so tasks
     // don't corrupt each other's floating-point state.
@@ -152,6 +156,10 @@ public:
     // Returns 0 on success, (uint64_t)-1 on invalid child_id / not a child.
     static pt::uint64_t waitpid_task(pt::uint32_t child_id,
                                      int* out_exit_code);
+
+    // Block the current task for at least ms milliseconds, then resume.
+    // Returns immediately if ms == 0.
+    static void sleep_task(pt::uint64_t ms);
 
 private:
     static Task tasks[MAX_TASKS];

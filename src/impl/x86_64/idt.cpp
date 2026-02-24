@@ -737,6 +737,10 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return (pt::uint64_t)fd;
 		}
 
+		case SYS_SLEEP:
+			TaskScheduler::sleep_task(arg1);
+			return 0;
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

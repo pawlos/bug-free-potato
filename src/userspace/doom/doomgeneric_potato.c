@@ -54,9 +54,7 @@ void DG_DrawFrame(void)
 void DG_SleepMs(uint32_t ms)
 {
     if (!ms) return;
-    long target = sys_get_ticks() + (long)(ms / MS_PER_TICK);
-    while (sys_get_ticks() < target)
-        sys_yield();
+    sys_sleep_ms(ms);
 }
 
 uint32_t DG_GetTicksMs(void)

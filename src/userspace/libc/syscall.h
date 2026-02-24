@@ -25,6 +25,7 @@
 /* Returns (scancode | 0x100) if pressed, scancode if released, -1 if empty. */
 #define SYS_GET_KEY_EVENT 21  /* no args                                            */
 #define SYS_CREATE        22  /* rdi=filename; create/truncate for writing; returns fd or -1 */
+#define SYS_SLEEP         23  /* rdi=milliseconds; block until elapsed; returns 0            */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -151,3 +152,6 @@ static inline long  sys_get_key_event(void)
 
 static inline int   sys_create(const char *name)
     { return (int)__sc1(SYS_CREATE, (long)name); }
+
+static inline void  sys_sleep_ms(unsigned long ms)
+    { __sc1(SYS_SLEEP, (long)ms); }
