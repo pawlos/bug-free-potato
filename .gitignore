@@ -1,5 +1,6 @@
 # Third-party sources (clone manually per README)
 src/userspace/doom/doomgeneric/
+src/impl/x86_64/bins/doom1.wad
 
 # Build artifacts
 build/
