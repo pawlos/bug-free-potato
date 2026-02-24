@@ -65,6 +65,13 @@ public:
     static Window*     get_window(pt::uint32_t wid);
     static pt::uint32_t get_task_window(pt::uint32_t task_id);
 
+    // Switch focus to wid (dims old focused window, highlights new one).
+    static void        set_focus(pt::uint32_t wid);
+
+    // Returns the wid of the window whose outer frame contains (px, py),
+    // or INVALID_WID if none.
+    static pt::uint32_t window_at(pt::int16_t px, pt::int16_t py);
+
     // Render a character into the window's client area, advancing the text cursor.
     // Handles \n, \r, \t and wrapping/scrolling within the client area.
     static void        put_char(pt::uint32_t wid, char c);

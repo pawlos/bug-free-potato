@@ -2,6 +2,7 @@
 #include "io.h"
 #include "kernel.h"
 #include <framebuffer.h>
+#include "window.h"
 
 
 void DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
@@ -99,6 +100,8 @@ mouse_state mouse {
     .right_button_pressed = false
 };
 
+static bool prev_left_button = false;
+
 void mouse_routine(const pt::int8_t mouse_byte[])
 {
     const pt::int8_t mouse_x = mouse_byte[1];
@@ -125,4 +128,13 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     mouse.left_button_pressed = left_button_pressed;
     mouse.right_button_pressed = right_button_pressed;
     DrawCursor(mouse.pos_x, mouse.pos_y);
+
+    // Click-to-focus: detect left-button press edge (rising edge only)
+    bool left_clicked = left_button_pressed && !prev_left_button;
+    prev_left_button = left_button_pressed;
+    if (left_clicked) {
+        pt::uint32_t hit = WindowManager::window_at(mouse.pos_x, mouse.pos_y);
+        if (hit != INVALID_WID)
+            WindowManager::set_focus(hit);
+    }
 }

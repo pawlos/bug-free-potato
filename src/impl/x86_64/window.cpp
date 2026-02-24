@@ -246,6 +246,33 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     }
 }
 
+void WindowManager::set_focus(pt::uint32_t wid)
+{
+    if (wid >= MAX_WINDOWS || !windows[wid].active) return;
+    if (focused_id == wid) return;
+
+    if (focused_id != INVALID_WID)
+        draw_chrome(focused_id, false);
+
+    focused_id = wid;
+    draw_chrome(wid, true);
+}
+
+pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
+{
+    if (px < 0 || py < 0) return INVALID_WID;
+    pt::uint32_t ux = (pt::uint32_t)px;
+    pt::uint32_t uy = (pt::uint32_t)py;
+    for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {
+        Window* w = &windows[i];
+        if (!w->active) continue;
+        if (ux >= w->screen_x && ux < w->screen_x + w->total_w &&
+            uy >= w->screen_y && uy < w->screen_y + w->total_h)
+            return i;
+    }
+    return INVALID_WID;
+}
+
 void wm_route_key_event(pt::uint64_t encoded_event)
 {
     WindowManager::push_key_event(encoded_event);
