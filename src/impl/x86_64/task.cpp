@@ -352,7 +352,9 @@ pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
     tasks[current_task_id].ticks_alive++;
 
     // Wake any sleeping tasks whose deadline has expired.
-    // This runs every tick (not just at quantum boundaries) for prompt wake-up.
+    // If any task was woken, force a switch immediately so it runs within
+    // one tick rather than waiting up to SCHEDULER_QUANTUM ticks.
+    bool woke_any = false;
     pt::uint64_t now = get_ticks();
     for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
         if (tasks[i].state == TASK_BLOCKED &&
@@ -360,11 +362,12 @@ pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
             now >= tasks[i].sleep_deadline) {
             tasks[i].sleep_deadline = 0;
             tasks[i].state = TASK_READY;
+            woke_any = true;
         }
     }
 
-    if (scheduler_ticks % SCHEDULER_QUANTUM != 0)
-        return rsp;  // quantum not expired — stay with current task
+    if (!woke_any && scheduler_ticks % SCHEDULER_QUANTUM != 0)
+        return rsp;  // quantum not expired, nothing woken — stay with current task
 
     return do_switch_to_next(rsp);
 }

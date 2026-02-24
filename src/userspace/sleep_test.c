@@ -23,8 +23,8 @@ int main(void)
     sys_sleep_ms(1);
     t1 = sys_get_ticks();
     elapsed_ms = (t1 - t0) * 20;
-    printf("  elapsed: %ld ms (expected 20)\n", elapsed_ms);
-    if (elapsed_ms >= 20 && elapsed_ms <= 60)
+    printf("  elapsed: %ld ms (expected 20-40)\n", elapsed_ms);
+    if (elapsed_ms >= 20 && elapsed_ms <= 40)
         puts("  PASS");
     else
         puts("  FAIL");
