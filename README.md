@@ -17,3 +17,15 @@ Either use attached `potato.bxrc` file or execute with `qemu-system-x86_64 -cdro
 ## Debugging
 
 Add `-serial stdio` to enable debug logging.
+
+## Doom
+
+The kernel can run Doom via [doomgeneric](https://github.com/ozkl/doomgeneric). The platform layer is at `src/userspace/doom/doomgeneric_potato.c`, but the doomgeneric source itself is not included in this repository.
+
+To build with Doom support, clone doomgeneric into the expected location:
+
+    git clone https://github.com/ozkl/doomgeneric src/userspace/doom/doomgeneric
+
+You also need a Doom IWAD (e.g. `doom1.wad` from the shareware release) placed at:
+
+    src/impl/x86_64/bins/doom1.wad
