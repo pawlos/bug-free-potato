@@ -1,6 +1,7 @@
 #include "keyboard.h"
 #include "com.h"
 #include "kernel.h"
+#include "window.h"
 
 constexpr char layout[128] =
 {
@@ -44,6 +45,7 @@ bool shiftPressed = false;
 bool altPressed = false;
 bool ctrlPressed = false;
 bool capsLockOn = false;
+static bool e0_prefix = false;  // set when 0xE0 extended-key prefix is received
 
 static char keyboard_buffer[128] = {0};
 static int write_pos = 0;
@@ -57,6 +59,7 @@ static int event_read  = 0;
 static void push_key_event(pt::uint8_t scancode, bool pressed) {
     event_buffer[event_write % 128] = { scancode, pressed };
     event_write++;
+    wm_route_key_event(wev_make_key(scancode, pressed));
 }
 
 bool get_key_event(KeyEvent* out) {
@@ -87,6 +90,18 @@ char get_char() {
 
 void keyboard_routine(const pt::uint8_t scancode)
 {
+	// E0 is the extended-key prefix byte (Right Ctrl, Right Alt, arrows, etc.).
+	// Absorb it, set a flag, and wait for the actual key byte on the next IRQ.
+	if (scancode == 0xE0) {
+		e0_prefix = true;
+		return;
+	}
+	// E1 prefix (used only by the Pause key sequence) — just ignore it.
+	if (scancode == 0xE1) {
+		return;
+	}
+	e0_prefix = false;  // consume the flag regardless of key
+
 	if (scancode & 0x80)
 	{
 		//Key released

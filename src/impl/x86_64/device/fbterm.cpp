@@ -104,6 +104,24 @@ void FbTerm::draw_at(pt::uint32_t px, pt::uint32_t py, const char* str,
     m_fg = saved_fg; m_bg = saved_bg;
 }
 
+void FbTerm::put_char_at(char c, pt::uint32_t px, pt::uint32_t py,
+                         pt::uint32_t fg, pt::uint32_t bg)
+{
+    if (!m_ready) return;
+    pt::uint32_t saved_fg = m_fg, saved_bg = m_bg;
+    m_fg = fg; m_bg = bg;
+    draw_glyph(c, px, py);
+    m_fg = saved_fg; m_bg = saved_bg;
+}
+
+void FbTerm::scroll_region(pt::uint32_t x, pt::uint32_t y,
+                            pt::uint32_t w, pt::uint32_t h,
+                            pt::uint32_t lines)
+{
+    if (!m_ready) return;
+    m_fb->ScrollRegionUp(x, y, w, h, lines);
+}
+
 void fbterm_putchar(char c)
 {
     fbterm.put_char(c);

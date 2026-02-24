@@ -78,6 +78,9 @@ struct Task {
     // 0 means the task is not sleeping (default).
     pt::uint64_t sleep_deadline;
 
+    // Window ID owned by this task; INVALID_WID (0xFFFFFFFF) = no window.
+    pt::uint32_t window_id;
+
     // 512-byte FXSAVE area for x87/SSE state (must be 16-byte aligned).
     // Saved/restored by the scheduler on every context switch so tasks
     // don't corrupt each other's floating-point state.
@@ -99,7 +102,7 @@ extern pt::uintptr_t g_syscall_rsp;
 class TaskScheduler {
 public:
     static constexpr pt::size_t MAX_TASKS = 16;
-    static constexpr pt::size_t TASK_STACK_SIZE = 4096;   // 4KB kernel interrupt stack
+    static constexpr pt::size_t TASK_STACK_SIZE = 16384;  // 16KB kernel interrupt stack
     static constexpr pt::size_t USER_STACK_SIZE  = 16384; // 16KB user execution stack
     // How many timer ticks between forced preemptions.
     // At 50 Hz this gives ~200 ms time slices.

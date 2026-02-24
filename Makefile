@@ -26,11 +26,11 @@ x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
 $(kernel_object_files): build/kernel/%.o : src/impl/kernel/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/intf -I src/impl/x86_64 -g -masm=intel -ffreestanding -fno-rtti -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/impl/kernel/%.cpp, $@) -o $@
+	$(CPP) -c -I src/intf -I src/impl/x86_64 -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/impl/kernel/%.cpp, $@) -o $@
 
 $(x86_64_cpp_object_files): build/x86_64/%.o : src/impl/x86_64/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/intf -g -masm=intel -ffreestanding -fno-rtti -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/impl/x86_64/%.cpp, $@) -o $@
+	$(CPP) -c -I src/intf -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/impl/x86_64/%.cpp, $@) -o $@
 
 
 $(x86_64_asm_object_files): build/x86_64/%.o : src/impl/x86_64/%.asm
@@ -67,6 +67,7 @@ clean:
 	-rm -f $(MATHTEST_OBJ)  $(MATHTEST_BIN)
 	-rm -f $(KEYTEST_OBJ)   $(KEYTEST_BIN)
 	-rm -f $(FSWRITE_OBJ)   $(FSWRITE_BIN)
+	-rm -f $(WM_TEST_OBJ)   $(WM_TEST_BIN)
 	-rm -rf $(DOOM_BUILD)
 	-rm -f  $(DOOM_ELF)
 
@@ -155,6 +156,16 @@ $(SLEEP_TEST_OBJ): src/userspace/sleep_test.c $(LIBC_A)
 
 $(SLEEP_TEST_BIN): $(SLEEP_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SLEEP_TEST_OBJ) $(LIBC_A)
+
+# ── window manager test ───────────────────────────────────────────────────────
+WM_TEST_OBJ = build/userspace/wm_test.o
+WM_TEST_BIN = src/impl/x86_64/bins/wm_test.elf
+
+$(WM_TEST_OBJ): src/userspace/wm_test.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(WM_TEST_BIN): $(WM_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(WM_TEST_OBJ) $(LIBC_A)
 
 # ── math test ─────────────────────────────────────────────────────────────────
 MATHTEST_OBJ = build/userspace/mathtest.o
@@ -266,7 +277,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(DOOM_ELF) $(DOOM_WAD)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(DOOM_ELF) $(DOOM_WAD)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -290,6 +301,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(KEYTEST_BIN)    KEYTEST.ELF; \
 	copy_file $(FSWRITE_BIN)    FSWRITE.ELF; \
 	copy_file $(SLEEP_TEST_BIN) SLEEP_TEST.ELF; \
+	copy_file $(WM_TEST_BIN)    WM_TEST.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD
 	@echo "Disk image created with files:"

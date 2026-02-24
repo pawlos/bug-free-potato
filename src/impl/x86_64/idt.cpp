@@ -12,6 +12,7 @@
 #include "task.h"
 #include "timer.h"
 #include "virtual.h"
+#include "window.h"
 
 extern pt::uintptr_t g_syscall_rsp;
 extern IDT64 _idt[256];
@@ -337,7 +338,7 @@ ASMCALL void isr14_handler(pt::uintptr_t frame)
 		// Only dump if in a plausible user/kernel region
 		if (addr > 0x1000 && addr < 0xFFFFFFFFFFFFFF00ULL) {
 			pt::uint64_t val = *reinterpret_cast<pt::uint64_t*>(addr);
-			klog("  [RSP%+d] %lx = %lx\n", i * 8, addr, val);
+			klog("  [RSP+%d] %lx = %lx\n", i * 8, addr, val);
 		}
 	}
 
@@ -447,9 +448,19 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			const char* buf = reinterpret_cast<const char*>(arg2);
 			pt::uint32_t n  = (pt::uint32_t)arg3;
 			if (fd == 1) {
-				// stdout → framebuffer terminal
-				for (pt::uint32_t i = 0; i < n; i++)
-					fbterm.put_char(buf[i]);
+				// stdout: windowed tasks render text into their client area;
+				// tasks without a window use the global fbterm as before.
+				Task* wt = TaskScheduler::get_current_task();
+				bool has_window = wt && wt->window_id != INVALID_WID;
+				for (pt::uint32_t i = 0; i < n; i++) {
+					if (has_window)
+						WindowManager::put_char(wt->window_id, buf[i]);
+					else
+						fbterm.put_char(buf[i]);
+					// mirror to serial
+					char tmp[2] = { buf[i], '\0' };
+					debug.print_str(tmp);
+				}
 				return (pt::uint64_t)n;
 			}
 			Task* t = TaskScheduler::get_current_task();
@@ -587,16 +598,39 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			pt::uint8_t r = (pt::uint8_t)(arg5 >> 16);
 			pt::uint8_t g = (pt::uint8_t)(arg5 >> 8);
 			pt::uint8_t b = (pt::uint8_t)(arg5);
+			{
+				Task* t = TaskScheduler::get_current_task();
+				if (t && t->window_id != INVALID_WID) {
+					pt::uint32_t sx, sy, sw, sh;
+					if (!WindowManager::translate_rect(t->window_id,
+					        (pt::uint32_t)arg1, (pt::uint32_t)arg2,
+					        (pt::uint32_t)arg3, (pt::uint32_t)arg4,
+					        sx, sy, sw, sh))
+						return 0;
+					arg1 = sx; arg2 = sy; arg3 = sw; arg4 = sh;
+				}
+			}
 			fb->FillRect((pt::uint32_t)arg1, (pt::uint32_t)arg2,
 			             (pt::uint32_t)arg3, (pt::uint32_t)arg4, r, g, b);
 			return 0;
 		}
-		case SYS_DRAW_TEXT:
+		case SYS_DRAW_TEXT: {
+			{
+				Task* t = TaskScheduler::get_current_task();
+				if (t && t->window_id != INVALID_WID) {
+					pt::uint32_t sx, sy;
+					if (!WindowManager::translate_point(t->window_id,
+					        (pt::uint32_t)arg1, (pt::uint32_t)arg2, sx, sy))
+						return 0;
+					arg1 = sx; arg2 = sy;
+				}
+			}
 			if (fbterm.is_ready())
 				fbterm.draw_at((pt::uint32_t)arg1, (pt::uint32_t)arg2,
 				               reinterpret_cast<const char*>(arg3),
 				               (pt::uint32_t)arg4, (pt::uint32_t)arg5);
 			return 0;
+		}
 		case SYS_FB_WIDTH: {
 			Framebuffer* fb = Framebuffer::get_instance();
 			pt::uint64_t w = fb ? (pt::uint64_t)fb->get_width() : 0;
@@ -704,6 +738,19 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 					     (unsigned)buf[0], (unsigned)buf[1], (unsigned)buf[2]);
 				}
 			}
+			{
+				Task* t = TaskScheduler::get_current_task();
+				if (t && t->window_id != INVALID_WID) {
+					pt::uint32_t sx, sy, sw, sh;
+					if (!WindowManager::translate_rect(t->window_id,
+					        (pt::uint32_t)arg2, (pt::uint32_t)arg3,
+					        (pt::uint32_t)arg4, (pt::uint32_t)arg5,
+					        sx, sy, sw, sh))
+						return 0;
+					arg2 = sx; arg3 = sy;
+					// arg4/arg5 (w/h) keep original values to preserve source stride
+				}
+			}
 			fb->Draw(buf, (pt::uint32_t)arg2, (pt::uint32_t)arg3,
 			         (pt::uint32_t)arg4, (pt::uint32_t)arg5);
 			return 0;
@@ -740,6 +787,31 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_SLEEP:
 			TaskScheduler::sleep_task(arg1);
 			return 0;
+
+		case SYS_CREATE_WINDOW: {
+			Task* t = TaskScheduler::get_current_task();
+			if (!t || t->window_id != INVALID_WID) return (pt::uint64_t)-1;
+			pt::uint32_t wid = WindowManager::create_window(
+			    (pt::uint32_t)arg1, (pt::uint32_t)arg2,
+			    (pt::uint32_t)arg3, (pt::uint32_t)arg4, t->id);
+			if (wid == INVALID_WID) return (pt::uint64_t)-1;
+			t->window_id = wid;
+			return wid;
+		}
+		case SYS_DESTROY_WINDOW: {
+			Task* t = TaskScheduler::get_current_task();
+			Window* w = WindowManager::get_window((pt::uint32_t)arg1);
+			if (!t || !w || w->owner_task_id != t->id) return (pt::uint64_t)-1;
+			WindowManager::destroy_window((pt::uint32_t)arg1);
+			t->window_id = INVALID_WID;
+			return 0;
+		}
+		case SYS_GET_WINDOW_EVENT: {
+			Task* t = TaskScheduler::get_current_task();
+			Window* w = WindowManager::get_window((pt::uint32_t)arg1);
+			if (!t || !w || w->owner_task_id != t->id) return 0;
+			return WindowManager::poll_event((pt::uint32_t)arg1);
+		}
 
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);

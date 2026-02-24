@@ -29,6 +29,18 @@ public:
     void draw_at(pt::uint32_t px, pt::uint32_t py, const char* str,
                  pt::uint32_t fg = 0xFFFFFF, pt::uint32_t bg = 0x000000);
 
+    // Render one glyph at absolute pixel (px, py) using fg/bg; no cursor change.
+    void put_char_at(char c, pt::uint32_t px, pt::uint32_t py,
+                     pt::uint32_t fg = 0xFFFFFF, pt::uint32_t bg = 0x000000);
+
+    // Scroll a pixel rectangle up by `lines` pixels (exposes blank strip at bottom).
+    void scroll_region(pt::uint32_t x, pt::uint32_t y,
+                       pt::uint32_t w, pt::uint32_t h,
+                       pt::uint32_t lines);
+
+    pt::uint32_t glyph_w() const { return PSF1_GLYPH_WIDTH; }
+    pt::uint32_t glyph_h() const { return m_glyph_h; }
+
     // fg/bg colors as packed 0xRRGGBB
     void set_colors(pt::uint32_t fg, pt::uint32_t bg) { m_fg = fg; m_bg = bg; }
 

@@ -25,7 +25,10 @@
 /* Returns (scancode | 0x100) if pressed, scancode if released, -1 if empty. */
 #define SYS_GET_KEY_EVENT 21  /* no args                                            */
 #define SYS_CREATE        22  /* rdi=filename; create/truncate for writing; returns fd or -1 */
-#define SYS_SLEEP         23  /* rdi=milliseconds; block until elapsed; returns 0            */
+#define SYS_SLEEP            23  /* rdi=milliseconds; block until elapsed; returns 0            */
+#define SYS_CREATE_WINDOW    24  /* rdi=cx, rsi=cy, rdx=cw, rcx=ch; returns wid or -1          */
+#define SYS_DESTROY_WINDOW   25  /* rdi=wid; returns 0 or -1                                   */
+#define SYS_GET_WINDOW_EVENT 26  /* rdi=wid; returns encoded event (0 if empty)                */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -155,3 +158,20 @@ static inline int   sys_create(const char *name)
 
 static inline void  sys_sleep_ms(unsigned long ms)
     { __sc1(SYS_SLEEP, (long)ms); }
+
+static inline long sys_create_window(long cx, long cy, long cw, long ch)
+{
+    register long _ch __asm__("rcx") = ch;
+    long ret;
+    __asm__ volatile("int $0x80"
+        : "=a"(ret)
+        : "a"((long)SYS_CREATE_WINDOW), "D"(cx), "S"(cy), "d"(cw), "r"(_ch)
+        : "memory");
+    return ret;
+}
+
+static inline long sys_destroy_window(long wid)
+    { return __sc1(SYS_DESTROY_WINDOW, wid); }
+
+static inline long sys_get_window_event(long wid)
+    { return __sc1(SYS_GET_WINDOW_EVENT, wid); }

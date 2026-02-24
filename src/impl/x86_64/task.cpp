@@ -6,6 +6,7 @@
 #include "pipe.h"
 #include "elf_loader.h"
 #include "timer.h"
+#include "window.h"
 
 // Close a single file descriptor, dispatching on its type.
 // Handles FILE (VFS), PIPE_RD and PIPE_WR (ref-count, kfree on last close).
@@ -67,6 +68,7 @@ void TaskScheduler::initialize()
         tasks[i].exit_code        = 0;
         tasks[i].sleep_deadline   = 0;
         tasks[i].syscall_frame_rsp = 0;
+        tasks[i].window_id        = INVALID_WID;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
@@ -147,6 +149,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     }
 
     new_task->sleep_deadline = 0;
+    new_task->window_id      = INVALID_WID;
 
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -466,11 +469,12 @@ void TaskScheduler::kill_user_tasks()
     }
 }
 
-// Physical base of the ELF staging area (identity-mapped).
-// ElfLoader writes ELF segments here (via VA 0xFFFF800018000000).
-// create_elf_task copies from here to task-private code frames before
-// the task is scheduled, so a subsequent load cannot corrupt running tasks.
+// Virtual address of the ELF staging area in the kernel's high half.
+// ElfLoader writes ELF segments here; create_elf_task reads from here.
+// Using the high-half VA (via PML4[256]) instead of the identity-mapped
+// low-half (via PML4[0]) avoids any issues with the low-half mapping.
 static constexpr pt::uintptr_t ELF_STAGING_PHYS = 0x18000000;
+static constexpr pt::uintptr_t ELF_STAGING_VA   = KERNEL_OFFSET + ELF_STAGING_PHYS;
 
 // PML4/PDPT/PD indices for VA 0xFFFF800018000000
 static constexpr pt::size_t ELF_PML4_IDX  = 256;
@@ -500,16 +504,25 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     // 2. Read boot PDPT and PD addresses from kernel PML4.
     pt::uint64_t* kernel_pml4  = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
     pt::uintptr_t boot_pdpt_phys = kernel_pml4[ELF_PML4_IDX] & ~(pt::uintptr_t)0xFFF;
+    klog("[ELF_TASK] kernel_cr3=%lx PML4[%d]=%lx boot_pdpt_phys=%lx\n",
+         kernel_cr3, (int)ELF_PML4_IDX, kernel_pml4[ELF_PML4_IDX], boot_pdpt_phys);
+    if (boot_pdpt_phys == 0) {
+        klog("[ELF_TASK] boot_pdpt_phys is zero — PML4 not set up?\n");
+        return 0xFFFFFFFF;
+    }
     pt::uint64_t* boot_pdpt    = reinterpret_cast<pt::uint64_t*>(boot_pdpt_phys);
     pt::uintptr_t boot_pd_phys   = boot_pdpt[ELF_PDPT_IDX]  & ~(pt::uintptr_t)0xFFF;
+    klog("[ELF_TASK] boot_pdpt[%d]=%lx boot_pd_phys=%lx\n",
+         (int)ELF_PDPT_IDX, boot_pdpt[ELF_PDPT_IDX], boot_pd_phys);
+    if (boot_pd_phys == 0) {
+        klog("[ELF_TASK] boot_pd_phys is zero — PDPT not set up?\n");
+        return 0xFFFFFFFF;
+    }
 
     // 3. Allocate private PDPT, PD, PT frames; copy boot tables so all
     //    other higher-half mappings (kernel heap, stack, etc.) are preserved.
-    klog("[ELF_TASK] allocating priv_pdpt\n");
     pt::uintptr_t priv_pdpt_frame = vmm.allocate_frame();
-    klog("[ELF_TASK] allocating priv_pd\n");
     pt::uintptr_t priv_pd_frame   = vmm.allocate_frame();
-    klog("[ELF_TASK] allocating priv_pt\n");
     pt::uintptr_t priv_pt_frame   = vmm.allocate_frame();
     klog("[ELF_TASK] priv frames: pdpt=%lx pd=%lx pt=%lx\n",
          priv_pdpt_frame, priv_pd_frame, priv_pt_frame);
@@ -524,17 +537,15 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         priv_pt[i] = 0;
 
     // 4. Allocate private code frames; copy ELF code from staging area.
-    //    The staging area lives at its identity-mapped physical address.
+    //    Read from the high-half VA of the staging area (avoids low-half identity map).
     klog("[ELF_TASK] allocating %d code frames\n", (int)num_code_frames);
     for (pt::size_t i = 0; i < num_code_frames; i++) {
-        if (i % 50 == 0) klog("[ELF_TASK] frame loop i=%d\n", (int)i);
+        if (i % 50 == 0) klog("[ELF_TASK] i=%d\n", (int)i);
         pt::uintptr_t frame = vmm.allocate_frame();
         if (!frame) { klog("[ELF_TASK] allocate_frame returned 0 at i=%d\n", (int)i); break; }
-        if (i % 50 == 0) klog("[ELF_TASK] got frame %lx, memcpy src=%lx\n", frame, ELF_STAGING_PHYS + i * 4096);
         memcpy(reinterpret_cast<void*>(frame),
-               reinterpret_cast<void*>(ELF_STAGING_PHYS + i * 4096),
+               reinterpret_cast<void*>(ELF_STAGING_VA + i * 4096),
                4096);
-        if (i % 50 == 0) klog("[ELF_TASK] memcpy done i=%d\n", (int)i);
         priv_pt[i] = frame | 0x07;  // Present | Writable | User
     }
     klog("[ELF_TASK] code frames allocated; calling create_task\n");
@@ -607,6 +618,11 @@ void TaskScheduler::task_exit(int exit_code)
                 tasks[i].state = TASK_READY;
                 klog("[SCHEDULER] Unblocked parent task %d\n", i);
             }
+        }
+
+        if (current->window_id != INVALID_WID) {
+            WindowManager::destroy_window(current->window_id);
+            current->window_id = INVALID_WID;
         }
 
         current->state = TASK_DEAD;
@@ -826,6 +842,7 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->exit_code          = 0;
     child->sleep_deadline     = 0;
     child->syscall_frame_rsp  = 0;
+    child->window_id          = INVALID_WID;
 
     // Copy open file descriptors (shallow copy — positions are independent).
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -907,8 +924,18 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     // 2. Read boot PDPT/PD to seed the new private tables.
     pt::uint64_t* kernel_pml4    = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
     pt::uintptr_t boot_pdpt_phys = kernel_pml4[ELF_PML4_IDX] & ~(pt::uintptr_t)0xFFF;
+    if (boot_pdpt_phys == 0) {
+        klog("[EXEC] boot_pdpt_phys is zero\n");
+        asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
+        return (pt::uint64_t)-1;
+    }
     pt::uint64_t* boot_pdpt      = reinterpret_cast<pt::uint64_t*>(boot_pdpt_phys);
     pt::uintptr_t boot_pd_phys   = boot_pdpt[ELF_PDPT_IDX] & ~(pt::uintptr_t)0xFFF;
+    if (boot_pd_phys == 0) {
+        klog("[EXEC] boot_pd_phys is zero\n");
+        asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
+        return (pt::uint64_t)-1;
+    }
 
     // 3. Allocate new private PDPT, PD, PT; copy boot tables.
     pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
@@ -925,7 +952,7 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     for (pt::size_t i = 0; i < num_frames; i++) {
         pt::uintptr_t frame = vmm.allocate_frame();
         memcpy((void*)frame,
-               (void*)(ELF_STAGING_PHYS + i * 4096),
+               (void*)(ELF_STAGING_VA + i * 4096),
                4096);
         new_pt[i] = frame | 0x07;
     }

@@ -17,6 +17,7 @@
 #include "fbterm.h"
 #include "assets.h"
 #include "tss.h"
+#include "window.h"
 
 extern char get_char();
 static IDT idt;
@@ -77,6 +78,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
         else
             klog("[MAIN] Framebuffer terminal init failed\n");
     }
+    WindowManager::initialize();
     if (TaskScheduler::create_elf_task("BLINK.ELF") == 0xFFFFFFFF)
         klog("[MAIN] BLINK.ELF not found or failed to start\n");
 

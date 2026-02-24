@@ -19,16 +19,29 @@
 /* Packed RGB24 output buffer in .bss (640×400×3 = 768 000 bytes) */
 static unsigned char rgb_buf[SCREEN_W * SCREEN_H * 3];
 
-static int g_off_x, g_off_y;
+/* Window ID for this Doom instance (-1 = no window) */
+static long g_wid = -1;
+
+/* Minimum client_y to leave room for the title bar (TITLE_BAR_H=16, BORDER_W=1) */
+#define MIN_CLIENT_Y 18
+
+static void create_doom_window(void)
+{
+    if (g_wid >= 0) return;  /* already created */
+    int fb_w = (int)sys_fb_width();
+    int fb_h = (int)sys_fb_height();
+    int cx = (fb_w - SCREEN_W) / 2;
+    int cy = (fb_h - SCREEN_H) / 2;
+    if (cx < 0) cx = 0;
+    if (cy < MIN_CLIENT_Y) cy = MIN_CLIENT_Y;
+    g_wid = sys_create_window(cx, cy, SCREEN_W, SCREEN_H);
+}
 
 void DG_Init(void)
 {
-    int fb_w = (int)sys_fb_width();
-    int fb_h = (int)sys_fb_height();
-    g_off_x  = (fb_w - SCREEN_W) / 2;
-    g_off_y  = (fb_h - SCREEN_H) / 2;
-    if (g_off_x < 0) g_off_x = 0;
-    if (g_off_y < 0) g_off_y = 0;
+    /* Window was already created in main() before doomgeneric_Create(),
+       so all early Doom startup drawing is clipped to it.  No-op here. */
+    create_doom_window();  /* idempotent guard just in case */
 }
 
 void DG_DrawFrame(void)
@@ -44,7 +57,9 @@ void DG_DrawFrame(void)
         *dst++ = (px >>  8) & 0xFF; /* G */
         *dst++ =  px        & 0xFF; /* B */
     }
-    sys_draw_pixels(rgb_buf, g_off_x, g_off_y, SCREEN_W, SCREEN_H);
+    /* Draw at (0,0) relative to the window client area; the kernel translates
+       to screen-absolute coordinates via SYS_DRAW_PIXELS window clipping. */
+    sys_draw_pixels(rgb_buf, 0, 0, SCREEN_W, SCREEN_H);
 }
 
 /* ── timing ──────────────────────────────────────────────────────────────── */
@@ -79,7 +94,7 @@ static unsigned char sc_to_doom(int sc)
     case 0x1C: return KEY_ENTER;
     case 0x0F: return KEY_TAB;
     case 0x39: return KEY_USE;          /* Space  */
-    case 0x1D: return KEY_RCTRL;        /* LCtrl → fire */
+    case 0x1D: return KEY_FIRE;         /* LCtrl → fire */
     case 0x38: return KEY_RALT;         /* LAlt  → strafe */
     case 0x2A: case 0x36: return KEY_RSHIFT; /* Shift → run */
     case 0x0E: return KEY_BACKSPACE;
@@ -124,9 +139,10 @@ static unsigned char sc_to_doom(int sc)
 int DG_GetKey(int *pressed, unsigned char *doomKey)
 {
     for (;;) {
-        long ev = sys_get_key_event();
-        if (ev == -1L) return 0;
-        int sc = (int)(ev & 0x7F);
+        /* Poll the window's event ring so we only receive keys when focused. */
+        long ev = (g_wid >= 0) ? sys_get_window_event(g_wid) : 0;
+        if (ev == 0) return 0;
+        int sc = (int)(ev & 0xFF);
         unsigned char dk = sc_to_doom(sc);
         if (!dk) continue;          /* ignore unmapped keys */
         *pressed = (ev & 0x100) ? 1 : 0;
@@ -141,6 +157,10 @@ void DG_SetWindowTitle(const char *title) { (void)title; }
 
 int main(void)
 {
+    /* Create the window BEFORE doomgeneric_Create() so that all early Doom
+       startup drawing (text, loading screens) is clipped to our window. */
+    create_doom_window();
+
     /* Hardcode the IWAD path so Doom finds it on our FAT32 disk.
        The Makefile copies doom1.wad as DOOM1.WAD (uppercase). */
     char *argv[] = { "doom", "-iwad", "DOOM1.WAD", NULL };

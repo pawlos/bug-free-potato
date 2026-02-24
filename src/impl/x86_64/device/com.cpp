@@ -15,7 +15,9 @@ void ComDevice::print_ch(const char a)
 {
 	while (is_transmit_empty() == 0) {}
 	IO::outb(COM1, a);
+#ifdef FBTERM_KLOG
 	fbterm_putchar(a);
+#endif
 }
 
 void ComDevice::print_str(const char *str, ...)
