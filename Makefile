@@ -146,6 +146,16 @@ $(KEYTEST_OBJ): src/userspace/keytest.c $(LIBC_A)
 $(KEYTEST_BIN): $(KEYTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(KEYTEST_OBJ) $(LIBC_A)
 
+# ── sleep test ────────────────────────────────────────────────────────────────
+SLEEP_TEST_OBJ = build/userspace/sleep_test.o
+SLEEP_TEST_BIN = src/impl/x86_64/bins/sleep_test.elf
+
+$(SLEEP_TEST_OBJ): src/userspace/sleep_test.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(SLEEP_TEST_BIN): $(SLEEP_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SLEEP_TEST_OBJ) $(LIBC_A)
+
 # ── math test ─────────────────────────────────────────────────────────────────
 MATHTEST_OBJ = build/userspace/mathtest.o
 MATHTEST_BIN = src/impl/x86_64/bins/mathtest.elf
@@ -256,7 +266,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(DOOM_ELF) $(DOOM_WAD)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(DOOM_ELF) $(DOOM_WAD)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -279,6 +289,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(MATHTEST_BIN)   MATHTEST.ELF; \
 	copy_file $(KEYTEST_BIN)    KEYTEST.ELF; \
 	copy_file $(FSWRITE_BIN)    FSWRITE.ELF; \
+	copy_file $(SLEEP_TEST_BIN) SLEEP_TEST.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD
 	@echo "Disk image created with files:"
