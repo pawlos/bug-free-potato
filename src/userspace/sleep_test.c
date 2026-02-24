@@ -1,4 +1,5 @@
 #include "libc/stdio.h"
+#include "libc/stdlib.h"
 #include "libc/syscall.h"
 
 int main(void)
@@ -41,13 +42,25 @@ int main(void)
     else
         puts("  FAIL");
 
-    /* Test 4: longer sleep with visible countdown */
-    puts("Test 4: 3-second countdown...");
+    /* Test 4: sleep() — 3-second visible countdown */
+    puts("Test 4: 3-second countdown via sleep()...");
     for (int i = 3; i >= 1; i--) {
         printf("  %d...\n", i);
-        sys_sleep_ms(1000);
+        sleep(1);
     }
     puts("  done");
+
+    /* Test 5: usleep() — 500 ms via microseconds */
+    puts("Test 5: usleep(500000)...");
+    t0 = sys_get_ticks();
+    usleep(500000);
+    t1 = sys_get_ticks();
+    elapsed_ms = (t1 - t0) * 20;
+    printf("  elapsed: %ld ms (expected ~500)\n", elapsed_ms);
+    if (elapsed_ms >= 480 && elapsed_ms <= 600)
+        puts("  PASS");
+    else
+        puts("  FAIL");
 
     puts("=== sleep test complete ===");
     return 0;

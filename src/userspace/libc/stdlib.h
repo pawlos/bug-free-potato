@@ -29,3 +29,10 @@ void   qsort(void *base, size_t nmemb, size_t size,
 double atof(const char *s);
 int    system(const char *cmd);
 int    mkdir(const char *path, unsigned int mode);
+
+/* sleep functions — guarded so they don't conflict with system <unistd.h>
+   declarations when Doom source files pull in system headers. */
+#ifndef _UNISTD_H
+unsigned int sleep(unsigned int seconds);
+int          usleep(unsigned int usec);
+#endif

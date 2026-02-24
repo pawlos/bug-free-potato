@@ -322,3 +322,23 @@ void qsort(void *base, size_t nmemb, size_t size,
         }
     }
 }
+
+/* ── sleep ───────────────────────────────────────────────────────────────── */
+
+unsigned int sleep(unsigned int seconds)
+{
+    if (seconds == 0) return 0;
+    sys_sleep_ms((unsigned long)seconds * 1000UL);
+    return 0;
+}
+
+/* usleep: sleep for at least usec microseconds.
+   Sub-millisecond values are rounded up to 1 ms (kernel rounds further to
+   1 tick = 20 ms at 50 Hz, which is the finest granularity available). */
+int usleep(unsigned int usec)
+{
+    if (usec == 0) return 0;
+    unsigned long ms = ((unsigned long)usec + 999UL) / 1000UL;  /* round up to whole ms */
+    sys_sleep_ms(ms);
+    return 0;
+}
