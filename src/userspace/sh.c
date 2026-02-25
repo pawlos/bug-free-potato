@@ -155,15 +155,21 @@ static void cmd_cat(const char* filename) {
     sys_close(fd);
 }
 
-static void cmd_write(const char* filename, const char* text) {
-    if (!filename || !text) { puts("usage: write <file> <text>"); return; }
+static void cmd_write(const char* filename, char* argv[], int argc) {
+    if (!filename || argc < 3) { puts("usage: write <file> <text>"); return; }
     int fd = sys_create(filename);
     if (fd < 0) { printf("write: cannot create '%s'\n", filename); return; }
-    int len = sh_strlen(text);
-    sys_write(fd, text, (unsigned long)len);
+    long total = 0;
+    for (int i = 2; i < argc; i++) {
+        int len = sh_strlen(argv[i]);
+        sys_write(fd, argv[i], (unsigned long)len);
+        total += len;
+        if (i < argc - 1) { sys_write(fd, " ", 1); total++; }
+    }
     sys_write(fd, "\n", 1);
+    total++;
     sys_close(fd);
-    printf("wrote %d bytes to %s\n", len + 1, filename);
+    printf("wrote %ld bytes to %s\n", total, filename);
 }
 
 static void cmd_rm(const char* filename) {
@@ -240,8 +246,7 @@ static void shell_loop(void) {
         } else if (sh_strcmp(cmd, "cat") == 0) {
             cmd_cat(argv[1]);
         } else if (sh_strcmp(cmd, "write") == 0) {
-            /* Rejoin argv[2..] as a single string (use rest of line after "write <file> ") */
-            cmd_write(argv[1], argc >= 3 ? argv[2] : NULL);
+            cmd_write(argv[1], argv, argc);
         } else if (sh_strcmp(cmd, "rm") == 0) {
             cmd_rm(argv[1]);
         } else if (sh_strcmp(cmd, "echo") == 0) {
