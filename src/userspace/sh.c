@@ -188,7 +188,7 @@ static void cmd_echo(char* argv[], int argc) {
 }
 
 static void cmd_clear(void) {
-    for (int i = 0; i < 40; i++) putchar('\n');
+    putchar('\f');  /* form feed: clears client area and homes cursor */
 }
 
 static void cmd_ticks(void) {

@@ -213,6 +213,18 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     const pt::uint32_t rows = win->client_h / gh;
     if (cols == 0 || rows == 0) return;
 
+    if (c == '\f') {
+        // Form feed: clear client area and home the cursor.
+        Framebuffer* fb = Framebuffer::get_instance();
+        if (fb) fb->FillRect(win->client_ox, win->client_oy,
+                             win->client_w,  win->client_h, 0, 0, 0);
+        win->text_col = 0;
+        win->text_row = 0;
+        // Repaint chrome: glyph background rendering can bleed into the
+        // title bar / border pixels adjacent to the client area.
+        draw_chrome(wid, focused_id == wid);
+        return;
+    }
     if (c == '\r') {
         win->text_col = 0;
         return;
