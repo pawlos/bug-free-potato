@@ -7,17 +7,14 @@ void clear(pt::uint8_t *ptr, const pt::size_t size) {
     }
 }
 
-bool memcmp(const char *src, const char *dst, const pt::size_t size) {
+int memcmp(const char *src, const char *dst, const pt::size_t size) {
     for (pt::size_t i = 0; i < size; i++) {
-        const char src_char = *src;
-        const char dst_char = *dst;
-        if (src_char != dst_char) {
-            return false;
-        }
-        src++;
-        dst++;
+        const char src_char = *src++;
+        const char dst_char = *dst++;
+        if (src_char != dst_char)
+            return (unsigned char)src_char - (unsigned char)dst_char;
     }
-    return true;
+    return 0;
 }
 
 pt::size_t parse_decimal(const char *str) {

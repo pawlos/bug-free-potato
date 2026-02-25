@@ -476,82 +476,82 @@ bool Shell::execute(const char* cmd) {
     // Add to history first
     add_to_history(cmd);
 
-    if (memcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
+    if (!memcmp(cmd, mem_cmd, sizeof(mem_cmd))) {
         execute_mem(cmd);
     }
-    else if (memcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
+    else if (!memcmp(cmd, ticks_cmd, sizeof(ticks_cmd))) {
         execute_ticks(cmd);
     }
-    else if (memcmp(cmd, "alloc", 5)) {
+    else if (!memcmp(cmd, "alloc", 5)) {
         execute_alloc(cmd);
     }
-    else if (memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
+    else if (!memcmp(cmd, clear_blue_cmd, sizeof(clear_blue_cmd))) {
         execute_clear_color(cmd, 0, 0, 255);
     }
-    else if (memcmp(cmd, clear_green_cmd, sizeof(clear_green_cmd))) {
+    else if (!memcmp(cmd, clear_green_cmd, sizeof(clear_green_cmd))) {
         execute_clear_color(cmd, 0, 255, 0);
     }
-    else if (memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
+    else if (!memcmp(cmd, clear_red_cmd, sizeof(clear_red_cmd))) {
         execute_clear_color(cmd, 255, 0, 0);
     }
-    else if (memcmp(cmd, map_cmd, 3)) {  // "map" is 3 chars, don't include null terminator
+    else if (!memcmp(cmd, map_cmd, 3)) {  // "map" is 3 chars, don't include null terminator
         execute_map(cmd);
     }
-    else if (memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
+    else if (!memcmp(cmd, vmm_cmd, sizeof(vmm_cmd))) {
         execute_vmm(cmd);
     }
-    else if (memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
+    else if (!memcmp(cmd, pci_cmd, sizeof(pci_cmd))) {
         execute_pci(cmd);
     }
-    else if (memcmp(cmd, history_cmd, sizeof(history_cmd))) {
+    else if (!memcmp(cmd, history_cmd, sizeof(history_cmd))) {
         execute_history(cmd);
     }
-    else if (memcmp(cmd, ls_cmd, sizeof(ls_cmd))) {
+    else if (!memcmp(cmd, ls_cmd, sizeof(ls_cmd))) {
         execute_ls(cmd);
     }
-    else if (memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {
+    else if (!memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {
         execute_disk(cmd);
     }
-    else if (memcmp(cmd, play_cmd, 5)) {
+    else if (!memcmp(cmd, play_cmd, 5)) {
         execute_play(cmd);
     }
-    else if (memcmp(cmd, cat_cmd, 4)) {
+    else if (!memcmp(cmd, cat_cmd, 4)) {
         execute_cat(cmd);
     }
-    else if (memcmp(cmd, help_cmd, sizeof(help_cmd))) {
+    else if (!memcmp(cmd, help_cmd, sizeof(help_cmd))) {
         execute_help(cmd);
     }
-    else if (memcmp(cmd, echo_cmd, 5)) {
+    else if (!memcmp(cmd, echo_cmd, 5)) {
         execute_echo(cmd);
     }
-    else if (memcmp(cmd, clear_cmd, sizeof(clear_cmd))) {
+    else if (!memcmp(cmd, clear_cmd, sizeof(clear_cmd))) {
         execute_clear(cmd);
     }
-    else if (memcmp(cmd, timers_cmd, sizeof(timers_cmd))) {
+    else if (!memcmp(cmd, timers_cmd, sizeof(timers_cmd))) {
         execute_timers(cmd);
     }
-    else if (memcmp(cmd, cancel_cmd, 7)) {
+    else if (!memcmp(cmd, cancel_cmd, 7)) {
         execute_cancel(cmd);
     }
-    else if (memcmp(cmd, shutdown_cmd, sizeof(shutdown_cmd))) {
+    else if (!memcmp(cmd, shutdown_cmd, sizeof(shutdown_cmd))) {
         execute_shutdown(cmd);
     }
-    else if (memcmp(cmd, reboot_cmd, sizeof(reboot_cmd))) {
+    else if (!memcmp(cmd, reboot_cmd, sizeof(reboot_cmd))) {
         execute_reboot(cmd);
     }
-    else if (memcmp(cmd, task_cmd, 4)) {
+    else if (!memcmp(cmd, task_cmd, 4)) {
         execute_task(cmd);
     }
-    else if (memcmp(cmd, write_cmd, 6)) {
+    else if (!memcmp(cmd, write_cmd, 6)) {
         execute_write(cmd);
     }
-    else if (memcmp(cmd, rm_cmd, 3)) {
+    else if (!memcmp(cmd, rm_cmd, 3)) {
         execute_rm(cmd);
     }
-    else if (memcmp(cmd, exec_cmd, 5)) {
+    else if (!memcmp(cmd, exec_cmd, 5)) {
         execute_exec(cmd);
     }
-    else if (memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
+    else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {
         klog("bye bye ;)\n");
         return false;
