@@ -275,7 +275,16 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
 
 void WindowManager::set_focus(pt::uint32_t wid)
 {
+    // INVALID_WID means "unfocus all" — click on the desktop.
+    if (wid == INVALID_WID) {
+        if (focused_id != INVALID_WID) {
+            draw_chrome(focused_id, false);
+            focused_id = INVALID_WID;
+        }
+        return;
+    }
     if (wid >= MAX_WINDOWS || !windows[wid].active) return;
+    if (windows[wid].chromeless) return;  // background widgets are not focusable
     if (focused_id == wid) return;
 
     if (focused_id != INVALID_WID)

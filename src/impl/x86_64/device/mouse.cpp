@@ -134,7 +134,6 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     prev_left_button = left_button_pressed;
     if (left_clicked) {
         pt::uint32_t hit = WindowManager::window_at(mouse.pos_x, mouse.pos_y);
-        if (hit != INVALID_WID)
-            WindowManager::set_focus(hit);
+        WindowManager::set_focus(hit);  // INVALID_WID clears focus (desktop click)
     }
 }
