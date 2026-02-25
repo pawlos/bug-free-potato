@@ -844,6 +844,9 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->syscall_frame_rsp  = 0;
     child->window_id          = INVALID_WID;
 
+    // Inherit parent's FPU/SSE state so the child resumes with valid x87/SSE context.
+    memcpy(child->fxsave_area, parent->fxsave_area, 512);
+
     // Copy open file descriptors (shallow copy — positions are independent).
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
         child->fd_table[i] = parent->fd_table[i];

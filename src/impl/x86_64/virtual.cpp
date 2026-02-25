@@ -2,32 +2,29 @@
 
 void memset(void* dst, pt::uint64_t value, const pt::size_t size)
 {
+    const pt::uint8_t fill_byte = (pt::uint8_t)value;
+
     if (size < 8)
     {
-        const auto* valuePtr = (pt::uint8_t*)&value;
         for (auto* ptr = (pt::uint8_t*)dst; ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
-        {
-            *ptr = *valuePtr;
-            valuePtr++;
-        }
-
+            *ptr = fill_byte;
         return;
     }
 
-    const pt::uint64_t proceedingBytes = size % 8;
-    const pt::uint64_t newnum = size - proceedingBytes;
+    // Build an 8-byte pattern from the single fill byte.
+    pt::uint64_t pattern = fill_byte;
+    pattern |= pattern << 8;
+    pattern |= pattern << 16;
+    pattern |= pattern << 32;
 
-    for (auto* ptr = (pt::uint64_t*)dst; ptr < (pt::uint64_t*)((pt::uint64_t)dst + size); ptr++)
-    {
-        *ptr = value;
-    }
+    const pt::uint64_t aligned_size = size - (size % 8);
 
-    auto* valPtr = (pt::uint8_t*)&value;
-    for (auto* ptr = (pt::uint8_t*)((pt::uint64_t)dst+newnum); ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
-    {
-        *ptr = *valPtr;
-        valPtr++;
-    }
+    for (auto* ptr = (pt::uint64_t*)dst; ptr < (pt::uint64_t*)((pt::uint64_t)dst + aligned_size); ptr++)
+        *ptr = pattern;
+
+    // Handle remaining 1–7 trailing bytes.
+    for (auto* ptr = (pt::uint8_t*)((pt::uint64_t)dst + aligned_size); ptr < (pt::uint8_t*)((pt::uint64_t)dst + size); ptr++)
+        *ptr = fill_byte;
 }
 
 void* memcpy(void* dest, const void* src, pt::size_t n) {

@@ -230,15 +230,6 @@ ASMCALL void isr6_handler(pt::uint64_t* frame)
 	klog("[ISR6] opcodes @ RIP: %x %x %x %x %x %x %x %x\n",
 	     (unsigned)code[0], (unsigned)code[1], (unsigned)code[2], (unsigned)code[3],
 	     (unsigned)code[4], (unsigned)code[5], (unsigned)code[6], (unsigned)code[7]);
-	// For ring-3 faults: dump the user stack around RSP so we can see what
-	// ret/pop loaded.  RSP-8 through RSP+40 covers the relevant slots.
-	if (cs & 3) {
-		klog("[ISR6] user stack dump at fault RSP=%lx:\n", rsp);
-		for (int _d = -1; _d <= 5; _d++) {
-			pt::uint64_t addr = rsp + (pt::uint64_t)(_d * 8);
-			klog("[ISR6]   [%lx] = %lx\n", addr, *(pt::uint64_t*)addr);
-		}
-	}
 	kernel_panic("Invalid opcode", 6);
 }
 
@@ -301,15 +292,6 @@ ASMCALL void isr13_handler(pt::uint64_t* frame)
 		pt::uint64_t rsp = frame[18];
 		pt::uint64_t ss  = frame[19];
 		klog("[ISR13] ring-3 RSP=%lx SS=%lx\n", rsp, ss);
-		// Dump user stack around RSP
-		klog("[ISR13] user stack dump at RSP:\n");
-		for (int i = -1; i <= 4; i++) {
-			pt::int64_t offset = (pt::int64_t)(i * 8);
-			pt::uint64_t addr = (pt::uint64_t)((pt::int64_t)rsp + offset);
-			if (addr > 0x1000 && addr < 0xFFFFFFFFFFFFFF00ULL)
-				klog("[ISR13]   [RSP+%d] %lx = %lx\n", (int)offset, addr,
-				     *reinterpret_cast<pt::uint64_t*>(addr));
-		}
 	}
 	kernel_panic("General protection fault", 13);
 }
@@ -330,17 +312,6 @@ ASMCALL void isr14_handler(pt::uintptr_t frame)
 	klog("[PAGE FAULT] cr2=%lx errcode=%lx RIP=%lx RSP=%lx\n", cr2, err_code, user_rip, user_rsp);
 	klog("[PAGE FAULT] rbp=%lx rbx=%lx\n", user_rbp, user_rbx);
 	klog("[PAGE FAULT] rdi=%lx rsi=%lx rdx=%lx rcx=%lx\n", user_rdi, user_rsi, user_rdx, user_rcx);
-
-	// Dump raw stack contents to see what user code was doing
-	klog("[PAGE FAULT] Stack dump around RSP:\n");
-	for (int i = -2; i <= 8; i++) {
-		pt::uint64_t addr = user_rsp + (pt::uint64_t)(i * 8);
-		// Only dump if in a plausible user/kernel region
-		if (addr > 0x1000 && addr < 0xFFFFFFFFFFFFFF00ULL) {
-			pt::uint64_t val = *reinterpret_cast<pt::uint64_t*>(addr);
-			klog("  [RSP+%d] %lx = %lx\n", i * 8, addr, val);
-		}
-	}
 
 	kernel_panic("Page fault", 14);
 }
