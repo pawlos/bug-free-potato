@@ -26,7 +26,7 @@ constexpr pt::uint64_t SYS_DRAW_PIXELS   = 20; // rdi=buf, rsi=x, rdx=y, rcx=w, 
 constexpr pt::uint64_t SYS_GET_KEY_EVENT = 21; // no args
 constexpr pt::uint64_t SYS_CREATE        = 22; // rdi=filename; create/truncate for writing; returns fd or -1
 constexpr pt::uint64_t SYS_SLEEP            = 23; // rdi=milliseconds; block until elapsed; returns 0
-constexpr pt::uint64_t SYS_CREATE_WINDOW    = 24; // rdi=cx, rsi=cy, rdx=cw, rcx=ch; returns wid or -1
+constexpr pt::uint64_t SYS_CREATE_WINDOW    = 24; // rdi=cx, rsi=cy, rdx=cw, rcx=ch, r8=flags; returns wid or -1
 constexpr pt::uint64_t SYS_DESTROY_WINDOW   = 25; // rdi=wid; returns 0 or -1
 constexpr pt::uint64_t SYS_GET_WINDOW_EVENT = 26; // rdi=wid; returns event (0 if empty)
 constexpr pt::uint64_t SYS_READDIR          = 27; // rdi=idx, rsi=name_buf, rdx=size_ptr; returns 1=ok, 0=done

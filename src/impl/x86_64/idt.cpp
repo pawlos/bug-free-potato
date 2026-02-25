@@ -596,6 +596,15 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			}
 			fb->FillRect((pt::uint32_t)arg1, (pt::uint32_t)arg2,
 			             (pt::uint32_t)arg3, (pt::uint32_t)arg4, r, g, b);
+			// Z-order: chromeless windows draw behind normal window chrome.
+			{
+				Task* ct = TaskScheduler::get_current_task();
+				if (ct && ct->window_id != INVALID_WID) {
+					Window* cw = WindowManager::get_window(ct->window_id);
+					if (cw && cw->chromeless)
+						WindowManager::redraw_all_chrome();
+				}
+			}
 			return 0;
 		}
 		case SYS_DRAW_TEXT: {
@@ -613,6 +622,15 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				fbterm.draw_at((pt::uint32_t)arg1, (pt::uint32_t)arg2,
 				               reinterpret_cast<const char*>(arg3),
 				               (pt::uint32_t)arg4, (pt::uint32_t)arg5);
+			// Z-order: chromeless windows draw behind normal window chrome.
+			{
+				Task* ct = TaskScheduler::get_current_task();
+				if (ct && ct->window_id != INVALID_WID) {
+					Window* cw = WindowManager::get_window(ct->window_id);
+					if (cw && cw->chromeless)
+						WindowManager::redraw_all_chrome();
+				}
+			}
 			return 0;
 		}
 		case SYS_FB_WIDTH: {
@@ -778,7 +796,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			if (!t || t->window_id != INVALID_WID) return (pt::uint64_t)-1;
 			pt::uint32_t wid = WindowManager::create_window(
 			    (pt::uint32_t)arg1, (pt::uint32_t)arg2,
-			    (pt::uint32_t)arg3, (pt::uint32_t)arg4, t->id);
+			    (pt::uint32_t)arg3, (pt::uint32_t)arg4, t->id,
+			    (pt::uint32_t)arg5);
 			if (wid == INVALID_WID) return (pt::uint64_t)-1;
 			t->window_id = wid;
 			return wid;

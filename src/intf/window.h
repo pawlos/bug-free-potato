@@ -7,6 +7,9 @@ constexpr pt::uint32_t BORDER_W     = 1;   // px; 1-px border on all sides
 constexpr pt::uint32_t EVENT_CAP    = 32;  // per-window ring size (power of 2)
 constexpr pt::uint32_t INVALID_WID  = 0xFFFFFFFF;
 
+// Flags for create_window
+constexpr pt::uint32_t WF_CHROMELESS = 1u; // no border or title bar; client = full rect
+
 // 64-bit event encoding: bit 8 = pressed, bits 7:0 = PS/2 set-1 scancode.
 // 0 is the sentinel for "no event" (scancode 0 is never emitted by PS/2).
 constexpr pt::uint64_t WEV_KEY_PRESS_BIT = (pt::uint64_t)1 << 8;
@@ -19,6 +22,7 @@ struct Window {
     pt::uint32_t id;
     pt::uint32_t owner_task_id;   // INVALID_WID = free slot
     bool         active;
+    bool         chromeless;      // no border/title bar; client area = full rect
 
     // Outer frame position and size (includes border + title bar)
     pt::uint32_t screen_x, screen_y;
@@ -41,10 +45,13 @@ struct Window {
 class WindowManager {
 public:
     static void       initialize();
-    // x, y, w, h are client-area coords (border + titlebar added internally)
+    // x, y, w, h are client-area coords.  For normal windows, border + titlebar
+    // are added around them.  Pass WF_CHROMELESS in flags to skip chrome entirely
+    // (client area = the exact rect specified).
     static pt::uint32_t create_window(pt::uint32_t x, pt::uint32_t y,
                                       pt::uint32_t w, pt::uint32_t h,
-                                      pt::uint32_t owner_task_id);
+                                      pt::uint32_t owner_task_id,
+                                      pt::uint32_t flags = 0);
     static void       destroy_window(pt::uint32_t wid);
 
     // Translate window-relative rect → screen-absolute, clip to client area.
@@ -67,6 +74,10 @@ public:
 
     // Switch focus to wid (dims old focused window, highlights new one).
     static void        set_focus(pt::uint32_t wid);
+
+    // Repaint the chrome of every normal (non-chromeless) window.
+    // Called after any chromeless window draws so that chrome always sits on top.
+    static void        redraw_all_chrome();
 
     // Returns the wid of the window whose outer frame contains (px, py),
     // or INVALID_WID if none.

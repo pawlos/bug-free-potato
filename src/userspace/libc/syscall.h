@@ -165,11 +165,12 @@ static inline void  sys_sleep_ms(unsigned long ms)
 
 static inline long sys_create_window(long cx, long cy, long cw, long ch)
 {
-    register long _ch __asm__("rcx") = ch;
+    register long _ch    __asm__("rcx") = ch;
+    register long _flags __asm__("r8")  = 0;   /* no flags = normal window with chrome */
     long ret;
     __asm__ volatile("int $0x80"
         : "=a"(ret)
-        : "a"((long)SYS_CREATE_WINDOW), "D"(cx), "S"(cy), "d"(cw), "r"(_ch)
+        : "a"((long)SYS_CREATE_WINDOW), "D"(cx), "S"(cy), "d"(cw), "r"(_ch), "r"(_flags)
         : "memory");
     return ret;
 }

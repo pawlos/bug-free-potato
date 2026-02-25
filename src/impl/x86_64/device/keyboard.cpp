@@ -150,9 +150,14 @@ void keyboard_routine(const pt::uint8_t scancode)
 		{
 			const char* current_layout = shiftPressed || capsLockOn ? layout_upper : layout;
 			const char key = current_layout[scancode];
-			keyboard_buffer[write_pos % 128] = key;
-			keyboard_log("Putting the '%c' into %d\n", key, write_pos % 128);
-			write_pos = write_pos + 1;
+			// Only feed the raw buffer when no window has focus; when a
+			// window is focused its event queue (populated by push_key_event
+			// above via wm_route_key_event) is the sole input channel.
+			if (WindowManager::focused_id == INVALID_WID) {
+				keyboard_buffer[write_pos % 128] = key;
+				keyboard_log("Putting the '%c' into %d\n", key, write_pos % 128);
+				write_pos = write_pos + 1;
+			}
 		}
 		if (ctrlPressed && shiftPressed && altPressed)
 		{

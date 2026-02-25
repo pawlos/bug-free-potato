@@ -11,6 +11,7 @@ void WindowManager::initialize()
         windows[i].id            = INVALID_WID;
         windows[i].owner_task_id = INVALID_WID;
         windows[i].active        = false;
+        windows[i].chromeless    = false;
         windows[i].screen_x      = 0;
         windows[i].screen_y      = 0;
         windows[i].total_w       = 0;
@@ -29,7 +30,8 @@ void WindowManager::initialize()
 
 pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
                                            pt::uint32_t w, pt::uint32_t h,
-                                           pt::uint32_t owner_task_id)
+                                           pt::uint32_t owner_task_id,
+                                           pt::uint32_t flags)
 {
     // Find first inactive slot
     pt::uint32_t wid = INVALID_WID;
@@ -41,16 +43,25 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     }
     if (wid == INVALID_WID) return INVALID_WID;
 
-    Window* win      = &windows[wid];
-    win->id          = wid;
+    Window* win        = &windows[wid];
+    win->id            = wid;
     win->owner_task_id = owner_task_id;
-    win->active      = true;
+    win->active        = true;
+    win->chromeless    = (flags & WF_CHROMELESS) != 0;
 
-    // x, y are the client area screen-absolute origin
-    win->screen_x  = x - BORDER_W;
-    win->screen_y  = y - BORDER_W - TITLE_BAR_H;
-    win->total_w   = BORDER_W + w + BORDER_W;
-    win->total_h   = BORDER_W + TITLE_BAR_H + h + BORDER_W;
+    if (win->chromeless) {
+        // No border or title bar: the specified rect IS the client area.
+        win->screen_x  = x;
+        win->screen_y  = y;
+        win->total_w   = w;
+        win->total_h   = h;
+    } else {
+        // x, y are the client area screen-absolute origin; chrome surrounds it.
+        win->screen_x  = x - BORDER_W;
+        win->screen_y  = y - BORDER_W - TITLE_BAR_H;
+        win->total_w   = BORDER_W + w + BORDER_W;
+        win->total_h   = BORDER_W + TITLE_BAR_H + h + BORDER_W;
+    }
     win->client_ox = x;
     win->client_oy = y;
     win->client_w  = w;
@@ -60,12 +71,13 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->text_col  = 0;
     win->text_row  = 0;
 
-    // Dim the previously focused window
-    if (focused_id != INVALID_WID)
-        draw_chrome(focused_id, false);
-
-    focused_id = wid;
-    draw_chrome(wid, true);
+    // Chromeless windows (background widgets) never hold keyboard focus.
+    if (!win->chromeless) {
+        if (focused_id != INVALID_WID)
+            draw_chrome(focused_id, false);
+        focused_id = wid;
+        draw_chrome(wid, true);
+    }
 
     return wid;
 }
@@ -103,6 +115,7 @@ void WindowManager::draw_chrome(pt::uint32_t wid, bool active)
     if (wid >= MAX_WINDOWS) return;
     Window* win = &windows[wid];
     if (!win->active) return;
+    if (win->chromeless) return;
 
     Framebuffer* fb = Framebuffer::get_instance();
     if (!fb) return;
@@ -220,9 +233,6 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
                              win->client_w,  win->client_h, 0, 0, 0);
         win->text_col = 0;
         win->text_row = 0;
-        // Repaint chrome: glyph background rendering can bleed into the
-        // title bar / border pixels adjacent to the client area.
-        draw_chrome(wid, focused_id == wid);
         return;
     }
     if (c == '\r') {
@@ -288,6 +298,14 @@ pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
             return i;
     }
     return INVALID_WID;
+}
+
+void WindowManager::redraw_all_chrome()
+{
+    for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {
+        if (windows[i].active && !windows[i].chromeless)
+            draw_chrome(i, focused_id == i);
+    }
 }
 
 void wm_route_key_event(pt::uint64_t encoded_event)
