@@ -96,7 +96,8 @@ void* VMM::kmalloc(pt::size_t size)
         }
         if (currentMemorySegment->nextFreeChunk == nullptr)
         {
-            kernel_panic("Not able to allocated more memory.", NotAbleToAllocateMemory);
+            klog("[VMM] Out of memory: requested %d bytes\n", (int)size);
+            return nullptr;
         }
         currentMemorySegment = currentMemorySegment->nextFreeChunk;
     }
@@ -106,6 +107,7 @@ void* VMM::kcalloc(const pt::size_t size)
 {
     klog("[VMM] Callocing %d bytes memory.\n", size);
     void* ptr = kmalloc(size);
+    if (ptr == nullptr) return nullptr;
     memset(ptr, '\0', size);
     return ptr;
 }
