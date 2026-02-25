@@ -633,9 +633,49 @@ bool FAT32::create_file(const char* filename,
 }
 
 bool FAT32::delete_file(const char* filename) {
-    (void)filename;
-    klog("[FAT32] delete_file: not implemented\n");
-    return false;
+    if (!mounted) return false;
+
+    File tmp;
+    if (!scan_directory(root_cluster, filename, &tmp)) {
+        klog("[FAT32] delete_file: '%s' not found\n", filename);
+        return false;
+    }
+
+    FAT32State* st = fat32_state(&tmp);
+
+    // 1. Free every cluster in the file's chain
+    pt::uint32_t c = st->first_cluster;
+    while (c >= 2 && !is_eoc(c)) {
+        pt::uint32_t next = get_next_cluster(c);
+        write_fat_entry(c, 0);
+        c = next;
+    }
+
+    // 2. Read the directory sector holding the 8.3 entry
+    if (!Disk::read_sector(st->dir_entry_sector, fat32_sector_buf)) {
+        klog("[FAT32] delete_file: failed to read dir sector\n");
+        return false;
+    }
+
+    // 3. Mark any preceding LFN entries (within the same sector) as deleted
+    pt::uint32_t off = st->dir_entry_offset;
+    while (off >= 32) {
+        off -= 32;
+        FAT32_DirEntry* e = (FAT32_DirEntry*)(fat32_sector_buf + off);
+        if (e->attributes != FAT32_ATTR_LFN) break;
+        fat32_sector_buf[off] = 0xE5;
+    }
+
+    // 4. Mark the 8.3 entry itself as deleted
+    fat32_sector_buf[st->dir_entry_offset] = 0xE5;
+
+    if (!Disk::write_sector(st->dir_entry_sector, fat32_sector_buf)) {
+        klog("[FAT32] delete_file: failed to write dir sector\n");
+        return false;
+    }
+
+    klog("[FAT32] delete_file: deleted '%s'\n", filename);
+    return true;
 }
 
 // ── Info getters ──────────────────────────────────────────────────────────
