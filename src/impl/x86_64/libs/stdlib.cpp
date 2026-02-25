@@ -25,9 +25,12 @@ pt::size_t parse_decimal(const char *str) {
         str++;
     }
 
-    // Parse decimal digits
+    // Parse decimal digits; clamp to SIZE_MAX on overflow
     while (*str >= '0' && *str <= '9') {
-        result = result * 10 + (*str - '0');
+        pt::size_t digit = (pt::uint8_t)(*str - '0');
+        if (result > ((pt::size_t)-1 - digit) / 10)
+            return (pt::size_t)-1;  // would overflow: clamp
+        result = result * 10 + digit;
         str++;
     }
 

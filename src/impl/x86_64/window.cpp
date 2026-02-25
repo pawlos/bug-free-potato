@@ -99,9 +99,9 @@ void WindowManager::destroy_window(pt::uint32_t wid)
 
     if (focused_id == wid) {
         focused_id = INVALID_WID;
-        // Scan from highest index downward for the last active window
+        // Scan from highest index downward for the last focusable window
         for (pt::uint32_t i = MAX_WINDOWS; i-- > 0; ) {
-            if (windows[i].active) {
+            if (windows[i].active && !windows[i].chromeless) {
                 focused_id = i;
                 draw_chrome(i, true);
                 break;

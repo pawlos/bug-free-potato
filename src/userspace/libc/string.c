@@ -167,11 +167,11 @@ int strcasecmp(const char *a, const char *b)
 
 int strncasecmp(const char *a, const char *b, size_t n)
 {
-    while (n-- && *a && *b) {
+    for (; n > 0; n--, a++, b++) {
+        if (!*a || !*b)
+            return to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
         int d = to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
         if (d) return d;
-        a++; b++;
     }
-    return n == (size_t)-1 ? 0 :
-           to_lower((unsigned char)*a) - to_lower((unsigned char)*b);
+    return 0;
 }

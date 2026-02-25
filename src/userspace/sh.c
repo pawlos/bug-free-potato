@@ -35,11 +35,17 @@ static void to_upper(char* s) {
         if (*s >= 'a' && *s <= 'z') *s -= 32;
 }
 
-/* Build "NAME.ELF" from name (uppercased); append .ELF if not present. */
-static void build_elf_name(const char* name, char* out) {
-    sh_strcpy(out, name);
+/* Build "NAME.ELF" from name (uppercased); append .ELF if not present.
+   out must be at least out_sz bytes; the result is always NUL-terminated. */
+static void build_elf_name(const char* name, char* out, int out_sz) {
+    /* Copy at most out_sz-5 bytes to leave room for ".ELF\0" */
+    int max_base = out_sz - 5;
+    int i = 0;
+    for (; name[i] && i < max_base; i++)
+        out[i] = name[i];
+    out[i] = '\0';
     to_upper(out);
-    int len = sh_strlen(out);
+    int len = i;
     /* Check if already ends with .ELF */
     if (len < 4 || sh_strcmp(out + len - 4, ".ELF") != 0) {
         out[len++] = '.';
@@ -207,7 +213,7 @@ static void cmd_disk(void) {
 
 static void cmd_exec(const char* name) {
     char fname[64];
-    build_elf_name(name, fname);
+    build_elf_name(name, fname, (int)sizeof(fname));
 
     long child = sys_fork();
     if (child == 0) {
