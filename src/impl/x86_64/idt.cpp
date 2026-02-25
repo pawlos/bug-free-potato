@@ -485,9 +485,9 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_OPEN: {
 			const char* filename = reinterpret_cast<const char*>(arg1);
 			Task* t = TaskScheduler::get_current_task();
-			// Find a free fd slot in the current task's table
+			// Find a free fd slot; 0/1/2 are reserved for stdin/stdout/stderr.
 			int fd = -1;
-			for (int i = 0; i < (int)Task::MAX_FDS; i++) {
+			for (int i = 3; i < (int)Task::MAX_FDS; i++) {
 				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
@@ -651,9 +651,9 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_PIPE: {
 			int* pipefd = reinterpret_cast<int*>(arg1);
 			Task* t = TaskScheduler::get_current_task();
-			// Find two free fd slots.
+			// Find two free fd slots; 0/1/2 are reserved for stdin/stdout/stderr.
 			int rd_fd = -1, wr_fd = -1;
-			for (int i = 0; i < (int)Task::MAX_FDS && (rd_fd == -1 || wr_fd == -1); i++) {
+			for (int i = 3; i < (int)Task::MAX_FDS && (rd_fd == -1 || wr_fd == -1); i++) {
 				if (!t->fd_table[i].open) {
 					if (rd_fd == -1) rd_fd = i;
 					else             wr_fd = i;
@@ -751,8 +751,9 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_CREATE: {
 			const char* filename = reinterpret_cast<const char*>(arg1);
 			Task* t = TaskScheduler::get_current_task();
+			// Find a free fd slot; 0/1/2 are reserved for stdin/stdout/stderr.
 			int fd = -1;
-			for (int i = 0; i < (int)Task::MAX_FDS; i++) {
+			for (int i = 3; i < (int)Task::MAX_FDS; i++) {
 				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
