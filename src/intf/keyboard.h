@@ -19,3 +19,6 @@ void keyboard_routine(pt::uint8_t scancode);
 char get_char();
 // Returns false when the event queue is empty.
 bool get_key_event(KeyEvent* out);
+// Translate a PS/2 set-1 scancode to its ASCII character using the current
+// shift/caps state.  Returns 0 for non-printable / modifier keys.
+char keyboard_scancode_to_char(pt::uint8_t scancode);

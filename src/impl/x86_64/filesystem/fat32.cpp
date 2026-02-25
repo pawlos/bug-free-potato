@@ -307,6 +307,66 @@ void FAT32::list_root_directory() {
     scan_directory(root_cluster, nullptr, nullptr);
 }
 
+// Walk root directory and return the idx-th regular file entry.
+bool FAT32::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
+    if (!mounted) return false;
+    int count = 0;
+    char lfn_buf[261];
+    for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+
+    pt::uint32_t cluster = root_cluster;
+    while (cluster >= 2 && !is_eoc(cluster)) {
+        pt::uint32_t sector = cluster_to_sector(cluster);
+        for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            if (!Disk::read_sector(sector + s, fat32_sector_buf)) continue;
+            pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+            FAT32_DirEntry* entries = (FAT32_DirEntry*)fat32_sector_buf;
+
+            for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+                pt::uint8_t first = entries[e].filename[0];
+                if (first == 0x00) return false;
+                if (first == 0xE5) { lfn_buf[0] = '\0'; continue; }
+
+                if (entries[e].attributes == FAT32_ATTR_LFN) {
+                    const FAT32_LFN_Entry* lfn = (const FAT32_LFN_Entry*)&entries[e];
+                    if (lfn->seq_num & 0x40) {
+                        for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+                    }
+                    lfn_store_entry(lfn, lfn_buf, sizeof(lfn_buf));
+                    continue;
+                }
+                if (entries[e].attributes & FAT32_ATTR_VOLUME_ID) { lfn_buf[0] = '\0'; continue; }
+                if (entries[e].attributes & FAT32_ATTR_DIRECTORY) { lfn_buf[0] = '\0'; continue; }
+
+                // Regular file
+                if (count == idx) {
+                    if (lfn_buf[0] != '\0') {
+                        int k = 0;
+                        while (lfn_buf[k] && k < 255) { name_out[k] = lfn_buf[k]; k++; }
+                        name_out[k] = '\0';
+                    } else {
+                        int k = 0;
+                        for (int i = 0; i < 8 && entries[e].filename[i] != ' '; i++)
+                            name_out[k++] = entries[e].filename[i];
+                        if (entries[e].extension[0] != ' ') {
+                            name_out[k++] = '.';
+                            for (int i = 0; i < 3 && entries[e].extension[i] != ' '; i++)
+                                name_out[k++] = entries[e].extension[i];
+                        }
+                        name_out[k] = '\0';
+                    }
+                    if (size_out) *size_out = entries[e].file_size;
+                    return true;
+                }
+                count++;
+                lfn_buf[0] = '\0';
+            }
+        }
+        cluster = get_next_cluster(cluster);
+    }
+    return false;
+}
+
 pt::uint32_t FAT32::read_file(File* file, void* buffer,
                                pt::uint32_t bytes_to_read) {
     if (!mounted || !file || !file->open) return 0;

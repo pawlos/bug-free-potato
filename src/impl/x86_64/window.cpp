@@ -217,6 +217,11 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
         win->text_col = 0;
         return;
     }
+    if (c == '\b') {
+        if (win->text_col > 0)
+            win->text_col--;
+        return;
+    }
     if (c == '\n') {
         win->text_col = 0;
         win->text_row++;

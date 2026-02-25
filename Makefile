@@ -68,6 +68,7 @@ clean:
 	-rm -f $(KEYTEST_OBJ)   $(KEYTEST_BIN)
 	-rm -f $(FSWRITE_OBJ)   $(FSWRITE_BIN)
 	-rm -f $(WM_TEST_OBJ)   $(WM_TEST_BIN)
+	-rm -f $(SH_ELF_OBJ)   $(SH_ELF_BIN)
 	-rm -rf $(DOOM_BUILD)
 	-rm -f  $(DOOM_ELF)
 
@@ -166,6 +167,16 @@ $(WM_TEST_OBJ): src/userspace/wm_test.c $(LIBC_A)
 
 $(WM_TEST_BIN): $(WM_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(WM_TEST_OBJ) $(LIBC_A)
+
+# ── userland shell ────────────────────────────────────────────────────────────
+SH_ELF_OBJ = build/userspace/sh.o
+SH_ELF_BIN = src/impl/x86_64/bins/sh.elf
+
+$(SH_ELF_OBJ): src/userspace/sh.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(SH_ELF_BIN): $(SH_ELF_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SH_ELF_OBJ) $(LIBC_A)
 
 # ── math test ─────────────────────────────────────────────────────────────────
 MATHTEST_OBJ = build/userspace/mathtest.o
@@ -277,7 +288,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(DOOM_ELF) $(DOOM_WAD)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(DOOM_ELF) $(DOOM_WAD)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -302,6 +313,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(FSWRITE_BIN)    FSWRITE.ELF; \
 	copy_file $(SLEEP_TEST_BIN) SLEEP_TEST.ELF; \
 	copy_file $(WM_TEST_BIN)    WM_TEST.ELF; \
+	copy_file $(SH_ELF_BIN)     SH.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD
 	@echo "Disk image created with files:"

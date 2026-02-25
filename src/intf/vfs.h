@@ -34,6 +34,9 @@ public:
     virtual void list_root_directory() = 0;
     virtual bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) = 0;
     virtual bool delete_file(const char* filename) = 0;
+    // readdir: fill name_out and *size_out for the idx-th regular file (0-based).
+    // Returns true if found, false if idx >= file count.
+    virtual bool readdir(int /*idx*/, char* /*name_out*/, pt::uint32_t* /*size_out*/) { return false; }
     virtual pt::uint32_t get_bytes_per_cluster() = 0;
     virtual pt::uint32_t get_free_space() = 0;
     virtual pt::uint32_t get_total_space() = 0;
@@ -53,6 +56,7 @@ public:
     static void list_root_directory();
     static bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size);
     static bool delete_file(const char* filename);
+    static bool readdir(int idx, char* name_out, pt::uint32_t* size_out);
     static pt::uint32_t get_bytes_per_cluster();
     static pt::uint32_t get_free_space();
     static pt::uint32_t get_total_space();

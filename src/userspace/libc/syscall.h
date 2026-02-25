@@ -29,6 +29,10 @@
 #define SYS_CREATE_WINDOW    24  /* rdi=cx, rsi=cy, rdx=cw, rcx=ch; returns wid or -1          */
 #define SYS_DESTROY_WINDOW   25  /* rdi=wid; returns 0 or -1                                   */
 #define SYS_GET_WINDOW_EVENT 26  /* rdi=wid; returns encoded event (0 if empty)                */
+#define SYS_READDIR          27  /* rdi=idx, rsi=name_buf, rdx=size_ptr; 1=ok, 0=done          */
+#define SYS_MEM_FREE         28  /* () → free heap bytes                                       */
+#define SYS_DISK_SIZE        29  /* () → total disk bytes                                      */
+#define SYS_REMOVE           30  /* rdi=filename; delete file; returns 0 or -1                 */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -175,3 +179,15 @@ static inline long sys_destroy_window(long wid)
 
 static inline long sys_get_window_event(long wid)
     { return __sc1(SYS_GET_WINDOW_EVENT, wid); }
+
+static inline long sys_readdir(int idx, char* name, unsigned int* size)
+    { return __sc3(SYS_READDIR, (long)idx, (long)name, (long)size); }
+
+static inline long sys_mem_free(void)
+    { return __sc0(SYS_MEM_FREE); }
+
+static inline long sys_disk_size(void)
+    { return __sc0(SYS_DISK_SIZE); }
+
+static inline long sys_remove(const char* filename)
+    { return __sc1(SYS_REMOVE, (long)filename); }

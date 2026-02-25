@@ -124,6 +124,11 @@ bool VFS::delete_file(const char* filename) {
     return active_fs->delete_file(filename);
 }
 
+bool VFS::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
+    if (!active_fs) return false;
+    return active_fs->readdir(idx, name_out, size_out);
+}
+
 pt::uint32_t VFS::get_bytes_per_cluster() {
     if (!active_fs) return 0;
     return active_fs->get_bytes_per_cluster();

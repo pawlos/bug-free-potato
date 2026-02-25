@@ -492,6 +492,19 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			TaskScheduler::task_exit((int)arg1);
 			return 0;
 		case SYS_READ_KEY: {
+			// Windowed tasks receive keyboard events via their per-window queue
+			// so that the kernel shell's polling loop cannot steal their input.
+			Task* wt = TaskScheduler::get_current_task();
+			if (wt && wt->window_id != INVALID_WID) {
+				pt::uint64_t ev = WindowManager::poll_event(wt->window_id);
+				if (ev == 0) return (pt::uint64_t)-1;   // queue empty
+				bool pressed = (ev & 0x100) != 0;
+				if (!pressed) return (pt::uint64_t)-1;  // skip key-release events
+				pt::uint8_t sc = (pt::uint8_t)(ev & 0xFF);
+				char ch = keyboard_scancode_to_char(sc);
+				if (ch == 0) return (pt::uint64_t)-1;   // non-printable / modifier
+				return (pt::uint64_t)(pt::uint8_t)ch;
+			}
 			const char c = get_char();
 			// get_char() returns -1 (as char) when no key is available.
 			if (c == -1)
@@ -811,6 +824,24 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			Window* w = WindowManager::get_window((pt::uint32_t)arg1);
 			if (!t || !w || w->owner_task_id != t->id) return 0;
 			return WindowManager::poll_event((pt::uint32_t)arg1);
+		}
+
+		case SYS_READDIR: {
+			int idx          = (int)arg1;
+			char* name       = reinterpret_cast<char*>(arg2);
+			pt::uint32_t* sz = reinterpret_cast<pt::uint32_t*>(arg3);
+			return VFS::readdir(idx, name, sz) ? 1 : 0;
+		}
+
+		case SYS_MEM_FREE:
+			return (pt::uint64_t)vmm.memsize();
+
+		case SYS_DISK_SIZE:
+			return (pt::uint64_t)VFS::get_total_space();
+
+		case SYS_REMOVE: {
+			const char* filename = reinterpret_cast<const char*>(arg1);
+			return VFS::delete_file(filename) ? 0 : (pt::uint64_t)-1;
 		}
 
 		default:

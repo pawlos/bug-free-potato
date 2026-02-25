@@ -88,6 +88,12 @@ char get_char() {
 	return -1;
 }
 
+char keyboard_scancode_to_char(pt::uint8_t scancode) {
+	if (scancode >= 128) return 0;
+	const char* current_layout = shiftPressed || capsLockOn ? layout_upper : layout;
+	return current_layout[scancode];
+}
+
 void keyboard_routine(const pt::uint8_t scancode)
 {
 	// E0 is the extended-key prefix byte (Right Ctrl, Right Alt, arrows, etc.).

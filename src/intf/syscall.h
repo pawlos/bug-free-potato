@@ -29,3 +29,7 @@ constexpr pt::uint64_t SYS_SLEEP            = 23; // rdi=milliseconds; block unt
 constexpr pt::uint64_t SYS_CREATE_WINDOW    = 24; // rdi=cx, rsi=cy, rdx=cw, rcx=ch; returns wid or -1
 constexpr pt::uint64_t SYS_DESTROY_WINDOW   = 25; // rdi=wid; returns 0 or -1
 constexpr pt::uint64_t SYS_GET_WINDOW_EVENT = 26; // rdi=wid; returns event (0 if empty)
+constexpr pt::uint64_t SYS_READDIR          = 27; // rdi=idx, rsi=name_buf, rdx=size_ptr; returns 1=ok, 0=done
+constexpr pt::uint64_t SYS_MEM_FREE         = 28; // () → free heap bytes
+constexpr pt::uint64_t SYS_DISK_SIZE        = 29; // () → total disk bytes
+constexpr pt::uint64_t SYS_REMOVE           = 30; // rdi=filename; delete file; returns 0 or -1
