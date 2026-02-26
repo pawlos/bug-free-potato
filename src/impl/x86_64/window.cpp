@@ -22,8 +22,15 @@ void WindowManager::initialize()
         windows[i].client_h      = 0;
         windows[i].ev_read       = 0;
         windows[i].ev_write      = 0;
-        windows[i].text_col      = 0;
-        windows[i].text_row      = 0;
+        windows[i].text_col         = 0;
+        windows[i].text_row         = 0;
+        windows[i].fg               = 0xFFFFFF;
+        windows[i].bg               = 0x000000;
+        windows[i].saved_col        = 0;
+        windows[i].saved_row        = 0;
+        windows[i].ansi.state       = AnsiParser::NORMAL;
+        windows[i].ansi.n_params    = 0;
+        windows[i].ansi.private_mode = false;
     }
     focused_id = INVALID_WID;
 }
@@ -66,10 +73,17 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->client_oy = y;
     win->client_w  = w;
     win->client_h  = h;
-    win->ev_read   = 0;
-    win->ev_write  = 0;
-    win->text_col  = 0;
-    win->text_row  = 0;
+    win->ev_read            = 0;
+    win->ev_write           = 0;
+    win->text_col           = 0;
+    win->text_row           = 0;
+    win->fg                 = 0xFFFFFF;
+    win->bg                 = 0x000000;
+    win->saved_col          = 0;
+    win->saved_row          = 0;
+    win->ansi.state         = AnsiParser::NORMAL;
+    win->ansi.n_params      = 0;
+    win->ansi.private_mode  = false;
 
     // Chromeless windows (background widgets) never hold keyboard focus.
     if (!win->chromeless) {
@@ -213,6 +227,112 @@ pt::uint32_t WindowManager::get_task_window(pt::uint32_t task_id)
     return INVALID_WID;
 }
 
+static void handle_csi(Window* win, char cmd,
+                       const pt::uint32_t* p, pt::uint32_t np,
+                       pt::uint32_t cols, pt::uint32_t rows,
+                       pt::uint32_t gw, pt::uint32_t gh)
+{
+    auto P = [&](pt::uint32_t i, pt::uint32_t def) -> pt::uint32_t {
+        return (i < np && p[i] != 0) ? p[i] : def;
+    };
+
+    Framebuffer* fb = Framebuffer::get_instance();
+
+    switch (cmd) {
+    case 'A': {  // cursor up
+        pt::uint32_t n = P(0, 1);
+        win->text_row = (win->text_row >= n) ? win->text_row - n : 0;
+        break;
+    }
+    case 'B': {  // cursor down
+        pt::uint32_t n = P(0, 1);
+        win->text_row += n;
+        if (win->text_row >= rows) win->text_row = rows - 1;
+        break;
+    }
+    case 'C': {  // cursor forward
+        pt::uint32_t n = P(0, 1);
+        win->text_col += n;
+        if (win->text_col >= cols) win->text_col = cols - 1;
+        break;
+    }
+    case 'D': {  // cursor back
+        pt::uint32_t n = P(0, 1);
+        win->text_col = (win->text_col >= n) ? win->text_col - n : 0;
+        break;
+    }
+    case 'H':
+    case 'f': {  // cursor position (1-based)
+        pt::uint32_t r = P(0, 1) - 1;
+        pt::uint32_t c = P(1, 1) - 1;
+        win->text_row = (r < rows) ? r : rows - 1;
+        win->text_col = (c < cols) ? c : cols - 1;
+        break;
+    }
+    case 'J': {  // erase display
+        if (fb) {
+            pt::uint32_t mode = p[0];
+            pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
+            pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
+            pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
+            if (mode == 2) {
+                fb->FillRect(win->client_ox, win->client_oy,
+                             win->client_w,  win->client_h, bgr, bgg, bgb);
+                win->text_col = win->text_row = 0;
+            } else if (mode == 0) {
+                pt::uint32_t py = win->client_oy + win->text_row * gh;
+                pt::uint32_t px = win->client_ox + win->text_col * gw;
+                fb->FillRect(px, py, win->client_w - win->text_col * gw, gh,
+                             bgr, bgg, bgb);
+                if (win->text_row + 1 < rows)
+                    fb->FillRect(win->client_ox, py + gh,
+                                 win->client_w, win->client_h - (win->text_row + 1) * gh,
+                                 bgr, bgg, bgb);
+            }
+        }
+        break;
+    }
+    case 'K': {  // erase line
+        if (fb) {
+            pt::uint32_t mode = p[0];
+            pt::uint32_t py = win->client_oy + win->text_row * gh;
+            pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
+            pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
+            pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
+            if (mode == 0) {  // to end of line
+                pt::uint32_t px = win->client_ox + win->text_col * gw;
+                fb->FillRect(px, py, win->client_w - win->text_col * gw, gh,
+                             bgr, bgg, bgb);
+            } else if (mode == 2) {  // whole line
+                fb->FillRect(win->client_ox, py, win->client_w, gh,
+                             bgr, bgg, bgb);
+                win->text_col = 0;
+            }
+        }
+        break;
+    }
+    case 's':
+        win->saved_col = win->text_col;
+        win->saved_row = win->text_row;
+        break;
+    case 'u':
+        win->text_col = win->saved_col;
+        win->text_row = win->saved_row;
+        break;
+    case 'm': {  // SGR — may have multiple params
+        for (pt::uint32_t i = 0; i < np; i++) {
+            pt::uint32_t v = p[i];
+            if (v == 0)                   { win->fg = 0xFFFFFF; win->bg = 0x000000; }
+            else if (v >= 30 && v <= 37)  win->fg = ansi_color(v - 30);
+            else if (v >= 40 && v <= 47)  win->bg = ansi_color(v - 40);
+            else if (v >= 90 && v <= 97)  win->fg = ansi_color(v - 90 + 8);
+            else if (v >= 100 && v <= 107) win->bg = ansi_color(v - 100 + 8);
+        }
+        break;
+    }
+    }
+}
+
 void WindowManager::put_char(pt::uint32_t wid, char c)
 {
     Window* win = get_window(wid);
@@ -226,6 +346,20 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     const pt::uint32_t rows = win->client_h / gh;
     if (cols == 0 || rows == 0) return;
 
+    // ANSI escape sequence handling
+    char final_byte = 0;
+    bool complete   = win->ansi.feed(c, final_byte);
+
+    if (complete) {
+        handle_csi(win, final_byte,
+                   win->ansi.params, win->ansi.n_params,
+                   cols, rows, gw, gh);
+        return;
+    }
+    // Char was consumed by parser if state is not (and was not) NORMAL
+    if (win->ansi.state != AnsiParser::NORMAL) return;
+
+    // Normal character handling
     if (c == '\f') {
         // Form feed: clear client area and home the cursor.
         Framebuffer* fb = Framebuffer::get_instance();
@@ -257,7 +391,7 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
         // Render glyph at current cursor
         pt::uint32_t px = win->client_ox + win->text_col * gw;
         pt::uint32_t py = win->client_oy + win->text_row * gh;
-        fbterm.put_char_at(c, px, py, 0xFFFFFF, 0x000000);
+        fbterm.put_char_at(c, px, py, win->fg, win->bg);
         win->text_col++;
         if (win->text_col >= cols) {
             win->text_col = 0;

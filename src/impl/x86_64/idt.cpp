@@ -424,13 +424,16 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				Task* wt = TaskScheduler::get_current_task();
 				bool has_window = wt && wt->window_id != INVALID_WID;
 				for (pt::uint32_t i = 0; i < n; i++) {
-					if (has_window)
+					if (has_window) {
 						WindowManager::put_char(wt->window_id, buf[i]);
-					else
+					} else {
 						fbterm.put_char(buf[i]);
-					// mirror to serial
-					char tmp[2] = { buf[i], '\0' };
-					debug.print_str(tmp);
+						// mirror to serial only for non-windowed tasks;
+						// windowed tasks have their own display and their
+						// output (incl. ANSI sequences) must not pollute the log.
+						char tmp[2] = { buf[i], '\0' };
+						debug.print_str(tmp);
+					}
 				}
 				return (pt::uint64_t)n;
 			}

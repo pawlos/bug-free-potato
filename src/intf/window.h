@@ -1,5 +1,6 @@
 #pragma once
 #include "defs.h"
+#include "ansi.h"
 
 constexpr pt::uint32_t MAX_WINDOWS  = 8;
 constexpr pt::uint32_t TITLE_BAR_H  = 16;  // px; matches PSF1 glyph height
@@ -40,6 +41,11 @@ struct Window {
 
     // Text cursor for stdout rendering inside the client area (in character units)
     pt::uint32_t text_col, text_row;
+
+    // ANSI parser state
+    AnsiParser   ansi;
+    pt::uint32_t fg, bg;                // current text colors (default 0xFFFFFF, 0x000000)
+    pt::uint32_t saved_col, saved_row;  // for \x1b[s / \x1b[u
 };
 
 class WindowManager {

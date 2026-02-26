@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include "framebuffer.h"
+#include "ansi.h"
 
 struct PSF1Header {
     pt::uint8_t  magic[2];   // 0x36, 0x04
@@ -62,6 +63,9 @@ private:
     pt::uint32_t       m_fg        = 0x00FF00;  // green by default
     pt::uint32_t       m_bg        = 0x000000;  // black bg
     bool               m_ready     = false;
+    AnsiParser         m_ansi;
+    pt::uint32_t       m_saved_col = 0;
+    pt::uint32_t       m_saved_row = 0;
 };
 
 extern FbTerm fbterm;

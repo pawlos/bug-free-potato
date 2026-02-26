@@ -121,7 +121,7 @@ static void cmd_help(void) {
     puts("  cat <file>       print file contents");
     puts("  write <f> <txt>  write text to file");
     puts("  rm <file>        delete a file");
-    puts("  echo [args...]   print arguments");
+    puts("  echo [-e] [args...] print arguments (-e: process escapes)");
     puts("  clear            clear screen");
     puts("  ticks            print tick counter");
     puts("  mem              print free memory");
@@ -185,9 +185,55 @@ static void cmd_rm(const char* filename) {
     else        printf("removed %s\n", filename);
 }
 
+/* Process backslash escapes in-place (for echo -e).
+   Supports: \n \r \t \\ \e (ESC=0x1B) \xNN (hex byte).
+   Returns new string length. */
+static int sh_process_escapes(char* s) {
+    char* r = s, *w = s;
+    while (*r) {
+        if (*r == '\\' && r[1]) {
+            r++;
+            switch (*r) {
+            case 'n':  *w++ = '\n'; break;
+            case 'r':  *w++ = '\r'; break;
+            case 't':  *w++ = '\t'; break;
+            case '\\': *w++ = '\\'; break;
+            case 'e':  *w++ = '\x1b'; break;
+            case 'x': {
+                unsigned int val = 0; int nd = 0;
+                while (nd < 2 && ((r[1] >= '0' && r[1] <= '9') ||
+                                   (r[1] >= 'a' && r[1] <= 'f') ||
+                                   (r[1] >= 'A' && r[1] <= 'F'))) {
+                    r++;
+                    val = val * 16 + ((*r >= '0' && *r <= '9') ? (unsigned int)(*r - '0') :
+                                      (*r >= 'a' && *r <= 'f') ? (unsigned int)(*r - 'a' + 10) :
+                                                                  (unsigned int)(*r - 'A' + 10));
+                    nd++;
+                }
+                *w++ = (char)val;
+                break;
+            }
+            default: *w++ = '\\'; *w++ = *r; break;
+            }
+        } else {
+            *w++ = *r;
+        }
+        r++;
+    }
+    *w = '\0';
+    return (int)(w - s);
+}
+
 static void cmd_echo(char* argv[], int argc) {
-    for (int i = 1; i < argc; i++) {
-        if (i > 1) putchar(' ');
+    int start = 1;
+    int escape = 0;
+    if (argc > 1 && sh_strcmp(argv[1], "-e") == 0) {
+        escape = 1;
+        start = 2;
+    }
+    for (int i = start; i < argc; i++) {
+        if (i > start) putchar(' ');
+        if (escape) sh_process_escapes(argv[i]);
         printf("%s", argv[i]);
     }
     putchar('\n');
