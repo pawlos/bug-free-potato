@@ -453,6 +453,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 							pipe->data[pipe->write_pos % PipeBuffer::CAPACITY] =
 								(pt::uint8_t)buf[written++];
 							pipe->write_pos++;
+						} else if (pipe->ref_count <= 1) {
+							break;  // reader gone (broken pipe) — stop writing
 						} else {
 							TaskScheduler::task_yield();
 						}
@@ -523,8 +525,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 					if (pipe->write_pos != pipe->read_pos) {
 						dst[nread++] = pipe->data[pipe->read_pos % PipeBuffer::CAPACITY];
 						pipe->read_pos++;
-					} else if (pipe->writer_closed) {
-						break;  // EOF
+					} else if (pipe->writer_closed || pipe->ref_count <= 1) {
+						break;  // EOF: writer closed or all writers gone
 					} else {
 						TaskScheduler::task_yield();
 					}
