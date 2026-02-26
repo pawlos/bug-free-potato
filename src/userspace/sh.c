@@ -131,6 +131,13 @@ static void cmd_help(void) {
     puts("  <name>           exec NAME.ELF");
 }
 
+static int ends_with_elf(const char* s) {
+    int n = sh_strlen(s);
+    return n >= 4 && s[n-4] == '.' && (s[n-3] == 'E' || s[n-3] == 'e')
+                                    && (s[n-2] == 'L' || s[n-2] == 'l')
+                                    && (s[n-1] == 'F' || s[n-1] == 'f');
+}
+
 static void cmd_ls(void) {
     char name[256];
     unsigned int size = 0;
@@ -139,7 +146,10 @@ static void cmd_ls(void) {
     for (;;) {
         long r = sys_readdir(i, name, &size);
         if (!r) break;
-        printf("  %-24s  %u bytes\n", name, size);
+        if (ends_with_elf(name))
+            printf("  \x1b[92m%-24s\x1b[0m  %u bytes\n", name, size);
+        else
+            printf("  %-24s  %u bytes\n", name, size);
         i++;
         found = 1;
     }
