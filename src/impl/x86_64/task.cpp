@@ -812,7 +812,9 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
         // Walk the rbp frame chain in the child's copied user stack.
         // We iterate using PARENT coordinates so the loop termination is
         // consistent even after we patch the child's memory.
-        while (cur >= stk_bot && cur < stk_top) {
+        // The cap guards against a malformed/cyclic frame chain.
+        int frame_limit = USER_STACK_SIZE / 8;
+        while (cur >= stk_bot && cur < stk_top && frame_limit-- > 0) {
             // The slot in the child's user stack that mirrors parent's [cur].
             pt::uint64_t* slot = reinterpret_cast<pt::uint64_t*>(
                 child_ustack_base + (cur - stk_bot));
