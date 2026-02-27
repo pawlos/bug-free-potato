@@ -18,6 +18,7 @@
 #include "assets.h"
 #include "tss.h"
 #include "window.h"
+#include "net.h"
 
 extern char get_char();
 static IDT idt;
@@ -52,6 +53,13 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     Disk::initialize();
     if (VFS::mount())
         load_assets();
+
+    // Network
+    if (RTL8139::initialize()) {
+        klog("[NET] RTL8139 ready, IP 10.0.2.15\n");
+    } else {
+        klog("[NET] RTL8139 not found\n");
+    }
 
     // Audio
     if (AC97::initialize()) {

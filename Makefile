@@ -20,7 +20,9 @@ QEMU_AUDIO_BACKEND ?= dsound
 QEMU_OPTIONS=-m 512M \
 	-audiodev $(QEMU_AUDIO_BACKEND),id=audio0 \
 	-device AC97,audiodev=audio0 \
-	-rtc base=localtime
+	-rtc base=localtime \
+	-device rtl8139,netdev=n0 \
+	-netdev user,id=n0
 
 x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
@@ -52,6 +54,7 @@ gdb: all disk.img
 
 clean:
 	-rm -f build/kernel/*.o
+	-rm -f build/kernel/net/*.o
 	-rm -f build/x86_64/*.o
 	-rm -f build/x86_64/boot/*.o
 	-rm -f build/x86_64/device/*.o
@@ -68,6 +71,7 @@ clean:
 	-rm -f $(KEYTEST_OBJ)   $(KEYTEST_BIN)
 	-rm -f $(FSWRITE_OBJ)   $(FSWRITE_BIN)
 	-rm -f $(WM_TEST_OBJ)   $(WM_TEST_BIN)
+	-rm -f $(SNAKE_OBJ)     $(SNAKE_BIN)
 	-rm -f $(SH_ELF_OBJ)   $(SH_ELF_BIN)
 	-rm -rf $(DOOM_BUILD)
 	-rm -f  $(DOOM_ELF)
@@ -167,6 +171,16 @@ $(WM_TEST_OBJ): src/userspace/wm_test.c $(LIBC_A)
 
 $(WM_TEST_BIN): $(WM_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(WM_TEST_OBJ) $(LIBC_A)
+
+# ── Snake game ────────────────────────────────────────────────────────────────
+SNAKE_OBJ = build/userspace/snake.o
+SNAKE_BIN = src/impl/x86_64/bins/snake.elf
+
+$(SNAKE_OBJ): src/userspace/snake.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(SNAKE_BIN): $(SNAKE_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SNAKE_OBJ) $(LIBC_A)
 
 # ── userland shell ────────────────────────────────────────────────────────────
 SH_ELF_OBJ = build/userspace/sh.o
@@ -288,7 +302,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(DOOM_ELF) $(DOOM_WAD)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(DOOM_ELF) $(DOOM_WAD)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -314,6 +328,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(SLEEP_TEST_BIN) SLEEP_TEST.ELF; \
 	copy_file $(WM_TEST_BIN)    WM_TEST.ELF; \
 	copy_file $(SH_ELF_BIN)     SH.ELF; \
+	copy_file $(SNAKE_BIN)      SNAKE.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD
 	@echo "Disk image created with files:"

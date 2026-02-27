@@ -11,6 +11,7 @@
 #include "ac97.h"
 #include "acpi.h"
 #include "task.h"
+#include "net.h"
 #include "./libs/stdlib.h"
 
 constexpr char mem_cmd[] = "mem";
@@ -39,6 +40,8 @@ constexpr char task_cmd[] = "task";
 constexpr char write_cmd[] = "write ";
 constexpr char rm_cmd[] = "rm ";
 constexpr char exec_cmd[] = "exec ";
+constexpr char net_cmd[]  = "net";
+constexpr char ping_cmd[] = "ping ";
 
 void print_help() {
     klog("Available commands:\n");
@@ -64,6 +67,8 @@ void print_help() {
     klog("  write <file> <text> - Create a new file with text content\n");
     klog("  rm <file>        - Delete a file\n");
     klog("  exec <file>      - Load and run an ELF program\n");
+    klog("  net              - Show network configuration\n");
+    klog("  ping <ip>        - Send ICMP echo requests\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -451,6 +456,90 @@ void Shell::execute_echo(const char* cmd) {
     klog("%s\n", text);
 }
 
+// Helper: print a 32-bit IP in network byte order as dotted decimal
+static void print_ip(pt::uint32_t ip) {
+    const pt::uint8_t* b = reinterpret_cast<const pt::uint8_t*>(&ip);
+    klog("%d.%d.%d.%d", (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+}
+
+// Helper: parse dotted-decimal IP string into network-byte-order uint32_t.
+// Returns 0 on failure.
+static pt::uint32_t parse_ip(const char* s) {
+    pt::uint32_t octets[4] = {0, 0, 0, 0};
+    int part = 0;
+    for (; *s && part < 4; s++) {
+        if (*s >= '0' && *s <= '9') {
+            octets[part] = octets[part] * 10 + (pt::uint32_t)(*s - '0');
+        } else if (*s == '.') {
+            part++;
+        } else {
+            break;
+        }
+    }
+    if (part != 3) return 0;
+    // Build uint32_t in network byte order: octet[0] at lowest address
+    return (octets[3] << 24) | (octets[2] << 16) | (octets[1] << 8) | octets[0];
+}
+
+void Shell::execute_net(const char* cmd) {
+    (void)cmd;
+    if (!RTL8139::is_present()) {
+        klog("RTL8139 not present\n");
+        return;
+    }
+    pt::uint8_t mac[6];
+    RTL8139::get_mac(mac);
+    klog("Net: ");
+    print_ip(NET_MY_IP);
+    klog(" / ");
+    print_ip(make_ip(255, 255, 255, 0));
+    klog("  gw ");
+    print_ip(NET_GATEWAY_IP);
+    klog("\n");
+    klog("MAC: %x:%x:%x:%x:%x:%x\n",
+         (int)mac[0], (int)mac[1], (int)mac[2],
+         (int)mac[3], (int)mac[4], (int)mac[5]);
+    klog("RTL8139 @ io=0x%x  IRQ=11\n", (pt::uint32_t)RTL8139::get_io_base());
+}
+
+void Shell::execute_ping(const char* cmd) {
+    // Skip "ping" then any spaces
+    const char* ip_str = cmd + 4;
+    while (*ip_str == ' ') ip_str++;
+    if (*ip_str == '\0') {
+        klog("Usage: ping <ip>\n");
+        return;
+    }
+    if (!RTL8139::is_present()) {
+        klog("RTL8139 not present\n");
+        return;
+    }
+
+    pt::uint32_t dst = parse_ip(ip_str);
+    if (dst == 0) {
+        klog("Invalid IP address\n");
+        return;
+    }
+
+    klog("PING ");
+    print_ip(dst);
+    klog("\n");
+
+    for (pt::uint16_t seq = 1; seq <= 4; seq++) {
+        pt::uint64_t t0 = get_ticks();
+        icmp_ping(dst, seq);
+        // Wait up to ~2 seconds (100 ticks at 50 Hz) for a reply
+        if (icmp_wait_reply(seq, 100)) {
+            pt::uint64_t rtt = icmp_last_reply_tick() - t0;
+            klog("64 bytes from ");
+            print_ip(dst);
+            klog(": seq=%d time=%d ticks\n", (int)seq, (int)rtt);
+        } else {
+            klog("Request timeout for seq %d\n", (int)seq);
+        }
+    }
+}
+
 void Shell::execute_clear(const char* cmd) {
     // Clear command - clear the screen to black
     Framebuffer::get_instance()->Clear(0, 0, 0);
@@ -550,6 +639,12 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, exec_cmd, 5)) {
         execute_exec(cmd);
+    }
+    else if (!memcmp(cmd, "ping", 4) && (cmd[4] == ' ' || cmd[4] == '\0')) {
+        execute_ping(cmd);
+    }
+    else if (!memcmp(cmd, net_cmd, 3) && (cmd[3] == '\0' || cmd[3] == ' ')) {
+        execute_net(cmd);
     }
     else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

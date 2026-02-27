@@ -39,6 +39,8 @@ private:
     void execute_write(const char* cmd);
     void execute_rm(const char* cmd);
     void execute_exec(const char* cmd);
+    void execute_net(const char* cmd);
+    void execute_ping(const char* cmd);
 };
 
 extern Shell shell;

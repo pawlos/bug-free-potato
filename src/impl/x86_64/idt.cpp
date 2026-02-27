@@ -13,6 +13,7 @@
 #include "timer.h"
 #include "virtual.h"
 #include "window.h"
+#include "net.h"
 
 extern pt::uintptr_t g_syscall_rsp;
 extern IDT64 _idt[256];
@@ -50,6 +51,7 @@ extern pt::uint64_t isr30;
 extern pt::uint64_t isr31;
 extern pt::uint64_t irq0;
 extern pt::uint64_t irq1;
+extern pt::uint64_t irq11;
 extern pt::uint64_t irq12;
 extern pt::uint64_t irq14;
 extern pt::uint64_t irq15;
@@ -112,6 +114,7 @@ void IDT::initialize()
 
 	init_idt_entry(32, irq0);
 	init_idt_entry(33, irq1);
+	init_idt_entry(43, irq11);   // IRQ11 → vector 43 (32 + 11) — RTL8139 NIC
 	init_idt_entry(44, irq12);
 	init_idt_entry(46, irq14);
 	init_idt_entry(47, irq15);
@@ -167,6 +170,12 @@ ASMCALL void irq12_handler()
 			break;
 	}
 	PIC::irq_ack(12);
+}
+
+ASMCALL void irq11_handler()
+{
+	RTL8139::handle_irq();
+	PIC::irq_ack(11);
 }
 
 ASMCALL void irq14_handler()

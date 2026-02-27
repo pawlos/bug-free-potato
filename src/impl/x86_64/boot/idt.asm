@@ -388,3 +388,11 @@ LoadIDT:
     sti
     ret
     GLOBAL LoadIDT
+
+[extern irq11_handler]
+irq11:
+    PUSHALL
+    call irq11_handler
+    POPALL
+    iretq
+GLOBAL irq11
