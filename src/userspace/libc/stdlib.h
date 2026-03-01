@@ -26,7 +26,9 @@ void   srand(unsigned int seed);
 void   qsort(void *base, size_t nmemb, size_t size,
              int (*cmp)(const void *, const void *));
 
-double atof(const char *s);
+double atof  (const char *s);
+double strtod(const char *s, char **endptr);
+float  strtof(const char *s, char **endptr);
 int    system(const char *cmd);
 int    mkdir(const char *path, unsigned int mode);
 

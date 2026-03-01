@@ -258,18 +258,48 @@ clock_t clock(void)
     return (clock_t)sys_get_ticks();
 }
 
+double strtod(const char *s, char **endptr)
+{
+    const char *p = s;
+    while (*p == ' ' || *p == '\t') p++;
+    int neg = 0;
+    if (*p == '-') { neg = 1; p++; } else if (*p == '+') p++;
+
+    double val = 0.0;
+    while (*p >= '0' && *p <= '9') val = val * 10.0 + (*p++ - '0');
+    if (*p == '.') {
+        p++;
+        double f = 0.1;
+        while (*p >= '0' && *p <= '9') { val += (*p++ - '0') * f; f *= 0.1; }
+    }
+
+    /* Optional exponent: e / E */
+    if (*p == 'e' || *p == 'E') {
+        p++;
+        int eneg = 0;
+        if (*p == '-') { eneg = 1; p++; } else if (*p == '+') p++;
+        int exp = 0;
+        while (*p >= '0' && *p <= '9') exp = exp * 10 + (*p++ - '0');
+        double base = 10.0;
+        while (exp > 0) {
+            if (exp & 1) val = eneg ? val / base : val * base;
+            base *= base;
+            exp >>= 1;
+        }
+    }
+
+    if (endptr) *endptr = (char *)p;
+    return neg ? -val : val;
+}
+
+float strtof(const char *s, char **endptr)
+{
+    return (float)strtod(s, endptr);
+}
+
 double atof(const char *s)
 {
-    while (*s == ' ' || *s == '\t') s++;
-    double val = 0.0;
-    int neg = 0;
-    if (*s == '-') { neg = 1; s++; } else if (*s == '+') s++;
-    while (*s >= '0' && *s <= '9') val = val * 10.0 + (*s++ - '0');
-    if (*s == '.') {
-        s++; double f = 0.1;
-        while (*s >= '0' && *s <= '9') { val += (*s++ - '0') * f; f *= 0.1; }
-    }
-    return neg ? -val : val;
+    return strtod(s, (char **)0);
 }
 
 /* Doom uses system() only for zenity error dialogs — not available. */
