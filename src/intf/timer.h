@@ -18,6 +18,9 @@ struct Timer {
 
 void init_timer(pt::uint32_t freq);
 pt::uint64_t get_ticks();
+// Returns monotonic microseconds since boot, combining the tick counter with
+// a live PIT channel-0 latch read for sub-tick (< 1 ms) resolution.
+pt::uint64_t get_microseconds();
 pt::uint64_t timer_create(pt::uint64_t delay_ticks, bool periodic, void (*callback)(void*), void* data);
 void timer_cancel(pt::uint64_t timer_id);
 void check_timers();

@@ -28,6 +28,31 @@ pt::uint64_t get_ticks() {
 	return ticks;
 }
 
+pt::uint64_t get_microseconds() {
+	// Read the tick counter and latch the PIT channel-0 count atomically
+	// (interrupts disabled so a timer IRQ cannot fire between the two reads).
+	pt::uint64_t t;
+	pt::uint16_t pit_count;
+
+	asm volatile("cli");
+	t = ticks;
+	// Send latch command for channel 0 to port 0x43, then read 16-bit count.
+	IO::outb(ModeCommandRegister, 0x00);
+	pit_count  = (pt::uint16_t)IO::inb(Channel0DataPort);
+	pit_count |= (pt::uint16_t)IO::inb(Channel0DataPort) << 8;
+	asm volatile("sti");
+
+	// PIT is in mode 3 (square wave): the count decrements by 2 per clock.
+	// Divide by 2 to map into [0, DIVISOR), where DIVISOR = 1193180 / 50.
+	// elapsed_counts = how many PIT clocks have passed since last tick.
+	const pt::uint32_t DIVISOR      = 23863; // 1193180 / 50
+	const pt::uint32_t USEC_PER_TICK = 20000; // 1000000 / 50
+	pt::uint32_t elapsed = DIVISOR - (pt::uint32_t)(pit_count >> 1);
+	if (elapsed > DIVISOR) elapsed = 0; // guard against wrap-around edge case
+
+	return t * USEC_PER_TICK + (pt::uint64_t)elapsed * USEC_PER_TICK / DIVISOR;
+}
+
 pt::uint64_t timer_create(pt::uint64_t delay_ticks, bool periodic, void (*callback)(void*), void* data)
 {
 	Timer* new_timer = (Timer*)vmm.kcalloc(sizeof(Timer));

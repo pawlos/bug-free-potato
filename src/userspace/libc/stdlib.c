@@ -255,7 +255,8 @@ time_t time(time_t *t)
 
 clock_t clock(void)
 {
-    return (clock_t)sys_get_ticks();
+    /* Returns microseconds; CLOCKS_PER_SEC = 1000000 */
+    return (clock_t)sys_get_micros();
 }
 
 double strtod(const char *s, char **endptr)

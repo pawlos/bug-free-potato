@@ -895,6 +895,9 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return result;
 		}
 
+		case SYS_GET_MICROS:
+			return get_microseconds();
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

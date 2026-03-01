@@ -37,6 +37,7 @@
 #define SYS_GET_MOUSE_EVENT  32  /* () → encoded event or -1 if queue empty
                                     bits[7:0]=dx(int8), bits[15:8]=dy(int8,+up),
                                     bit[16]=left_button, bit[17]=right_button          */
+#define SYS_GET_MICROS       33  /* () → microseconds since boot (uint64)              */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -208,3 +209,7 @@ static inline long sys_sock_connect(unsigned int ip, unsigned short port)
      int right = (ev >> 17) & 1;                                      */
 static inline long sys_get_mouse_event(void)
     { return __sc0(SYS_GET_MOUSE_EVENT); }
+
+/* Returns microseconds since boot — sub-tick precision via PIT latch. */
+static inline unsigned long long sys_get_micros(void)
+    { return (unsigned long long)__sc0(SYS_GET_MICROS); }
