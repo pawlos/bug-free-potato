@@ -259,6 +259,17 @@ clock_t clock(void)
     return (clock_t)sys_get_micros();
 }
 
+int gettimeofday(struct timeval *tv, struct timezone *tz)
+{
+    (void)tz;
+    if (tv) {
+        long long us = (long long)sys_get_micros();
+        tv->tv_sec  = (time_t)(us / 1000000LL);
+        tv->tv_usec = (suseconds_t)(us % 1000000LL);
+    }
+    return 0;
+}
+
 double strtod(const char *s, char **endptr)
 {
     const char *p = s;
