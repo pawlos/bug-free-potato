@@ -37,3 +37,5 @@ constexpr pt::uint64_t SYS_SOCK_CONNECT     = 31; // rdi=dst_ip, rsi=dst_port; r
 constexpr pt::uint64_t SYS_GET_MOUSE_EVENT  = 32; // () → encoded event or (uint64)-1 if empty
 // Encoding: bits[7:0]=dx(int8), bits[15:8]=dy(int8,+up), bit[16]=left, bit[17]=right
 constexpr pt::uint64_t SYS_GET_MICROS       = 33; // () → microseconds since boot (uint64)
+constexpr pt::uint64_t SYS_AUDIO_WRITE      = 34; // rdi=data, rsi=bytes, rdx=rate; 1=ok, 0=busy, -1=absent
+constexpr pt::uint64_t SYS_AUDIO_PLAYING    = 35; // () → 1=playing, 0=idle, -1=no AC97

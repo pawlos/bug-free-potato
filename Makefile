@@ -245,6 +245,7 @@ CFLAGS_DOOM = -ffreestanding -fno-stack-protector -fno-builtin \
               -fno-asynchronous-unwind-tables \
               -m64 -nostdlib -w \
               -include stddef.h \
+              -DFEATURE_SOUND \
               -I src/userspace/libc \
               -I src/userspace \
               -I $(DOOMGEN_DIR)
@@ -283,14 +284,20 @@ $(DOOM_BUILD)/dg_%.o: $(DOOMGEN_DIR)/%.c $(DOOMGEN_DIR)/doomgeneric.h
 	mkdir -p $(DOOM_BUILD)
 	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
 
-# Our platform layer
+# Our platform layer (potato.c + sound module)
 $(DOOM_BUILD)/doomgeneric_potato.o: $(DOOM_DIR)/doomgeneric_potato.c $(DOOMGEN_DIR)/doomgeneric.h
 	mkdir -p $(DOOM_BUILD)
 	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
 
-$(DOOM_ELF): $(DOOMGEN_OBJS) $(DOOM_BUILD)/doomgeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+$(DOOM_BUILD)/doomgeneric_potato_sound.o: $(DOOM_DIR)/doomgeneric_potato_sound.c $(DOOMGEN_DIR)/doomgeneric.h
+	mkdir -p $(DOOM_BUILD)
+	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
+
+DOOM_POTATO_OBJS = $(DOOM_BUILD)/doomgeneric_potato.o $(DOOM_BUILD)/doomgeneric_potato_sound.o
+
+$(DOOM_ELF): $(DOOMGEN_OBJS) $(DOOM_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(DOOM_BUILD)/doomgeneric_potato.o $(DOOMGEN_OBJS) $(LIBC_A)
+	      $(LIBC_CRT0) $(DOOM_POTATO_OBJS) $(DOOMGEN_OBJS) $(LIBC_A)
 
 # Download shareware DOOM1.WAD (id Software freeware release)
 $(DOOM_WAD):

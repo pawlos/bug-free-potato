@@ -1,4 +1,5 @@
 #include "idt.h"
+#include "ac97.h"
 #include "com.h"
 #include "mouse.h"
 #include "pipe.h"
@@ -897,6 +898,19 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 
 		case SYS_GET_MICROS:
 			return get_microseconds();
+
+		case SYS_AUDIO_WRITE: {
+			if (!AC97::is_present()) return (pt::uint64_t)-1;
+			if (AC97::is_playing())  return 0;  /* busy — caller should retry */
+			const pt::uint8_t* data = reinterpret_cast<const pt::uint8_t*>(arg1);
+			pt::uint32_t bytes = static_cast<pt::uint32_t>(arg2);
+			pt::uint32_t rate  = static_cast<pt::uint32_t>(arg3);
+			return AC97::play_pcm(data, bytes, rate) ? 1 : (pt::uint64_t)-1;
+		}
+
+		case SYS_AUDIO_PLAYING:
+			if (!AC97::is_present()) return (pt::uint64_t)-1;
+			return AC97::is_playing() ? 1 : 0;
 
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);

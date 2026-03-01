@@ -42,7 +42,7 @@ int main(void)
 
     /* ── Test 2: exec ────────────────────────────────────────────────────── */
     puts("[fork_test] exec-ing HELLO.ELF ...");
-    sys_exec("HELLO.ELF");
+    sys_exec("HELLO.ELF", 0, (const char* const*)0);
 
     /* Should never reach here if exec succeeded */
     puts("[fork_test] FAIL: exec returned");

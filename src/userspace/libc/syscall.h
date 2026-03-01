@@ -38,6 +38,8 @@
                                     bits[7:0]=dx(int8), bits[15:8]=dy(int8,+up),
                                     bit[16]=left_button, bit[17]=right_button          */
 #define SYS_GET_MICROS       33  /* () → microseconds since boot (uint64)              */
+#define SYS_AUDIO_WRITE      34  /* rdi=data, rsi=bytes, rdx=rate; 1=ok 0=busy -1=none */
+#define SYS_AUDIO_PLAYING    35  /* () → 1=playing, 0=idle, -1=no AC97                 */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -213,3 +215,14 @@ static inline long sys_get_mouse_event(void)
 /* Returns microseconds since boot — sub-tick precision via PIT latch. */
 static inline unsigned long long sys_get_micros(void)
     { return (unsigned long long)__sc0(SYS_GET_MICROS); }
+
+/* Submit raw 16-bit signed stereo PCM to the AC97 hardware.
+   Returns 1 if accepted and DMA started, 0 if AC97 is already playing
+   (data dropped — retry next tic), -1 if no AC97 hardware. */
+static inline long sys_audio_write(const void *data, unsigned long bytes,
+                                   unsigned int rate)
+    { return __sc3(SYS_AUDIO_WRITE, (long)data, (long)bytes, (long)rate); }
+
+/* Returns 1 if AC97 is currently playing, 0 if idle, -1 if absent. */
+static inline long sys_audio_is_playing(void)
+    { return __sc0(SYS_AUDIO_PLAYING); }

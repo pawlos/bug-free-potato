@@ -63,8 +63,6 @@ void DG_DrawFrame(void)
 }
 
 /* ── timing ──────────────────────────────────────────────────────────────── */
-/* Kernel timer runs at 50 Hz → one tick = 20 ms */
-#define MS_PER_TICK  20
 
 void DG_SleepMs(uint32_t ms)
 {
@@ -74,7 +72,8 @@ void DG_SleepMs(uint32_t ms)
 
 uint32_t DG_GetTicksMs(void)
 {
-    return (uint32_t)(sys_get_ticks() * (unsigned long)MS_PER_TICK);
+    /* Sub-tick precision via PIT latch — avoids 20 ms quantisation. */
+    return (uint32_t)(sys_get_micros() / 1000ULL);
 }
 
 /* ── keyboard ────────────────────────────────────────────────────────────── */
