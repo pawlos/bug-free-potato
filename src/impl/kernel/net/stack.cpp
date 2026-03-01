@@ -79,6 +79,7 @@ static void ipv4_send(pt::uint32_t dst_ip, pt::uint8_t proto,
 static void dhcp_handle(const pt::uint8_t* data, pt::uint32_t len);
 static void dns_handle(pt::uint32_t src_ip,
                        const pt::uint8_t* data, pt::uint32_t len);
+void tcp_handle(pt::uint32_t src_ip, const pt::uint8_t* data, pt::uint32_t len);
 
 // ---------------------------------------------------------------------------
 // ARP send request
@@ -363,6 +364,7 @@ static void ipv4_handle(const pt::uint8_t* eth_src_mac,
 
     switch (ip->proto) {
         case 1:  icmp_handle(src_ip, payload, payload_len); break;
+        case 6:  tcp_handle(src_ip, payload, payload_len);  break;
         case 17: udp_handle(src_ip, payload, payload_len);  break;
         default: break;
     }
@@ -734,6 +736,236 @@ static void dns_handle(pt::uint32_t /*src_ip*/,
         offset += rdlen;
     }
     klog("[DNS] no A record in answer section\n");
+}
+
+// ===========================================================================
+// TCP client implementation
+// ===========================================================================
+
+static TcpSocket g_tcp_sockets[TCP_MAX_SOCKETS];  // zero-init → state=CLOSED
+
+// Send a raw TCP segment on the given socket.
+// flags: TCP_SYN, TCP_ACK, TCP_PSH|TCP_ACK, TCP_FIN|TCP_ACK, etc.
+// payload / dlen: optional data to append after the TCP header.
+static void tcp_send_raw(TcpSocket* sock, pt::uint8_t flags,
+                          const pt::uint8_t* payload, pt::uint32_t dlen) {
+    if (dlen > (pt::uint32_t)TCP_MSS) dlen = TCP_MSS;
+
+    static pt::uint8_t seg[sizeof(TcpHdr) + TCP_MSS];
+    TcpHdr* hdr = reinterpret_cast<TcpHdr*>(seg);
+    hdr->src_port = bswap16(sock->local_port);
+    hdr->dst_port = bswap16(sock->remote_port);
+    hdr->seq      = bswap32(sock->snd_nxt);
+    hdr->ack_seq  = bswap32(sock->rcv_nxt);
+    hdr->data_off = 0x50;   // 5 32-bit words = 20 bytes
+    hdr->flags    = flags;
+    hdr->window   = bswap16((pt::uint16_t)TCP_RX_BUF);
+    hdr->checksum = 0;
+    hdr->urgent   = 0;
+
+    if (payload && dlen > 0) {
+        for (pt::uint32_t i = 0; i < dlen; i++)
+            seg[sizeof(TcpHdr) + i] = payload[i];
+    }
+
+    pt::uint16_t tcp_len = (pt::uint16_t)(sizeof(TcpHdr) + dlen);
+
+    // Compute checksum over pseudo-header + TCP segment (RFC 793)
+    // Pseudo-header: src_ip(4) | dst_ip(4) | 0x00(1) | 0x06(1) | tcp_len(2)
+    static pt::uint8_t pseudo_buf[12 + sizeof(TcpHdr) + TCP_MSS];
+    pt::uint8_t* p = pseudo_buf;
+    __builtin_memcpy(p, &g_my_ip,         4); p += 4;
+    __builtin_memcpy(p, &sock->remote_ip, 4); p += 4;
+    *p++ = 0; *p++ = 6;  // zero, protocol=TCP
+    *p++ = (pt::uint8_t)(tcp_len >> 8);
+    *p++ = (pt::uint8_t)(tcp_len & 0xFF);
+    for (int i = 0; i < tcp_len; i++) p[i] = seg[i];
+
+    hdr->checksum = inet_checksum(pseudo_buf, (int)(12 + tcp_len));
+    ipv4_send(sock->remote_ip, 6, seg, tcp_len);
+}
+
+// Find an active socket matching the incoming segment's addresses/ports.
+static TcpSocket* tcp_find_socket(pt::uint32_t remote_ip,
+                                   pt::uint16_t remote_port,
+                                   pt::uint16_t local_port) {
+    for (int i = 0; i < TCP_MAX_SOCKETS; i++) {
+        TcpSocket* s = &g_tcp_sockets[i];
+        if (s->state    != TcpState::CLOSED &&
+            s->remote_ip   == remote_ip   &&
+            s->remote_port == remote_port &&
+            s->local_port  == local_port)
+            return s;
+    }
+    return nullptr;
+}
+
+// Receive-path state machine — called from ipv4_handle when proto==6.
+void tcp_handle(pt::uint32_t src_ip, const pt::uint8_t* data, pt::uint32_t len) {
+    if (len < sizeof(TcpHdr)) return;
+    const TcpHdr* hdr = reinterpret_cast<const TcpHdr*>(data);
+
+    pt::uint16_t sport    = bswap16(hdr->src_port);
+    pt::uint16_t dport    = bswap16(hdr->dst_port);
+    pt::uint32_t seq      = bswap32(hdr->seq);
+    pt::uint32_t ack_seq  = bswap32(hdr->ack_seq);
+    pt::uint8_t  flags    = hdr->flags;
+    pt::uint32_t tcp_hlen = (pt::uint32_t)(hdr->data_off >> 4) * 4;
+
+    TcpSocket* sock = tcp_find_socket(src_ip, sport, dport);
+    if (!sock) return;  // no matching socket, silently discard
+
+    const pt::uint8_t* payload     = (tcp_hlen <= len) ? (data + tcp_hlen) : nullptr;
+    pt::uint32_t       payload_len = (tcp_hlen <= len) ? (len - tcp_hlen)  : 0;
+
+    switch (sock->state) {
+
+        case TcpState::SYN_SENT:
+            if ((flags & (TCP_SYN | TCP_ACK)) == (TCP_SYN | TCP_ACK)) {
+                sock->rcv_nxt = seq + 1;
+                sock->snd_una = ack_seq;
+                sock->snd_wnd = bswap16(hdr->window);
+                sock->state   = TcpState::ESTABLISHED;
+                tcp_send_raw(sock, TCP_ACK, nullptr, 0);
+            }
+            break;
+
+        case TcpState::ESTABLISHED:
+            if (flags & TCP_RST) { sock->state = TcpState::CLOSED; return; }
+            if (flags & TCP_ACK) { sock->snd_una = ack_seq; }
+            if (payload && payload_len > 0) {
+                pt::uint32_t copied = 0;
+                for (pt::uint32_t i = 0; i < payload_len; i++) {
+                    pt::uint32_t used = sock->rx_tail - sock->rx_head;
+                    if (used >= (pt::uint32_t)TCP_RX_BUF) break;  // drop if full
+                    sock->rx_buf[sock->rx_tail % TCP_RX_BUF] = payload[i];
+                    sock->rx_tail++;
+                    copied++;
+                }
+                sock->rcv_nxt += copied;
+                tcp_send_raw(sock, TCP_ACK, nullptr, 0);
+            }
+            if (flags & TCP_FIN) {
+                sock->rcv_nxt++;
+                sock->rx_eof = true;
+                sock->state  = TcpState::CLOSE_WAIT;
+                tcp_send_raw(sock, TCP_ACK, nullptr, 0);
+            }
+            break;
+
+        case TcpState::FIN_WAIT_1:
+            if (flags & TCP_ACK) {
+                if (ack_seq == sock->snd_nxt)
+                    sock->state = TcpState::FIN_WAIT_2;
+            }
+            if (flags & TCP_FIN) {
+                sock->rcv_nxt++;
+                sock->rx_eof = true;
+                sock->state  = TcpState::TIME_WAIT;
+                tcp_send_raw(sock, TCP_ACK, nullptr, 0);
+            }
+            break;
+
+        case TcpState::FIN_WAIT_2:
+            if (flags & TCP_FIN) {
+                sock->rcv_nxt++;
+                sock->rx_eof = true;
+                sock->state  = TcpState::TIME_WAIT;
+                tcp_send_raw(sock, TCP_ACK, nullptr, 0);
+            }
+            break;
+
+        case TcpState::LAST_ACK:
+            if (flags & TCP_ACK) { sock->state = TcpState::CLOSED; }
+            break;
+
+        case TcpState::TIME_WAIT:
+            sock->state = TcpState::CLOSED;
+            break;
+
+        default:
+            break;
+    }
+}
+
+TcpSocket* tcp_connect(pt::uint32_t dst_ip, pt::uint16_t dst_port,
+                        pt::uint64_t timeout_ticks) {
+    // Find a free socket slot
+    int slot = -1;
+    for (int i = 0; i < TCP_MAX_SOCKETS; i++) {
+        if (g_tcp_sockets[i].state == TcpState::CLOSED) { slot = i; break; }
+    }
+    if (slot == -1) return nullptr;
+
+    TcpSocket* sock = &g_tcp_sockets[slot];
+    sock->remote_ip   = dst_ip;
+    sock->remote_port = dst_port;
+    sock->local_port  = (pt::uint16_t)(49152 + slot);
+    sock->snd_nxt     = 0xABC12300u + (pt::uint32_t)(slot * 0x1000);
+    sock->snd_una     = sock->snd_nxt;
+    sock->rcv_nxt     = 0;
+    sock->snd_wnd     = 0;
+    sock->rx_head     = 0;
+    sock->rx_tail     = 0;
+    sock->rx_eof      = false;
+    sock->state       = TcpState::SYN_SENT;
+
+    tcp_send_raw(sock, TCP_SYN, nullptr, 0);
+    sock->snd_nxt++;  // SYN consumes one sequence number
+
+    pt::uint64_t t0 = get_ticks();
+    while (get_ticks() - t0 < timeout_ticks) {
+        if (sock->state == TcpState::ESTABLISHED) return sock;
+        if (sock->state == TcpState::CLOSED)      return nullptr;
+        TaskScheduler::task_yield();
+    }
+    sock->state = TcpState::CLOSED;
+    return nullptr;
+}
+
+int tcp_write(TcpSocket* s, const pt::uint8_t* data, pt::uint32_t len) {
+    if (s->state != TcpState::ESTABLISHED) return -1;
+    pt::uint32_t sent = 0;
+    while (sent < len) {
+        pt::uint32_t chunk = len - sent;
+        if (chunk > (pt::uint32_t)TCP_MSS) chunk = TCP_MSS;
+        tcp_send_raw(s, TCP_PSH | TCP_ACK, data + sent, chunk);
+        s->snd_nxt += chunk;
+        sent += chunk;
+    }
+    return (int)sent;
+}
+
+int tcp_read(TcpSocket* s, pt::uint8_t* buf, pt::uint32_t len,
+             pt::uint64_t timeout_ticks) {
+    pt::uint64_t t0 = get_ticks();
+    while (s->rx_tail == s->rx_head && !s->rx_eof) {
+        if (get_ticks() - t0 >= timeout_ticks) break;
+        TaskScheduler::task_yield();
+    }
+    pt::uint32_t avail   = s->rx_tail - s->rx_head;
+    pt::uint32_t to_copy = (len < avail) ? len : avail;
+    for (pt::uint32_t i = 0; i < to_copy; i++) {
+        buf[i] = s->rx_buf[s->rx_head % TCP_RX_BUF];
+        s->rx_head++;
+    }
+    return (int)to_copy;
+}
+
+void tcp_close(TcpSocket* s) {
+    if (s->state == TcpState::ESTABLISHED || s->state == TcpState::CLOSE_WAIT) {
+        tcp_send_raw(s, TCP_FIN | TCP_ACK, nullptr, 0);
+        s->snd_nxt++;
+        s->state = (s->state == TcpState::ESTABLISHED)
+                   ? TcpState::FIN_WAIT_1 : TcpState::LAST_ACK;
+    }
+    // Wait for graceful close (max 250 ticks ≈ 5 s at 50 Hz)
+    pt::uint64_t t0 = get_ticks();
+    while (s->state != TcpState::CLOSED && s->state != TcpState::TIME_WAIT) {
+        if (get_ticks() - t0 >= 250) break;
+        TaskScheduler::task_yield();
+    }
+    s->state = TcpState::CLOSED;  // free the slot
 }
 
 bool dns_resolve(const char* hostname, pt::uint64_t timeout_ticks,

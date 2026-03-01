@@ -470,6 +470,10 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 					}
 					return (pt::uint64_t)written;
 				}
+				if (f->type == FdType::TCP_SOCK) {
+					TcpSocket* sock = tcp_sock_get(f->fs_data);
+					return (pt::uint64_t)tcp_write(sock, (const pt::uint8_t*)buf, n);
+				}
 			}
 			return (pt::uint64_t)-1;
 		}
@@ -542,6 +546,10 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				}
 				return (pt::uint64_t)nread;
 			}
+			if (f->type == FdType::TCP_SOCK) {
+				TcpSocket* sock = tcp_sock_get(f->fs_data);
+				return (pt::uint64_t)tcp_read(sock, (pt::uint8_t*)buf, count, 500);
+			}
 			return (pt::uint64_t)-1;
 		}
 		case SYS_CLOSE: {
@@ -552,6 +560,9 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			File* f = &t->fd_table[fd];
 			if (f->type == FdType::FILE) {
 				VFS::close_file(f);
+			} else if (f->type == FdType::TCP_SOCK) {
+				tcp_close(tcp_sock_get(f->fs_data));
+				f->open = false;
 			} else {
 				// PIPE_RD or PIPE_WR
 				PipeBuffer* pipe = pipe_get_buf(f->fs_data);
@@ -847,6 +858,24 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_REMOVE: {
 			const char* filename = reinterpret_cast<const char*>(arg1);
 			return VFS::delete_file(filename) ? 0 : (pt::uint64_t)-1;
+		}
+
+		case SYS_SOCK_CONNECT: {
+			pt::uint32_t dst_ip   = (pt::uint32_t)arg1;
+			pt::uint16_t dst_port = (pt::uint16_t)arg2;
+			Task* t = TaskScheduler::get_current_task();
+			int fd = -1;
+			for (int i = 3; i < (int)Task::MAX_FDS; i++)
+				if (!t->fd_table[i].open) { fd = i; break; }
+			if (fd == -1) return (pt::uint64_t)-1;
+			TcpSocket* sock = tcp_connect(dst_ip, dst_port, 250);
+			if (!sock) return (pt::uint64_t)-1;
+			File* f  = &t->fd_table[fd];
+			f->open  = true;
+			f->type  = FdType::TCP_SOCK;
+			tcp_sock_set(f->fs_data, sock);
+			klog("syscall: SYS_SOCK_CONNECT: -> fd %d\n", fd);
+			return (pt::uint64_t)fd;
 		}
 
 		default:

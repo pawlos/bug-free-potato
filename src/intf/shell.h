@@ -43,6 +43,7 @@ private:
     void execute_ping(const char* cmd);
     void execute_dhcp(const char* cmd);
     void execute_nslookup(const char* cmd);
+    void execute_wget(const char* cmd);
 };
 
 extern Shell shell;

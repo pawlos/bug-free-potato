@@ -44,6 +44,7 @@ constexpr char net_cmd[]      = "net";
 constexpr char ping_cmd[]     = "ping ";
 constexpr char dhcp_cmd[]     = "dhcp";
 constexpr char nslookup_cmd[] = "nslookup";
+constexpr char wget_cmd[]     = "wget";
 
 void print_help() {
     klog("Available commands:\n");
@@ -73,6 +74,7 @@ void print_help() {
     klog("  ping <ip|host>   - Send ICMP echo requests (resolves hostname via DNS)\n");
     klog("  dhcp             - Run DHCP to acquire IP address\n");
     klog("  nslookup <host>  - Resolve hostname via DNS\n");
+    klog("  wget <host> [path] - HTTP/1.0 GET request via TCP\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -590,6 +592,82 @@ void Shell::execute_nslookup(const char* cmd) {
     }
 }
 
+void Shell::execute_wget(const char* cmd) {
+    const char* arg = cmd + 4;  // skip "wget"
+    while (*arg == ' ') arg++;
+    if (*arg == '\0') {
+        klog("Usage: wget <host> [path]\n");
+        return;
+    }
+    if (!RTL8139::is_present()) {
+        klog("RTL8139 not present\n");
+        return;
+    }
+
+    // Parse host (first whitespace-delimited token)
+    char host[64];
+    int hi = 0;
+    while (*arg && *arg != ' ' && hi < 63) host[hi++] = *arg++;
+    host[hi] = '\0';
+
+    // Parse optional path (remainder after spaces, default "/")
+    while (*arg == ' ') arg++;
+    const char* path = "/";
+    char path_buf[128];
+    if (*arg) {
+        int pi = 0;
+        while (*arg && pi < 127) path_buf[pi++] = *arg++;
+        path_buf[pi] = '\0';
+        path = path_buf;
+    }
+
+    // Resolve host to IP
+    pt::uint32_t ip = parse_ip(host);
+    if (ip == 0) {
+        klog("Resolving %s...\n", host);
+        if (!dns_resolve(host, 100, ip) || ip == 0) {
+            klog("wget: cannot resolve '%s'\n", host);
+            return;
+        }
+    }
+
+    klog("Connecting to ");
+    print_ip(ip);
+    klog(":80...\n");
+
+    TcpSocket* sock = tcp_connect(ip, 80, 250);
+    if (!sock) {
+        klog("wget: connection failed\n");
+        return;
+    }
+    klog("Connected.\n");
+
+    // Build HTTP/1.0 GET request
+    static pt::uint8_t req[512];
+    int ri = 0;
+    const char* parts[] = { "GET ", path, " HTTP/1.0\r\nHost: ", host,
+                             "\r\nConnection: close\r\n\r\n", nullptr };
+    for (int p = 0; parts[p]; p++)
+        for (int i = 0; parts[p][i] && ri < 511; i++)
+            req[ri++] = (pt::uint8_t)parts[p][i];
+
+    tcp_write(sock, req, (pt::uint32_t)ri);
+
+    // Read and print response (up to 8 KB)
+    static pt::uint8_t rbuf[512];
+    int total = 0;
+    while (total < 8192) {
+        int n = tcp_read(sock, rbuf, sizeof(rbuf) - 1, 500);
+        if (n <= 0) break;
+        rbuf[n] = '\0';
+        klog("%s", (const char*)rbuf);
+        total += n;
+    }
+    klog("\n--- %d bytes received ---\n", total);
+
+    tcp_close(sock);
+}
+
 void Shell::execute_clear(const char* cmd) {
     // Clear command - clear the screen to black
     Framebuffer::get_instance()->Clear(0, 0, 0);
@@ -701,6 +779,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, nslookup_cmd, 8) && (cmd[8] == '\0' || cmd[8] == ' ')) {
         execute_nslookup(cmd);
+    }
+    else if (!memcmp(cmd, wget_cmd, 4) && (cmd[4] == ' ' || cmd[4] == '\0')) {
+        execute_wget(cmd);
     }
     else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

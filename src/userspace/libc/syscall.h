@@ -33,6 +33,7 @@
 #define SYS_MEM_FREE         28  /* () → free heap bytes                                       */
 #define SYS_DISK_SIZE        29  /* () → total disk bytes                                      */
 #define SYS_REMOVE           30  /* rdi=filename; delete file; returns 0 or -1                 */
+#define SYS_SOCK_CONNECT     31  /* rdi=dst_ip, rsi=dst_port; returns fd or -1                 */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -192,3 +193,6 @@ static inline long sys_disk_size(void)
 
 static inline long sys_remove(const char* filename)
     { return __sc1(SYS_REMOVE, (long)filename); }
+
+static inline long sys_sock_connect(unsigned int ip, unsigned short port)
+    { return __sc2(SYS_SOCK_CONNECT, (long)ip, (long)port); }

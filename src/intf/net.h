@@ -116,6 +116,61 @@ struct IcmpHdr {
 } __attribute__((packed));
 
 // ---------------------------------------------------------------------------
+// TCP header (RFC 793, 20 bytes, no options)
+// ---------------------------------------------------------------------------
+struct __attribute__((packed)) TcpHdr {
+    pt::uint16_t src_port;
+    pt::uint16_t dst_port;
+    pt::uint32_t seq;
+    pt::uint32_t ack_seq;
+    pt::uint8_t  data_off;   // upper nibble = header length in 32-bit words (5 = 20 bytes)
+    pt::uint8_t  flags;      // TCP_SYN / TCP_ACK / TCP_PSH / TCP_FIN / TCP_RST
+    pt::uint16_t window;
+    pt::uint16_t checksum;
+    pt::uint16_t urgent;
+};
+
+constexpr pt::uint8_t TCP_FIN = 0x01;
+constexpr pt::uint8_t TCP_SYN = 0x02;
+constexpr pt::uint8_t TCP_RST = 0x04;
+constexpr pt::uint8_t TCP_PSH = 0x08;
+constexpr pt::uint8_t TCP_ACK = 0x10;
+
+enum class TcpState : pt::uint8_t {
+    CLOSED = 0, SYN_SENT, ESTABLISHED,
+    FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT, LAST_ACK, TIME_WAIT,
+};
+
+constexpr int TCP_MAX_SOCKETS = 4;
+constexpr int TCP_RX_BUF      = 4096;
+constexpr int TCP_MSS         = 1024;   // conservative segment size
+
+struct TcpSocket {
+    TcpState     state;
+    pt::uint32_t remote_ip;
+    pt::uint16_t local_port;
+    pt::uint16_t remote_port;
+    pt::uint32_t snd_una;    // oldest unacknowledged seq
+    pt::uint32_t snd_nxt;    // next seq to send
+    pt::uint32_t rcv_nxt;    // next seq expected from peer
+    pt::uint16_t snd_wnd;    // peer's advertised receive window
+
+    // Receive ring buffer (4 KB)
+    pt::uint8_t  rx_buf[TCP_RX_BUF];
+    pt::uint32_t rx_head;    // read  position (monotonically increasing)
+    pt::uint32_t rx_tail;    // write position (monotonically increasing)
+    bool         rx_eof;     // FIN received from peer
+};
+
+// Store/load a TcpSocket* inside File::fs_data via memcpy (avoids aliasing issues)
+static inline TcpSocket* tcp_sock_get(const pt::uint8_t* d) {
+    TcpSocket* p; __builtin_memcpy(&p, d, sizeof(p)); return p;
+}
+static inline void tcp_sock_set(pt::uint8_t* d, TcpSocket* p) {
+    __builtin_memcpy(d, &p, sizeof(p));
+}
+
+// ---------------------------------------------------------------------------
 // ARP cache entry
 // ---------------------------------------------------------------------------
 struct ArpEntry {
@@ -183,3 +238,24 @@ bool dhcp_acquire(pt::uint64_t timeout_ticks);
 // Blocks (spin+yield) up to timeout_ticks. Returns true on success.
 bool dns_resolve(const char* hostname, pt::uint64_t timeout_ticks,
                  pt::uint32_t& out_ip);
+
+// ---------------------------------------------------------------------------
+// TCP client API
+// ---------------------------------------------------------------------------
+
+// Handle an incoming TCP segment (called from ipv4_handle for proto==6)
+void tcp_handle(pt::uint32_t src_ip, const pt::uint8_t* data, pt::uint32_t len);
+
+// Active connect: SYN handshake to dst_ip:dst_port; returns socket or nullptr on timeout/error
+TcpSocket* tcp_connect(pt::uint32_t dst_ip, pt::uint16_t dst_port,
+                        pt::uint64_t timeout_ticks);
+
+// Send data on an ESTABLISHED socket; returns bytes sent or -1 on error
+int tcp_write(TcpSocket* s, const pt::uint8_t* data, pt::uint32_t len);
+
+// Read data from socket; blocks up to timeout_ticks; returns bytes read (0 = EOF)
+int tcp_read(TcpSocket* s, pt::uint8_t* buf, pt::uint32_t len,
+             pt::uint64_t timeout_ticks);
+
+// Active close (FIN handshake); frees the socket slot
+void tcp_close(TcpSocket* s);

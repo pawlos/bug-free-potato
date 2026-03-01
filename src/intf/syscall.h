@@ -33,3 +33,4 @@ constexpr pt::uint64_t SYS_READDIR          = 27; // rdi=idx, rsi=name_buf, rdx=
 constexpr pt::uint64_t SYS_MEM_FREE         = 28; // () → free heap bytes
 constexpr pt::uint64_t SYS_DISK_SIZE        = 29; // () → total disk bytes
 constexpr pt::uint64_t SYS_REMOVE           = 30; // rdi=filename; delete file; returns 0 or -1
+constexpr pt::uint64_t SYS_SOCK_CONNECT     = 31; // rdi=dst_ip, rsi=dst_port; returns fd or -1

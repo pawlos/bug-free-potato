@@ -3,9 +3,10 @@
 #include "defs.h"
 
 enum class FdType : pt::uint8_t {
-    FILE    = 0,   // FAT12 filesystem file (default; zero-init is correct)
-    PIPE_RD = 1,   // pipe read end
-    PIPE_WR = 2,   // pipe write end
+    FILE     = 0,   // FAT12 filesystem file (default; zero-init is correct)
+    PIPE_RD  = 1,   // pipe read end
+    PIPE_WR  = 2,   // pipe write end
+    TCP_SOCK = 3,   // TCP socket (pointer to TcpSocket stored in fs_data)
 };
 
 // Generic file handle - replaces FAT12_File everywhere.
