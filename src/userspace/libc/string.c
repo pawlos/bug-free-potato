@@ -1,4 +1,5 @@
 #include "string.h"
+#include "errno.h"
 
 size_t strlen(const char *s)
 {
@@ -174,4 +175,19 @@ int strncasecmp(const char *a, const char *b, size_t n)
         if (d) return d;
     }
     return 0;
+}
+
+char *strerror(int errnum)
+{
+    switch (errnum) {
+    case 0:       return "Success";
+    case ENOENT:  return "No such file or directory";
+    case ENOMEM:  return "Out of memory";
+    case EACCES:  return "Permission denied";
+    case EEXIST:  return "File exists";
+    case EINVAL:  return "Invalid argument";
+    case ERANGE:  return "Result out of range";
+    case EISDIR:  return "Is a directory";
+    default:      return "Unknown error";
+    }
 }

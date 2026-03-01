@@ -24,3 +24,5 @@ char  *strtok_r(char *s, const char *delim, char **saveptr);
 
 int    strcasecmp (const char *a, const char *b);
 int    strncasecmp(const char *a, const char *b, size_t n);
+
+char  *strerror(int errnum);

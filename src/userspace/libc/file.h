@@ -47,6 +47,8 @@ int    fputs (const char *s, FILE *f);
 
 int    fprintf (FILE *f, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 int    vfprintf(FILE *f, const char *fmt, va_list ap);
+int    fscanf  (FILE *f, const char *fmt, ...);
+int    vfscanf (FILE *f, const char *fmt, va_list ap);
 
 int    fflush(FILE *f);           /* no-op (unbuffered) */
 int    remove(const char *path);  /* stub — VFS is read-only */

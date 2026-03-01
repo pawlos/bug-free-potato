@@ -2,6 +2,7 @@
 #include "string.h"
 #include "stdlib.h"
 #include "syscall.h"
+#include "stdio.h"
 #include <stdarg.h>
 
 /* ── standard stream instances ───────────────────────────────────────────── */
@@ -233,6 +234,105 @@ int fprintf(FILE *f, const char *fmt, ...)
 {
     va_list ap; va_start(ap, fmt);
     int r = vfprintf(f, fmt, ap);
+    va_end(ap); return r;
+}
+
+/* ── fscanf / vfscanf ────────────────────────────────────────────────────── */
+
+int vfscanf(FILE *f, const char *fmt, va_list ap)
+{
+    if (!f || !fmt) return EOF;
+    const char *p = fmt;
+    int count = 0;
+
+    while (*p) {
+        /* Format whitespace: skip any run of whitespace in input */
+        if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+            int c;
+            do { c = fgetc(f); } while (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+            if (c != EOF) ungetc(c, f);
+            p++;
+            continue;
+        }
+
+        if (*p == '%') {
+            p++;
+            /* Optional '*' (suppress assignment) */
+            int suppress = 0;
+            if (*p == '*') { suppress = 1; p++; }
+
+            if (*p == 'd' || *p == 'i') {
+                /* Read decimal integer */
+                int c;
+                do { c = fgetc(f); } while (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+                if (c == EOF) return count ? count : EOF;
+                int neg = 0;
+                if (c == '-') { neg = 1; c = fgetc(f); }
+                else if (c == '+') c = fgetc(f);
+                if (c < '0' || c > '9') { ungetc(c, f); return count ? count : EOF; }
+                int n = 0;
+                while (c >= '0' && c <= '9') { n = n * 10 + (c - '0'); c = fgetc(f); }
+                if (c != EOF) ungetc(c, f);
+                if (!suppress) { *va_arg(ap, int *) = neg ? -n : n; count++; }
+            } else if (*p == 'u') {
+                int c;
+                do { c = fgetc(f); } while (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+                if (c == EOF) return count ? count : EOF;
+                unsigned int n = 0;
+                while (c >= '0' && c <= '9') { n = n * 10 + (unsigned)(c - '0'); c = fgetc(f); }
+                if (c != EOF) ungetc(c, f);
+                if (!suppress) { *va_arg(ap, unsigned int *) = n; count++; }
+            } else if (*p == 'f' || *p == 'g' || *p == 'e') {
+                /* Read float */
+                char buf[48]; int i = 0;
+                int c;
+                do { c = fgetc(f); } while (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+                if (c == EOF) return count ? count : EOF;
+                if ((c == '-' || c == '+') && i < 46) { buf[i++] = c; c = fgetc(f); }
+                while (((c >= '0' && c <= '9') || c == '.') && i < 46) { buf[i++] = c; c = fgetc(f); }
+                if ((c == 'e' || c == 'E') && i < 45) {
+                    buf[i++] = c; c = fgetc(f);
+                    if ((c == '+' || c == '-') && i < 45) { buf[i++] = c; c = fgetc(f); }
+                    while (c >= '0' && c <= '9' && i < 46) { buf[i++] = c; c = fgetc(f); }
+                }
+                if (c != EOF) ungetc(c, f);
+                buf[i] = '\0';
+                if (!suppress) { *va_arg(ap, float *) = (float)strtod(buf, (char **)0); count++; }
+            } else if (*p == 's') {
+                /* Read whitespace-delimited string */
+                int c;
+                do { c = fgetc(f); } while (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+                if (c == EOF) return count ? count : EOF;
+                char *s = suppress ? (char *)0 : va_arg(ap, char *);
+                int i = 0;
+                while (c != EOF && c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+                    if (s) s[i] = c;
+                    i++; c = fgetc(f);
+                }
+                if (c != EOF) ungetc(c, f);
+                if (s) { s[i] = '\0'; count++; }
+            } else if (*p == 'c') {
+                int c = fgetc(f);
+                if (c == EOF) return count ? count : EOF;
+                if (!suppress) { *va_arg(ap, char *) = (char)c; count++; }
+            }
+            p++;
+            continue;
+        }
+
+        /* Literal character match */
+        int c = fgetc(f);
+        if (c == EOF) return count ? count : EOF;
+        if (c != (unsigned char)*p) { ungetc(c, f); return count; }
+        p++;
+    }
+    return count;
+}
+
+int fscanf(FILE *f, const char *fmt, ...)
+{
+    va_list ap; va_start(ap, fmt);
+    int r = vfscanf(f, fmt, ap);
     va_end(ap); return r;
 }
 

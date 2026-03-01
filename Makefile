@@ -75,6 +75,8 @@ clean:
 	-rm -f $(SH_ELF_OBJ)   $(SH_ELF_BIN)
 	-rm -rf $(DOOM_BUILD)
 	-rm -f  $(DOOM_ELF)
+	-rm -rf $(QUAKE_BUILD)
+	-rm -f  $(QUAKE_ELF)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -310,13 +312,67 @@ doom: $(DOOM_ELF)
 doom-disk: $(DOOM_ELF) $(DOOM_WAD)
 	@echo "doom.elf and doom1.wad ready for disk image"
 
+# ── Quake ──────────────────────────────────────────────────────────────────────
+QUAKE_DIR    = src/userspace/quake
+QUAKEGEN_DIR = $(QUAKE_DIR)/quakegeneric/source
+QUAKE_BUILD  = build/userspace/quake
+QUAKE_ELF    = src/impl/x86_64/bins/quake.elf
+
+# Compile flags: suppress all warnings (-w) for old Quake C.
+# -I src/userspace/libc makes system includes find our freestanding libc.
+# -I src/userspace lets potato.c do #include "libc/syscall.h".
+# -I $(QUAKEGEN_DIR) allows #include "quakegeneric.h" etc.
+CFLAGS_QUAKE = -ffreestanding -fno-stack-protector -fno-builtin \
+               -fno-asynchronous-unwind-tables \
+               -m64 -nostdlib -w \
+               -I src/userspace/libc \
+               -I src/userspace \
+               -I $(QUAKEGEN_DIR)
+
+# Fetch quakegeneric on demand (depth-1 clone, ~3 MB).
+$(QUAKEGEN_DIR)/quakegeneric.h:
+	git clone --depth=1 https://github.com/erysdren/quakegeneric.git $(QUAKE_DIR)/quakegeneric
+
+# All quakegeneric engine sources (from CMakeLists.txt)
+QUAKEGEN_SRCS := $(addprefix $(QUAKEGEN_DIR)/, \
+    cd_null.c chase.c cl_demo.c cl_input.c cl_main.c cl_parse.c cl_tent.c \
+    cmd.c common.c console.c crc.c cvar.c \
+    d_edge.c d_fill.c d_init.c d_modech.c d_part.c d_polyse.c d_scan.c \
+    d_sky.c d_sprite.c d_surf.c d_vars.c d_zpoint.c \
+    draw.c host_cmd.c host.c in_null.c keys.c mathlib.c menu.c model.c \
+    net_loop.c net_main.c net_none.c net_vcr.c nonintel.c \
+    pr_cmds.c pr_edict.c pr_exec.c \
+    r_aclip.c r_alias.c r_bsp.c r_draw.c r_edge.c r_efrag.c r_light.c \
+    r_main.c r_misc.c r_part.c r_sky.c r_sprite.c r_surf.c r_vars.c \
+    sbar.c screen.c snd_null.c \
+    sv_main.c sv_move.c sv_phys.c sv_user.c \
+    sys_null.c vid_null.c view.c wad.c world.c zone.c quakegeneric.c)
+
+QUAKEGEN_OBJS := $(patsubst $(QUAKEGEN_DIR)/%.c, $(QUAKE_BUILD)/qg_%.o, $(QUAKEGEN_SRCS))
+
+# quakegeneric.c has a commented-out main(); compile normally
+$(QUAKE_BUILD)/qg_%.o: $(QUAKEGEN_DIR)/%.c $(QUAKEGEN_DIR)/quakegeneric.h
+	mkdir -p $(QUAKE_BUILD)
+	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
+
+# Our potato platform layer
+$(QUAKE_BUILD)/quakegeneric_potato.o: $(QUAKE_DIR)/quakegeneric_potato.c $(QUAKEGEN_DIR)/quakegeneric.h
+	mkdir -p $(QUAKE_BUILD)
+	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
+
+$(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
+	      $(LIBC_CRT0) $(QUAKE_BUILD)/quakegeneric_potato.o $(QUAKEGEN_OBJS) $(LIBC_A)
+
+quake: $(QUAKE_ELF)
+
 # Create FAT32 disk image with test files from bins folder
 ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.raw \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(DOOM_ELF) $(DOOM_WAD)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -344,7 +400,8 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(SH_ELF_BIN)     SH.ELF; \
 	copy_file $(SNAKE_BIN)      SNAKE.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
-	copy_file $(DOOM_WAD)       DOOM1.WAD
+	copy_file $(DOOM_WAD)       DOOM1.WAD; \
+	copy_file $(QUAKE_ELF)      QUAKE.ELF
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 

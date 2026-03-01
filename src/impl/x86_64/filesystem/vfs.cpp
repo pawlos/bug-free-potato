@@ -76,7 +76,14 @@ bool VFS::mount() {
 
 bool VFS::open_file(const char* filename, File* file) {
     if (!active_fs) return false;
-    return active_fs->open_file(filename, file);
+    // Strip leading directory components so "id1/pak0.pak" → "pak0.pak".
+    // Quake constructs paths like "<basedir>/id1/pak0.pak"; the FAT filesystem
+    // only indexes the root directory, so we always search by basename.
+    const char* base = filename;
+    for (const char* p = filename; *p; p++)
+        if (*p == '/') base = p + 1;
+    if (!*base) base = filename;   // guard: trailing slash or empty
+    return active_fs->open_file(base, file);
 }
 
 pt::uint32_t VFS::read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) {
@@ -106,7 +113,11 @@ void VFS::close_file(File* file) {
 
 bool VFS::file_exists(const char* filename) {
     if (!active_fs) return false;
-    return active_fs->file_exists(filename);
+    const char* base = filename;
+    for (const char* p = filename; *p; p++)
+        if (*p == '/') base = p + 1;
+    if (!*base) base = filename;
+    return active_fs->file_exists(base);
 }
 
 void VFS::list_root_directory() {
