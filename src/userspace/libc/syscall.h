@@ -34,6 +34,9 @@
 #define SYS_DISK_SIZE        29  /* () → total disk bytes                                      */
 #define SYS_REMOVE           30  /* rdi=filename; delete file; returns 0 or -1                 */
 #define SYS_SOCK_CONNECT     31  /* rdi=dst_ip, rsi=dst_port; returns fd or -1                 */
+#define SYS_GET_MOUSE_EVENT  32  /* () → encoded event or -1 if queue empty
+                                    bits[7:0]=dx(int8), bits[15:8]=dy(int8,+up),
+                                    bit[16]=left_button, bit[17]=right_button          */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -197,3 +200,11 @@ static inline long sys_remove(const char* filename)
 
 static inline long sys_sock_connect(unsigned int ip, unsigned short port)
     { return __sc2(SYS_SOCK_CONNECT, (long)ip, (long)port); }
+
+/* Returns -1 if the event queue is empty, otherwise an encoded event:
+     int dx    = (signed char)(ev & 0xFF);
+     int dy    = (signed char)((ev >> 8) & 0xFF);  // positive = up
+     int left  = (ev >> 16) & 1;
+     int right = (ev >> 17) & 1;                                      */
+static inline long sys_get_mouse_event(void)
+    { return __sc0(SYS_GET_MOUSE_EVENT); }

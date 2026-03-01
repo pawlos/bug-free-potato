@@ -1,5 +1,6 @@
 #include "idt.h"
 #include "com.h"
+#include "mouse.h"
 #include "pipe.h"
 #include "vfs.h"
 #include "fbterm.h"
@@ -879,6 +880,19 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			tcp_sock_set(f->fs_data, sock);
 			klog("syscall: SYS_SOCK_CONNECT: -> fd %d\n", fd);
 			return (pt::uint64_t)fd;
+		}
+
+		case SYS_GET_MOUSE_EVENT: {
+			MouseEvent ev;
+			if (!get_mouse_event(&ev))
+				return (pt::uint64_t)-1;
+			// Encoding: bits[7:0]=dx, bits[15:8]=dy, bit[16]=left, bit[17]=right
+			pt::uint64_t result =
+				((pt::uint64_t)(pt::uint8_t)ev.dx)            |
+				((pt::uint64_t)(pt::uint8_t)ev.dy      <<  8) |
+				((pt::uint64_t)ev.left_button           << 16) |
+				((pt::uint64_t)ev.right_button          << 17);
+			return result;
 		}
 
 		default:

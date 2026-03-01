@@ -34,3 +34,5 @@ constexpr pt::uint64_t SYS_MEM_FREE         = 28; // () → free heap bytes
 constexpr pt::uint64_t SYS_DISK_SIZE        = 29; // () → total disk bytes
 constexpr pt::uint64_t SYS_REMOVE           = 30; // rdi=filename; delete file; returns 0 or -1
 constexpr pt::uint64_t SYS_SOCK_CONNECT     = 31; // rdi=dst_ip, rsi=dst_port; returns fd or -1
+constexpr pt::uint64_t SYS_GET_MOUSE_EVENT  = 32; // () → encoded event or (uint64)-1 if empty
+// Encoding: bits[7:0]=dx(int8), bits[15:8]=dy(int8,+up), bit[16]=left, bit[17]=right

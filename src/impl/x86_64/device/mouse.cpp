@@ -100,6 +100,19 @@ mouse_state mouse {
     .right_button_pressed = false
 };
 
+// ── Mouse delta event ring buffer ────────────────────────────────────────
+static constexpr int MOUSE_BUF_SIZE = 64;
+static MouseEvent mouse_event_buf[MOUSE_BUF_SIZE];
+static int mouse_write_pos = 0;
+static int mouse_read_pos  = 0;
+
+bool get_mouse_event(MouseEvent* out) {
+    if (mouse_read_pos == mouse_write_pos) return false;
+    *out = mouse_event_buf[mouse_read_pos % MOUSE_BUF_SIZE];
+    mouse_read_pos++;
+    return true;
+}
+
 static bool prev_left_button = false;
 
 void mouse_routine(const pt::int8_t mouse_byte[])
@@ -108,6 +121,15 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     const pt::int8_t mouse_y = mouse_byte[2];
     const bool left_button_pressed  = mouse_byte[0] & 1;
     const bool right_button_pressed = (mouse_byte[0] & 2) >> 1;
+
+    // Queue delta event before updating absolute position.
+    MouseEvent ev;
+    ev.dx           = mouse_x;
+    ev.dy           = mouse_y;  // PS/2 convention: positive = up
+    ev.left_button  = left_button_pressed;
+    ev.right_button = right_button_pressed;
+    mouse_event_buf[mouse_write_pos % MOUSE_BUF_SIZE] = ev;
+    mouse_write_pos++;
 
     EraseCursor(mouse.pos_x, mouse.pos_y);
     pt::int16_t newPosX = mouse.pos_x + mouse_x;
