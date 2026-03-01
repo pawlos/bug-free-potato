@@ -61,13 +61,16 @@ struct Task {
     File fd_table[MAX_FDS];
 
     // Private page-table frames carved out for user ELF code isolation.
-    // Each user ELF task gets its own PDPT/PD/PT so that the code region
+    // Each user ELF task gets its own PDPT/PD/PT(s) so that the code region
     // (0xFFFF800018000000) maps to task-private physical frames, allowing
     // multiple ELF tasks to run concurrently without overwriting each other.
-    // All three are 0 for kernel tasks or tasks created without create_elf_task.
-    pt::uintptr_t priv_pdpt;   // physical addr of private PDPT frame (or 0)
-    pt::uintptr_t priv_pd;     // physical addr of private PD frame   (or 0)
-    pt::uintptr_t priv_pt;     // physical addr of private PT frame   (or 0)
+    // All entries are 0 for kernel tasks or tasks without create_elf_task.
+    // MAX_PRIV_PTS=8 covers up to 8×512×4KB = 16 MB of ELF code.
+    static constexpr pt::size_t MAX_PRIV_PTS = 8;
+    pt::uintptr_t priv_pdpt;                  // physical addr of private PDPT frame (or 0)
+    pt::uintptr_t priv_pd;                    // physical addr of private PD frame   (or 0)
+    pt::uintptr_t priv_pt[MAX_PRIV_PTS];      // physical addrs of private PT frames
+    pt::size_t    num_priv_pts;               // how many priv_pt[] entries are valid
 
     // Process hierarchy and exit status (for fork/waitpid).
     pt::uint32_t parent_id;    // 0xFFFFFFFF = no parent

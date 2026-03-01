@@ -27,6 +27,23 @@ static void close_fd(File* f)
     }
 }
 
+// Free all private PT frames (and their mapped code frames) for a task.
+// Does NOT free priv_pd or priv_pdpt — those are freed by the caller.
+static void free_priv_pts(Task* t)
+{
+    for (pt::size_t k = 0; k < t->num_priv_pts; k++) {
+        if (!t->priv_pt[k]) continue;
+        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(t->priv_pt[k]);
+        for (int j = 0; j < 512; j++) {
+            if (pt[j] & 0x01)
+                vmm.free_frame(pt[j] & ~(pt::uintptr_t)0xFFF);
+        }
+        vmm.free_frame(t->priv_pt[k]);
+        t->priv_pt[k] = 0;
+    }
+    t->num_priv_pts = 0;
+}
+
 // Static member initialization
 Task TaskScheduler::tasks[MAX_TASKS];
 pt::uint32_t TaskScheduler::task_count = 0;
@@ -62,7 +79,8 @@ void TaskScheduler::initialize()
         tasks[i].user_stack_base = 0;
         tasks[i].priv_pdpt    = 0;
         tasks[i].priv_pd      = 0;
-        tasks[i].priv_pt      = 0;
+        for (pt::size_t j = 0; j < Task::MAX_PRIV_PTS; j++) tasks[i].priv_pt[j] = 0;
+        tasks[i].num_priv_pts = 0;
         tasks[i].parent_id        = 0xFFFFFFFF;
         tasks[i].waiting_for      = 0xFFFFFFFF;
         tasks[i].exit_code        = 0;
@@ -130,15 +148,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     }
 
     // Lazy cleanup of private ELF code frames from a previous create_elf_task.
-    if (new_task->priv_pt != 0) {
-        pt::uint64_t* pt_entries = reinterpret_cast<pt::uint64_t*>(new_task->priv_pt);
-        for (int i = 0; i < 512; i++) {
-            if (pt_entries[i] & 0x01)
-                vmm.free_frame(pt_entries[i] & ~(pt::uintptr_t)0xFFF);
-        }
-        vmm.free_frame(new_task->priv_pt);
-        new_task->priv_pt = 0;
-    }
+    free_priv_pts(new_task);
     if (new_task->priv_pd != 0) {
         vmm.free_frame(new_task->priv_pd);
         new_task->priv_pd = 0;
@@ -188,7 +198,8 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->user_stack_base = 0;
     new_task->priv_pdpt    = 0;
     new_task->priv_pd      = 0;
-    new_task->priv_pt      = 0;
+    for (pt::size_t j = 0; j < Task::MAX_PRIV_PTS; j++) new_task->priv_pt[j] = 0;
+    new_task->num_priv_pts = 0;
     new_task->parent_id        = 0xFFFFFFFF;
     new_task->waiting_for      = 0xFFFFFFFF;
     new_task->exit_code        = 0;
@@ -446,15 +457,7 @@ void TaskScheduler::kill_user_tasks()
         }
 
         // Free private ELF code frames and page table frames.
-        if (t->priv_pt != 0) {
-            pt::uint64_t* pt_entries = reinterpret_cast<pt::uint64_t*>(t->priv_pt);
-            for (int j = 0; j < 512; j++) {
-                if (pt_entries[j] & 0x01)
-                    vmm.free_frame(pt_entries[j] & ~(pt::uintptr_t)0xFFF);
-            }
-            vmm.free_frame(t->priv_pt);
-            t->priv_pt = 0;
-        }
+        free_priv_pts(t);
         if (t->priv_pd != 0) {
             vmm.free_frame(t->priv_pd);
             t->priv_pd = 0;
@@ -480,6 +483,8 @@ static constexpr pt::uintptr_t ELF_STAGING_VA   = KERNEL_OFFSET + ELF_STAGING_PH
 static constexpr pt::size_t ELF_PML4_IDX  = 256;
 static constexpr pt::size_t ELF_PDPT_IDX  = 0;
 static constexpr pt::size_t ELF_PD_IDX    = 192;
+// Maximum ELF pages: MAX_PRIV_PTS PT frames × 512 pages each = 16 MB
+static constexpr pt::size_t MAX_ELF_PAGES = Task::MAX_PRIV_PTS * 512;
 
 pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
 {
@@ -496,10 +501,13 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     }
 
     pt::size_t num_code_frames = (code_size + 4095) / 4096;
-    if (num_code_frames > 512) {
-        klog("[ELF_TASK] ELF too large: %d pages\n", (int)num_code_frames);
+    if (num_code_frames > MAX_ELF_PAGES) {
+        klog("[ELF_TASK] ELF too large: %d pages (max %d)\n",
+             (int)num_code_frames, (int)MAX_ELF_PAGES);
         return 0xFFFFFFFF;
     }
+    pt::size_t num_pts = (num_code_frames + 511) / 512;
+    if (num_pts == 0) num_pts = 1;
 
     // 2. Read boot PDPT and PD addresses from kernel PML4.
     pt::uint64_t* kernel_pml4  = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
@@ -519,26 +527,26 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         return 0xFFFFFFFF;
     }
 
-    // 3. Allocate private PDPT, PD, PT frames; copy boot tables so all
-    //    other higher-half mappings (kernel heap, stack, etc.) are preserved.
+    // 3. Allocate private PDPT, PD, and num_pts PT frames; copy boot tables.
     pt::uintptr_t priv_pdpt_frame = vmm.allocate_frame();
     pt::uintptr_t priv_pd_frame   = vmm.allocate_frame();
-    pt::uintptr_t priv_pt_frame   = vmm.allocate_frame();
-    klog("[ELF_TASK] priv frames: pdpt=%lx pd=%lx pt=%lx\n",
-         priv_pdpt_frame, priv_pd_frame, priv_pt_frame);
+    pt::uintptr_t priv_pt_frames[Task::MAX_PRIV_PTS];
+    for (pt::size_t k = 0; k < num_pts; k++) {
+        priv_pt_frames[k] = vmm.allocate_frame();
+        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frames[k]);
+        for (int i = 0; i < 512; i++) pt[i] = 0;
+    }
+    klog("[ELF_TASK] priv frames: pdpt=%lx pd=%lx num_pts=%d\n",
+         priv_pdpt_frame, priv_pd_frame, (int)num_pts);
 
     memcpy(reinterpret_cast<void*>(priv_pdpt_frame),
            reinterpret_cast<void*>(boot_pdpt_phys), 4096);
     memcpy(reinterpret_cast<void*>(priv_pd_frame),
            reinterpret_cast<void*>(boot_pd_phys), 4096);
 
-    pt::uint64_t* priv_pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frame);
-    for (int i = 0; i < 512; i++)
-        priv_pt[i] = 0;
-
     // 4. Allocate private code frames; copy ELF code from staging area.
-    //    Read from the high-half VA of the staging area (avoids low-half identity map).
-    klog("[ELF_TASK] allocating %d code frames\n", (int)num_code_frames);
+    klog("[ELF_TASK] allocating %d code frames across %d PT(s)\n",
+         (int)num_code_frames, (int)num_pts);
     for (pt::size_t i = 0; i < num_code_frames; i++) {
         if (i % 50 == 0) klog("[ELF_TASK] i=%d\n", (int)i);
         pt::uintptr_t frame = vmm.allocate_frame();
@@ -546,28 +554,31 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         memcpy(reinterpret_cast<void*>(frame),
                reinterpret_cast<void*>(ELF_STAGING_VA + i * 4096),
                4096);
-        priv_pt[i] = frame | 0x07;  // Present | Writable | User
+        pt::uint64_t* priv_pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frames[i / 512]);
+        priv_pt[i % 512] = frame | 0x07;  // Present | Writable | User
     }
     klog("[ELF_TASK] code frames allocated; calling create_task\n");
 
-    // 5. Wire private page tables:
-    //    priv_pd[192]  → priv_pt  (4KB pages, PS bit clear)
-    //    priv_pdpt[0]  → priv_pd
+    // 5. Wire private page tables: priv_pd[ELF_PD_IDX+k] → priv_pt_frames[k]
     pt::uint64_t* priv_pd   = reinterpret_cast<pt::uint64_t*>(priv_pd_frame);
     pt::uint64_t* priv_pdpt = reinterpret_cast<pt::uint64_t*>(priv_pdpt_frame);
-    priv_pd[ELF_PD_IDX]     = priv_pt_frame   | 0x07;  // no PS bit = 4KB pages
-    priv_pdpt[ELF_PDPT_IDX] = priv_pd_frame   | 0x07;
+    for (pt::size_t k = 0; k < num_pts; k++)
+        priv_pd[ELF_PD_IDX + k] = priv_pt_frames[k] | 0x07;  // no PS bit = 4KB pages
+    priv_pdpt[ELF_PDPT_IDX] = priv_pd_frame | 0x07;
 
     // 6. Create the task (allocates kernel/user stacks and clones boot PML4).
     pt::uint32_t task_id = create_task(reinterpret_cast<void(*)()>(entry),
                                        TASK_STACK_SIZE, true);
     if (task_id == 0xFFFFFFFF) {
         // Free everything on failure.
-        for (int i = 0; i < 512; i++) {
-            if (priv_pt[i] & 0x01)
-                vmm.free_frame(priv_pt[i] & ~(pt::uintptr_t)0xFFF);
+        for (pt::size_t k = 0; k < num_pts; k++) {
+            if (!priv_pt_frames[k]) continue;
+            pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frames[k]);
+            for (int i = 0; i < 512; i++) {
+                if (pt[i] & 0x01) vmm.free_frame(pt[i] & ~(pt::uintptr_t)0xFFF);
+            }
+            vmm.free_frame(priv_pt_frames[k]);
         }
-        vmm.free_frame(priv_pt_frame);
         vmm.free_frame(priv_pd_frame);
         vmm.free_frame(priv_pdpt_frame);
         return 0xFFFFFFFF;
@@ -578,9 +589,11 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     pt::uint64_t* task_pml4 = reinterpret_cast<pt::uint64_t*>(task->cr3);
     task_pml4[ELF_PML4_IDX] = priv_pdpt_frame | 0x07;
 
-    task->priv_pdpt = priv_pdpt_frame;
-    task->priv_pd   = priv_pd_frame;
-    task->priv_pt   = priv_pt_frame;
+    task->priv_pdpt    = priv_pdpt_frame;
+    task->priv_pd      = priv_pd_frame;
+    task->num_priv_pts = num_pts;
+    for (pt::size_t k = 0; k < num_pts; k++) task->priv_pt[k] = priv_pt_frames[k];
+    for (pt::size_t k = num_pts; k < Task::MAX_PRIV_PTS; k++) task->priv_pt[k] = 0;
 
     klog("[ELF_TASK] Task %d: '%s' entry=%lx %d code pages\n",
          task_id, filename, entry, (int)num_code_frames);
@@ -688,15 +701,7 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
         vmm.free_frame(child->cr3);
         child->cr3 = 0;
     }
-    if (child->priv_pt != 0) {
-        pt::uint64_t* old_pt = reinterpret_cast<pt::uint64_t*>(child->priv_pt);
-        for (int i = 0; i < 512; i++) {
-            if (old_pt[i] & 0x01)
-                vmm.free_frame(old_pt[i] & ~(pt::uintptr_t)0xFFF);
-        }
-        vmm.free_frame(child->priv_pt);
-        child->priv_pt = 0;
-    }
+    free_priv_pts(child);
     if (child->priv_pd != 0)   { vmm.free_frame(child->priv_pd);   child->priv_pd   = 0; }
     if (child->priv_pdpt != 0) { vmm.free_frame(child->priv_pdpt); child->priv_pdpt = 0; }
 
@@ -733,36 +738,48 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     memcpy((void*)child_pml4_frame, (void*)parent->cr3, 4096);
 
     // ── Deep-copy private ELF code page table frames ─────────────────────
-    klog("[FORK] allocating new PDPT/PD/PT frames\n");
-    pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
-    pt::uintptr_t new_pd_frame   = vmm.allocate_frame();
-    pt::uintptr_t new_pt_frame   = vmm.allocate_frame();
-    klog("[FORK] new_pdpt=%lx new_pd=%lx new_pt=%lx\n", new_pdpt_frame, new_pd_frame, new_pt_frame);
-    klog("[FORK] copying parent priv_pdpt=%lx\n", parent->priv_pdpt);
-    memcpy((void*)new_pdpt_frame, (void*)parent->priv_pdpt, 4096);
-    klog("[FORK] copying parent priv_pd=%lx\n", parent->priv_pd);
-    memcpy((void*)new_pd_frame,   (void*)parent->priv_pd,   4096);
+    pt::size_t par_num_pts = parent->num_priv_pts;
+    pt::uintptr_t new_pdpt_frame = 0;
+    pt::uintptr_t new_pd_frame   = 0;
+    pt::uintptr_t new_pt_frames[Task::MAX_PRIV_PTS];
+    for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++) new_pt_frames[k] = 0;
 
-    pt::uint64_t* parent_pt = reinterpret_cast<pt::uint64_t*>(parent->priv_pt);
-    pt::uint64_t* new_pt    = reinterpret_cast<pt::uint64_t*>(new_pt_frame);
-    for (int i = 0; i < 512; i++) {
-        if (parent_pt[i] & 0x01) {
-            pt::uintptr_t src_frame = parent_pt[i] & ~(pt::uintptr_t)0xFFF;
-            pt::uintptr_t dst_frame = vmm.allocate_frame();
-            memcpy((void*)dst_frame, (void*)src_frame, 4096);
-            new_pt[i] = dst_frame | 0x07;
-        } else {
-            new_pt[i] = 0;
+    if (par_num_pts > 0) {
+        klog("[FORK] allocating new PDPT/PD/%d PT frames\n", (int)par_num_pts);
+        new_pdpt_frame = vmm.allocate_frame();
+        new_pd_frame   = vmm.allocate_frame();
+        klog("[FORK] copying parent priv_pdpt=%lx priv_pd=%lx\n",
+             parent->priv_pdpt, parent->priv_pd);
+        memcpy((void*)new_pdpt_frame, (void*)parent->priv_pdpt, 4096);
+        memcpy((void*)new_pd_frame,   (void*)parent->priv_pd,   4096);
+
+        for (pt::size_t k = 0; k < par_num_pts; k++) {
+            new_pt_frames[k] = vmm.allocate_frame();
+            pt::uint64_t* parent_pt = reinterpret_cast<pt::uint64_t*>(parent->priv_pt[k]);
+            pt::uint64_t* new_pt    = reinterpret_cast<pt::uint64_t*>(new_pt_frames[k]);
+            for (int i = 0; i < 512; i++) {
+                if (parent_pt[i] & 0x01) {
+                    pt::uintptr_t src_frame = parent_pt[i] & ~(pt::uintptr_t)0xFFF;
+                    pt::uintptr_t dst_frame = vmm.allocate_frame();
+                    memcpy((void*)dst_frame, (void*)src_frame, 4096);
+                    new_pt[i] = dst_frame | 0x07;
+                } else {
+                    new_pt[i] = 0;
+                }
+            }
         }
+
+        // Wire private page tables in the child.
+        pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
+        pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
+        for (pt::size_t k = 0; k < par_num_pts; k++)
+            new_pd[ELF_PD_IDX + k] = new_pt_frames[k] | 0x07;
+        new_pdpt[ELF_PDPT_IDX] = new_pd_frame | 0x07;
     }
 
-    // Wire private page tables in the child.
-    pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
-    pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
-    new_pd[ELF_PD_IDX]          = new_pt_frame   | 0x07;
-    new_pdpt[ELF_PDPT_IDX]      = new_pd_frame   | 0x07;
-    pt::uint64_t* child_pml4    = reinterpret_cast<pt::uint64_t*>(child_pml4_frame);
-    child_pml4[ELF_PML4_IDX]    = new_pdpt_frame  | 0x07;
+    pt::uint64_t* child_pml4 = reinterpret_cast<pt::uint64_t*>(child_pml4_frame);
+    if (new_pdpt_frame)
+        child_pml4[ELF_PML4_IDX] = new_pdpt_frame | 0x07;
 
     // ── Build child kernel stack frame ───────────────────────────────────────
     // Copy the parent's 160-byte PUSHALL+iretq frame verbatim, then patch it.
@@ -836,9 +853,11 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->cr3               = child_pml4_frame;
     child->user_mode         = true;
     child->user_stack_base   = child_ustack_base;
-    child->priv_pdpt         = new_pdpt_frame;
-    child->priv_pd           = new_pd_frame;
-    child->priv_pt           = new_pt_frame;
+    child->priv_pdpt   = new_pdpt_frame;
+    child->priv_pd     = new_pd_frame;
+    child->num_priv_pts = par_num_pts;
+    for (pt::size_t k = 0; k < par_num_pts; k++) child->priv_pt[k] = new_pt_frames[k];
+    for (pt::size_t k = par_num_pts; k < Task::MAX_PRIV_PTS; k++) child->priv_pt[k] = 0;
     child->parent_id          = parent->id;
     child->waiting_for        = 0xFFFFFFFF;
     child->exit_code          = 0;
@@ -939,11 +958,13 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
 #endif
 
     pt::size_t num_frames = (code_size + 4095) / 4096;
-    if (num_frames > 512) {
-        klog("[EXEC] ELF too large (%d pages)\n", (int)num_frames);
+    if (num_frames > MAX_ELF_PAGES) {
+        klog("[EXEC] ELF too large (%d pages, max %d)\n", (int)num_frames, (int)MAX_ELF_PAGES);
         asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
         return (pt::uint64_t)-1;
     }
+    pt::size_t num_pts = (num_frames + 511) / 512;
+    if (num_pts == 0) num_pts = 1;
 
     // 2. Read boot PDPT/PD to seed the new private tables.
     pt::uint64_t* kernel_pml4    = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
@@ -961,16 +982,18 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
         return (pt::uint64_t)-1;
     }
 
-    // 3. Allocate new private PDPT, PD, PT; copy boot tables.
+    // 3. Allocate new private PDPT, PD, and num_pts PT frames; copy boot tables.
     pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
     pt::uintptr_t new_pd_frame   = vmm.allocate_frame();
-    pt::uintptr_t new_pt_frame   = vmm.allocate_frame();
+    pt::uintptr_t new_pt_frames[Task::MAX_PRIV_PTS];
+    for (pt::size_t k = 0; k < num_pts; k++) {
+        new_pt_frames[k] = vmm.allocate_frame();
+        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(new_pt_frames[k]);
+        for (int i = 0; i < 512; i++) pt[i] = 0;
+    }
 
     memcpy((void*)new_pdpt_frame, (void*)boot_pdpt_phys, 4096);
     memcpy((void*)new_pd_frame,   (void*)boot_pd_phys,   4096);
-
-    pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(new_pt_frame);
-    for (int i = 0; i < 512; i++) new_pt[i] = 0;
 
     // 4. Copy ELF frames from staging area into new private frames.
     for (pt::size_t i = 0; i < num_frames; i++) {
@@ -978,31 +1001,28 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
         memcpy((void*)frame,
                (void*)(ELF_STAGING_VA + i * 4096),
                4096);
-        new_pt[i] = frame | 0x07;
+        pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(new_pt_frames[i / 512]);
+        new_pt[i % 512] = frame | 0x07;
     }
 
     // 5. Wire new page tables.
     pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
     pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
-    new_pd[ELF_PD_IDX]          = new_pt_frame   | 0x07;
-    new_pdpt[ELF_PDPT_IDX]      = new_pd_frame   | 0x07;
+    for (pt::size_t k = 0; k < num_pts; k++)
+        new_pd[ELF_PD_IDX + k] = new_pt_frames[k] | 0x07;
+    new_pdpt[ELF_PDPT_IDX] = new_pd_frame | 0x07;
 
     // 6. Free old private code frames and page table frames.
-    if (current->priv_pt != 0) {
-        pt::uint64_t* old_pt = reinterpret_cast<pt::uint64_t*>(current->priv_pt);
-        for (int i = 0; i < 512; i++) {
-            if (old_pt[i] & 0x01)
-                vmm.free_frame(old_pt[i] & ~(pt::uintptr_t)0xFFF);
-        }
-        vmm.free_frame(current->priv_pt);
-    }
+    free_priv_pts(current);
     if (current->priv_pd   != 0) vmm.free_frame(current->priv_pd);
     if (current->priv_pdpt != 0) vmm.free_frame(current->priv_pdpt);
 
     // 7. Install new private tables into current task and PML4.
-    current->priv_pdpt = new_pdpt_frame;
-    current->priv_pd   = new_pd_frame;
-    current->priv_pt   = new_pt_frame;
+    current->priv_pdpt    = new_pdpt_frame;
+    current->priv_pd      = new_pd_frame;
+    current->num_priv_pts = num_pts;
+    for (pt::size_t k = 0; k < num_pts; k++) current->priv_pt[k] = new_pt_frames[k];
+    for (pt::size_t k = num_pts; k < Task::MAX_PRIV_PTS; k++) current->priv_pt[k] = 0;
 
     pt::uint64_t* current_pml4    = reinterpret_cast<pt::uint64_t*>(current->cr3);
     current_pml4[ELF_PML4_IDX]   = new_pdpt_frame | 0x07;
