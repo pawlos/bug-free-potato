@@ -88,6 +88,8 @@ LIBC_SRCS = src/userspace/libc/stdio.c \
             src/userspace/libc/file.c \
             src/userspace/libc/math.c
 LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
+LIBC_ASM_SRCS = src/userspace/libc/setjmp.asm
+LIBC_ASM_OBJS = $(patsubst src/userspace/libc/%.asm, build/userspace/libc/%.o, $(LIBC_ASM_SRCS))
 LIBC_CRT0 = build/userspace/crt0.o
 LIBC_A    = build/userspace/libc.a
 
@@ -99,7 +101,11 @@ $(LIBC_OBJS): build/userspace/libc/%.o : src/userspace/libc/%.c
 	mkdir -p build/userspace/libc
 	$(CC) -c $(CFLAGS_USER) -o $@ $<
 
-$(LIBC_A): $(LIBC_OBJS)
+$(LIBC_ASM_OBJS): build/userspace/libc/%.o : src/userspace/libc/%.asm
+	mkdir -p build/userspace/libc
+	$(NASM) -f elf64 -o $@ $<
+
+$(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 	ar rcs $@ $^
 
 # ── Hello demo (C userspace program) ─────────────────────────────────────
