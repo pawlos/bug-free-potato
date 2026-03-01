@@ -336,6 +336,48 @@ pt::uint32_t FAT12::seek_file(File* file, pt::int32_t offset, int whence) {
     return new_pos;
 }
 
+bool FAT12::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
+    if (!mounted) return false;
+
+    pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+    int count = 0;
+
+    for (pt::uint32_t s = 0; s < root_dir_sectors; s++) {
+        if (!Disk::read_sector(root_dir_start_sector + s, sector_buffer)) {
+            continue;
+        }
+
+        FAT12_DirEntry* entries = (FAT12_DirEntry*)sector_buffer;
+
+        for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+            if (entries[e].filename[0] == 0x00) {
+                return false;  // end of directory
+            }
+            if (entries[e].filename[0] == 0xE5) continue;  // deleted
+            if (entries[e].attributes & 0x08) continue;    // volume label
+            if (entries[e].attributes & 0x10) continue;    // directory
+
+            if (count == idx) {
+                // Reconstruct 8.3 name
+                int k = 0;
+                for (int i = 0; i < 8 && entries[e].filename[i] != ' '; i++)
+                    name_out[k++] = entries[e].filename[i];
+                if (entries[e].extension[0] != ' ') {
+                    name_out[k++] = '.';
+                    for (int i = 0; i < 3 && entries[e].extension[i] != ' '; i++)
+                        name_out[k++] = entries[e].extension[i];
+                }
+                name_out[k] = '\0';
+                if (size_out) *size_out = entries[e].file_size;
+                return true;
+            }
+            count++;
+        }
+    }
+
+    return false;
+}
+
 void FAT12::list_root_directory() {
     if (!mounted) {
         klog("[FAT12] Not mounted\n");

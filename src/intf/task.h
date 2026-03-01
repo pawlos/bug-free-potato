@@ -152,8 +152,11 @@ public:
 
     // exec_task: replace current task's ELF image with filename.
     // Patches the live iretq frame in place; returns 0 on success, -1 on error.
+    // argc/argv (optional) are placed on the new user stack per the SysV ABI.
     static pt::uint64_t exec_task(const char* filename,
-                                  pt::uintptr_t syscall_frame_rsp);
+                                  pt::uintptr_t syscall_frame_rsp,
+                                  int argc = 0,
+                                  const char* const* argv = nullptr);
 
     // waitpid_task: block until child exits; writes its exit code.
     // Returns 0 on success, (uint64_t)-1 on invalid child_id / not a child.

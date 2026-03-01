@@ -5,9 +5,9 @@ extern exit
 
 section .text
 _start:
-    xor     rbp, rbp    ; clear frame pointer (marks bottom of call chain)
-    xor     rdi, rdi    ; argc = 0  (no argv support yet)
-    xor     rsi, rsi    ; argv = NULL
+    xor     rbp, rbp        ; mark bottom of call chain
+    mov     rdi, [rsp]      ; argc (SysV initial stack)
+    lea     rsi, [rsp+8]    ; argv = &stack[1]
     call    main
     mov     rdi, rax    ; pass main()'s return value to exit()
     call    exit

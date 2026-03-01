@@ -66,6 +66,7 @@ public:
     void list_root_directory() override;
     bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) override;
     bool delete_file(const char* filename) override;
+    bool readdir(int idx, char* name_out, pt::uint32_t* size_out) override;
 
     // Filesystem info getters
     pt::uint32_t get_bytes_per_cluster() override;

@@ -16,7 +16,7 @@
 #define SYS_DRAW_TEXT 12  /* rdi=x, rsi=y, rdx=str, rcx=fg, r8=bg         */
 #define SYS_FB_WIDTH  13  /* returns framebuffer width in pixels           */
 #define SYS_FORK      14  /* clone task; returns child id (parent) or 0 (child) */
-#define SYS_EXEC      15  /* rdi=filename ptr; replace image; returns 0 or -1   */
+#define SYS_EXEC      15  /* rdi=filename, rsi=argc, rdx=argv_ptr; replace image; returns 0 or -1 */
 #define SYS_WAITPID   16  /* rdi=child_id, rsi=exit_code_ptr; returns 0 or -1   */
 #define SYS_PIPE        17  /* rdi=int[2] ptr; fills [0]=rd_fd [1]=wr_fd          */
 #define SYS_LSEEK       18  /* rdi=fd, rsi=offset, rdx=whence; returns new pos    */
@@ -133,8 +133,9 @@ static inline long  sys_fb_width(void)
 static inline long  sys_fork(void)
     { return __sc0(SYS_FORK); }
 
-static inline long  sys_exec(const char* filename)
-    { return __sc1(SYS_EXEC, (long)filename); }
+static inline long  sys_exec(const char* filename, int argc,
+                              const char* const* argv)
+    { return __sc3(SYS_EXEC, (long)filename, (long)argc, (long)argv); }
 
 static inline long  sys_waitpid(long child_pid, int* exit_code)
     { return __sc2(SYS_WAITPID, child_pid, (long)exit_code); }

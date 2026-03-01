@@ -672,8 +672,11 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_EXEC: {
 			Task* ct = TaskScheduler::get_current_task();
 			pt::uintptr_t frame_rsp = ct ? ct->syscall_frame_rsp : g_syscall_rsp;
+			int exec_argc = (int)arg2;
+			const char* const* exec_argv = reinterpret_cast<const char* const*>(arg3);
 			return TaskScheduler::exec_task(
-				reinterpret_cast<const char*>(arg1), frame_rsp);
+				reinterpret_cast<const char*>(arg1), frame_rsp,
+				exec_argc, exec_argv);
 		}
 
 		case SYS_WAITPID: {

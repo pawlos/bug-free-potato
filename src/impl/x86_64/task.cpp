@@ -882,7 +882,9 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
 // entry point with a fresh user RSP.
 //
 pt::uint64_t TaskScheduler::exec_task(const char* filename,
-                                      pt::uintptr_t syscall_frame_rsp)
+                                      pt::uintptr_t syscall_frame_rsp,
+                                      int argc,
+                                      const char* const* argv)
 {
     // 'filename' is a pointer into the calling task's private ELF code region
     // (VA 0xFFFF800018000xxx, e.g. .rodata).  We must copy it to the kernel
@@ -893,6 +895,23 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
         int i = 0;
         while (i < 63 && filename[i]) { fname_buf[i] = filename[i]; i++; }
         fname_buf[i] = '\0';
+    }
+
+    // Copy argv strings to kernel stack before CR3 switch.
+    const int ARGV_MAX_LOCAL = 16, ARG_MAX_LOCAL = 128;
+    char arg_flat[ARGV_MAX_LOCAL * ARG_MAX_LOCAL];
+    const char* arg_kptrs[ARGV_MAX_LOCAL];
+    int real_argc = 0;
+    if (argv && argc > 0) {
+        real_argc = (argc > ARGV_MAX_LOCAL) ? ARGV_MAX_LOCAL : argc;
+        for (int i = 0; i < real_argc; i++) {
+            char* dst = arg_flat + i * ARG_MAX_LOCAL;
+            const char* src = argv[i];
+            int j = 0;
+            while (j < ARG_MAX_LOCAL - 1 && src[j]) { dst[j] = src[j]; j++; }
+            dst[j] = '\0';
+            arg_kptrs[i] = dst;
+        }
     }
 
     Task* current = get_current_task();
@@ -990,6 +1009,60 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
 
     // 8. New user RSP = top of existing user stack (stack contents discarded).
     pt::uint64_t new_user_rsp = current->user_stack_base + USER_STACK_SIZE;
+
+    // 8a. Build SysV AMD64 initial stack layout if argc > 0.
+    //     Working downward from new_user_rsp:
+    //       [string data for each arg]
+    //       [8-byte align]
+    //       [NULL sentinel qword]
+    //       [argv[argc-1] pointer qword]
+    //       ...
+    //       [argv[0] pointer qword]
+    //       [argc qword]   ← new_user_rsp points here
+    if (real_argc > 0) {
+        pt::uint64_t rsp = new_user_rsp;
+        pt::uint64_t user_stack_bottom = current->user_stack_base;
+        pt::uint8_t* ustack = reinterpret_cast<pt::uint8_t*>(current->user_stack_base);
+
+        // Write string data downward, record user-space pointers.
+        pt::uint64_t uarg_ptrs[ARGV_MAX_LOCAL];
+        for (int i = real_argc - 1; i >= 0; i--) {
+            const char* s = arg_kptrs[i];
+            int len = 0; while (s[len]) len++;
+            len++;  // include NUL
+            rsp -= (pt::uint64_t)len;
+            if (rsp < user_stack_bottom) { rsp += (pt::uint64_t)len; break; }
+            // Copy string into user stack (currently mapped under kernel_cr3).
+            // After the CR3 switch below, the user task will read it there.
+            pt::uint8_t* dst = ustack + (rsp - user_stack_bottom);
+            for (int j = 0; j < len; j++) dst[j] = (pt::uint8_t)s[j];
+            uarg_ptrs[i] = rsp;
+        }
+
+        // Align rsp down to 8 bytes.
+        rsp &= ~(pt::uint64_t)7;
+
+        // NULL sentinel + argv pointers (in reverse order, then fix).
+        rsp -= 8;  // NULL sentinel
+        if (rsp >= user_stack_bottom) {
+            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(ustack + (rsp - user_stack_bottom));
+            *p = 0;
+        }
+        for (int i = real_argc - 1; i >= 0; i--) {
+            rsp -= 8;
+            if (rsp < user_stack_bottom) { rsp += 8; break; }
+            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(ustack + (rsp - user_stack_bottom));
+            *p = uarg_ptrs[i];
+        }
+
+        // argc qword.
+        rsp -= 8;
+        if (rsp >= user_stack_bottom) {
+            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(ustack + (rsp - user_stack_bottom));
+            *p = (pt::uint64_t)real_argc;
+            new_user_rsp = rsp;
+        }
+    }
 
     // 9. Patch the live iretq frame in-place so _syscall_stub's iretq jumps
     //    to the new ELF entry point with a fresh user RSP.

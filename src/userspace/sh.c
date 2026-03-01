@@ -267,14 +267,15 @@ static void cmd_disk(void) {
     printf("%ld MB total\n", total / (1024 * 1024));
 }
 
-static void cmd_exec(const char* name) {
+static void cmd_exec(char* argv[], int argc) {
     char fname[64];
-    build_elf_name(name, fname, (int)sizeof(fname));
+    build_elf_name(argv[0], fname, (int)sizeof(fname));
+    argv[0] = fname;  /* argv[0] = full ELF filename */
 
     long child = sys_fork();
     if (child == 0) {
         /* child */
-        int r = sys_exec(fname);
+        int r = sys_exec(fname, argc, (const char* const*)argv);
         if (r < 0) printf("exec: not found: %s\n", fname);
         sys_exit(1);
     }
@@ -322,7 +323,7 @@ static void shell_loop(void) {
         } else if (sh_strcmp(cmd, "disk") == 0) {
             cmd_disk();
         } else {
-            cmd_exec(cmd);
+            cmd_exec(argv, argc);
         }
     }
 }
