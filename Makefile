@@ -86,7 +86,8 @@ LIBC_SRCS = src/userspace/libc/stdio.c \
             src/userspace/libc/stdlib.c \
             src/userspace/libc/string.c \
             src/userspace/libc/file.c \
-            src/userspace/libc/math.c
+            src/userspace/libc/math.c \
+            src/userspace/libc/dirent.c
 LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
 LIBC_ASM_SRCS = src/userspace/libc/setjmp.asm
 LIBC_ASM_OBJS = $(patsubst src/userspace/libc/%.asm, build/userspace/libc/%.o, $(LIBC_ASM_SRCS))
