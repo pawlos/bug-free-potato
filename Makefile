@@ -366,6 +366,11 @@ $(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0)
 
 quake: $(QUAKE_ELF)
 
+# Path to Quake PAK0.PAK (user-supplied; copyrighted — cannot auto-download).
+# Copy PAK0.PAK into src/impl/x86_64/bins/ before running make disk.img.
+# Override: make disk.img QUAKE_PAK=/path/to/pak0.pak
+QUAKE_PAK ?= src/impl/x86_64/bins/PAK0.PAK
+
 # Create FAT32 disk image with test files from bins folder
 ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.raw \
@@ -374,7 +379,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
 
 disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
 	@echo "Creating FAT32 disk image..."
-	dd if=/dev/zero of=disk.img bs=1M count=64 2>/dev/null
+	dd if=/dev/zero of=disk.img bs=1M count=128 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
 	@copy_file() { \
 	  src="$$1"; dst="$$2"; \
@@ -401,7 +406,8 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(SNAKE_BIN)      SNAKE.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD; \
-	copy_file $(QUAKE_ELF)      QUAKE.ELF
+	copy_file $(QUAKE_ELF)      QUAKE.ELF; \
+	copy_file $(QUAKE_PAK)      PAK0.PAK
 	@echo "Disk image created with files:"
 	@mdir -i disk.img ::
 
