@@ -40,8 +40,10 @@ constexpr char task_cmd[] = "task";
 constexpr char write_cmd[] = "write ";
 constexpr char rm_cmd[] = "rm ";
 constexpr char exec_cmd[] = "exec ";
-constexpr char net_cmd[]  = "net";
-constexpr char ping_cmd[] = "ping ";
+constexpr char net_cmd[]      = "net";
+constexpr char ping_cmd[]     = "ping ";
+constexpr char dhcp_cmd[]     = "dhcp";
+constexpr char nslookup_cmd[] = "nslookup";
 
 void print_help() {
     klog("Available commands:\n");
@@ -68,7 +70,9 @@ void print_help() {
     klog("  rm <file>        - Delete a file\n");
     klog("  exec <file>      - Load and run an ELF program\n");
     klog("  net              - Show network configuration\n");
-    klog("  ping <ip>        - Send ICMP echo requests\n");
+    klog("  ping <ip|host>   - Send ICMP echo requests (resolves hostname via DNS)\n");
+    klog("  dhcp             - Run DHCP to acquire IP address\n");
+    klog("  nslookup <host>  - Resolve hostname via DNS\n");
     klog("  help             - Show this help\n");
     klog("  quit             - Exit kernel\n");
 }
@@ -490,11 +494,14 @@ void Shell::execute_net(const char* cmd) {
     pt::uint8_t mac[6];
     RTL8139::get_mac(mac);
     klog("Net: ");
-    print_ip(NET_MY_IP);
+    print_ip(g_my_ip);
     klog(" / ");
     print_ip(make_ip(255, 255, 255, 0));
     klog("  gw ");
-    print_ip(NET_GATEWAY_IP);
+    print_ip(g_gateway_ip);
+    klog("\n");
+    klog("DNS: ");
+    print_ip(g_dns_ip);
     klog("\n");
     klog("MAC: %x:%x:%x:%x:%x:%x\n",
          (int)mac[0], (int)mac[1], (int)mac[2],
@@ -504,10 +511,10 @@ void Shell::execute_net(const char* cmd) {
 
 void Shell::execute_ping(const char* cmd) {
     // Skip "ping" then any spaces
-    const char* ip_str = cmd + 4;
-    while (*ip_str == ' ') ip_str++;
-    if (*ip_str == '\0') {
-        klog("Usage: ping <ip>\n");
+    const char* arg = cmd + 4;
+    while (*arg == ' ') arg++;
+    if (*arg == '\0') {
+        klog("Usage: ping <ip|hostname>\n");
         return;
     }
     if (!RTL8139::is_present()) {
@@ -515,10 +522,14 @@ void Shell::execute_ping(const char* cmd) {
         return;
     }
 
-    pt::uint32_t dst = parse_ip(ip_str);
+    pt::uint32_t dst = parse_ip(arg);
     if (dst == 0) {
-        klog("Invalid IP address\n");
-        return;
+        // Try DNS resolution
+        klog("Resolving %s ...\n", arg);
+        if (!dns_resolve(arg, 100, dst) || dst == 0) {
+            klog("Unknown host: %s\n", arg);
+            return;
+        }
     }
 
     klog("PING ");
@@ -528,15 +539,54 @@ void Shell::execute_ping(const char* cmd) {
     for (pt::uint16_t seq = 1; seq <= 4; seq++) {
         pt::uint64_t t0 = get_ticks();
         icmp_ping(dst, seq);
-        // Wait up to ~2 seconds (100 ticks at 50 Hz) for a reply
         if (icmp_wait_reply(seq, 100)) {
             pt::uint64_t rtt = icmp_last_reply_tick() - t0;
             klog("64 bytes from ");
             print_ip(dst);
             klog(": seq=%d time=%d ticks\n", (int)seq, (int)rtt);
+        } else if (icmp_last_unreachable_seq() == seq) {
+            klog("Destination unreachable: seq=%d\n", (int)seq);
         } else {
             klog("Request timeout for seq %d\n", (int)seq);
         }
+    }
+}
+
+void Shell::execute_dhcp(const char* cmd) {
+    (void)cmd;
+    if (!RTL8139::is_present()) {
+        klog("RTL8139 not present\n");
+        return;
+    }
+    klog("Running DHCP...\n");
+    if (dhcp_acquire(250)) {
+        klog("DHCP OK: ");
+        print_ip(g_my_ip);
+        klog("\n");
+    } else {
+        klog("DHCP failed\n");
+    }
+}
+
+void Shell::execute_nslookup(const char* cmd) {
+    const char* host = cmd + 8; // skip "nslookup"
+    while (*host == ' ') host++;
+    if (*host == '\0') {
+        klog("Usage: nslookup <hostname>\n");
+        return;
+    }
+    if (!RTL8139::is_present()) {
+        klog("RTL8139 not present\n");
+        return;
+    }
+    klog("Resolving %s ...\n", host);
+    pt::uint32_t ip = 0;
+    if (dns_resolve(host, 100, ip)) {
+        klog("%s -> ", host);
+        print_ip(ip);
+        klog("\n");
+    } else {
+        klog("No answer for %s\n", host);
     }
 }
 
@@ -645,6 +695,12 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, net_cmd, 3) && (cmd[3] == '\0' || cmd[3] == ' ')) {
         execute_net(cmd);
+    }
+    else if (!memcmp(cmd, dhcp_cmd, 4) && (cmd[4] == '\0' || cmd[4] == ' ')) {
+        execute_dhcp(cmd);
+    }
+    else if (!memcmp(cmd, nslookup_cmd, 8) && (cmd[8] == '\0' || cmd[8] == ' ')) {
+        execute_nslookup(cmd);
     }
     else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

@@ -56,7 +56,11 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 
     // Network
     if (RTL8139::initialize()) {
-        klog("[NET] RTL8139 ready, IP 10.0.2.15\n");
+        klog("[NET] RTL8139 ready\n");
+        if (dhcp_acquire(250))
+            klog("[NET] DHCP acquired\n");
+        else
+            klog("[NET] DHCP failed, using static 10.0.2.15\n");
     } else {
         klog("[NET] RTL8139 not found\n");
     }

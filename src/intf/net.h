@@ -24,11 +24,13 @@ static constexpr pt::uint32_t make_ip(pt::uint32_t a, pt::uint32_t b,
 }
 
 // ---------------------------------------------------------------------------
-// Static network configuration (QEMU SLIRP user-mode networking)
+// Network configuration — mutable globals (updated by DHCP)
 // ---------------------------------------------------------------------------
-static constexpr pt::uint32_t NET_MY_IP      = make_ip(10, 0, 2, 15); // 10.0.2.15
-static constexpr pt::uint32_t NET_GATEWAY_IP = make_ip(10, 0, 2,  2); // 10.0.2.2
 static constexpr pt::uint32_t NET_BROADCAST  = 0xFFFFFFFFu;           // 255.255.255.255
+
+extern pt::uint32_t g_my_ip;      // our IP  (default 10.0.2.15)
+extern pt::uint32_t g_gateway_ip; // gateway  (default 10.0.2.2)
+extern pt::uint32_t g_dns_ip;     // DNS server (default 10.0.2.3)
 
 // ---------------------------------------------------------------------------
 // Ethernet frame header
@@ -68,6 +70,38 @@ struct IPv4Hdr {
     pt::uint16_t checksum;    // big-endian
     pt::uint32_t src_ip;      // network byte order
     pt::uint32_t dst_ip;      // network byte order
+} __attribute__((packed));
+
+// ---------------------------------------------------------------------------
+// UDP header (RFC 768)
+// ---------------------------------------------------------------------------
+struct UdpHdr {
+    pt::uint16_t src_port;
+    pt::uint16_t dst_port;
+    pt::uint16_t length;   // sizeof(UdpHdr) + payload, big-endian
+    pt::uint16_t checksum; // 0 = disabled (valid for IPv4 UDP)
+} __attribute__((packed));
+
+// ---------------------------------------------------------------------------
+// DHCP / BOOTP header (RFC 2131)
+// ---------------------------------------------------------------------------
+struct DhcpHdr {
+    pt::uint8_t  op;         // 1=BOOTREQUEST, 2=BOOTREPLY
+    pt::uint8_t  htype;      // 1=Ethernet
+    pt::uint8_t  hlen;       // 6
+    pt::uint8_t  hops;       // 0
+    pt::uint32_t xid;        // transaction ID
+    pt::uint16_t secs;       // 0
+    pt::uint16_t flags;      // 0x8000 = broadcast flag (big-endian)
+    pt::uint32_t ciaddr;     // client IP (0 during DISCOVER/REQUEST)
+    pt::uint32_t yiaddr;     // offered IP from server
+    pt::uint32_t siaddr;     // server IP
+    pt::uint32_t giaddr;     // relay agent IP (0)
+    pt::uint8_t  chaddr[16]; // client HW addr: MAC in [0..5], rest 0
+    pt::uint8_t  sname[64];  // server hostname (zeros)
+    pt::uint8_t  file[128];  // boot filename (zeros)
+    pt::uint32_t magic;      // DHCP magic cookie 0x63825363 (see stack.cpp)
+    // Variable-length TLV options follow
 } __attribute__((packed));
 
 // ---------------------------------------------------------------------------
@@ -135,3 +169,17 @@ bool icmp_wait_reply(pt::uint16_t seq, pt::uint64_t timeout_ticks);
 
 // Tick at which the last ICMP reply arrived (for RTT calculation)
 pt::uint64_t icmp_last_reply_tick();
+
+// Seq of the last ICMP type-3 (destination unreachable) received.
+// Matches the seq that icmp_wait_reply was waiting for when it returned false.
+pt::uint16_t icmp_last_unreachable_seq();
+
+// Run DHCP DISCOVER→OFFER→REQUEST→ACK exchange.
+// Blocks (spin+yield) up to timeout_ticks. Updates g_my_ip on success.
+// Returns true if an ACK was received and g_my_ip updated.
+bool dhcp_acquire(pt::uint64_t timeout_ticks);
+
+// Resolve hostname to IPv4 via DNS (A record query to g_dns_ip).
+// Blocks (spin+yield) up to timeout_ticks. Returns true on success.
+bool dns_resolve(const char* hostname, pt::uint64_t timeout_ticks,
+                 pt::uint32_t& out_ip);

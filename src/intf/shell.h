@@ -41,6 +41,8 @@ private:
     void execute_exec(const char* cmd);
     void execute_net(const char* cmd);
     void execute_ping(const char* cmd);
+    void execute_dhcp(const char* cmd);
+    void execute_nslookup(const char* cmd);
 };
 
 extern Shell shell;
