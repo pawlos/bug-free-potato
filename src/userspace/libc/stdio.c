@@ -104,10 +104,13 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
         }
 
         /* Catch truly unknown specifiers before we touch va_arg.
-         * d/i/u/x/X/o are handled by the integer path below;
-         * p/f/F/e/E/g/G/%/c/s/n all have explicit handlers above. */
+         * d/i/u/x/X/o/p/f/F/e/E/g/G are handled below. */
         if (spec != 'd' && spec != 'i' && spec != 'u' &&
-            spec != 'x' && spec != 'X' && spec != 'o') {
+            spec != 'x' && spec != 'X' && spec != 'o' &&
+            spec != 'p' &&
+            spec != 'f' && spec != 'F' &&
+            spec != 'e' && spec != 'E' &&
+            spec != 'g' && spec != 'G') {
             EMIT('%');
             EMIT(spec);
             continue;
