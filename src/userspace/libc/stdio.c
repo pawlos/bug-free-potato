@@ -169,6 +169,14 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
             if (flag_left) for (int i = total; i < width; i++) EMIT(' ');
             continue;
         }
+        else {
+            /* unknown specifier — emit %X literally so output is at least
+             * visible and subsequent va_args are not consumed from the wrong
+             * register (which silently corrupts all following arguments). */
+            EMIT('%');
+            EMIT(spec);
+            continue;
+        }
 
         /* fetch the value */
         unsigned long uval;

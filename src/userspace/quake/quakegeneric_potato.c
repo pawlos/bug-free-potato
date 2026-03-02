@@ -27,14 +27,17 @@
 
 /* ── display ─────────────────────────────────────────────────────────────── */
 
-#define QUAKE_W  QUAKEGENERIC_RES_X   /* 320 */
+#define QUAKE_W  QUAKEGENERIC_RES_X   /* 320 — native render resolution */
 #define QUAKE_H  QUAKEGENERIC_RES_Y   /* 240 */
+#define QUAKE_SCALE  2                /* pixel doubling: display at 640×480 */
+#define DISP_W  (QUAKE_W * QUAKE_SCALE)
+#define DISP_H  (QUAKE_H * QUAKE_SCALE)
 
 /* 256-entry RGB palette (set by Quake engine via QG_SetPalette) */
 static unsigned char g_palette[768];
 
-/* Packed RGB24 output buffer (320 × 240 × 3 = 230 400 bytes) */
-static unsigned char rgb_buf[QUAKE_W * QUAKE_H * 3];
+/* Packed RGB24 output buffer at display resolution (640 × 480 × 3 = 921 600 bytes) */
+static unsigned char rgb_buf[DISP_W * DISP_H * 3];
 
 /* Window ID for this Quake instance (-1 = no window yet) */
 static long g_wid = -1;
@@ -47,11 +50,11 @@ static void create_quake_window(void)
     if (g_wid >= 0) return;   /* already created */
     int fb_w = (int)sys_fb_width();
     int fb_h = (int)sys_fb_height();
-    int cx = (fb_w - QUAKE_W) / 2;
-    int cy = (fb_h - QUAKE_H) / 2;
+    int cx = (fb_w - DISP_W) / 2;
+    int cy = (fb_h - DISP_H) / 2;
     if (cx < 0) cx = 0;
     if (cy < MIN_CLIENT_Y) cy = MIN_CLIENT_Y;
-    g_wid = sys_create_window(cx, cy, QUAKE_W, QUAKE_H);
+    g_wid = sys_create_window(cx, cy, DISP_W, DISP_H);
 }
 
 /* ── error visibility ─────────────────────────────────────────────────────── */
@@ -69,18 +72,6 @@ static void serial_puts(const char *s, int len)
 {
     if (len > 0)
         sys_write_serial(s, (size_t)len);
-}
-
-/* Hunk_AllocName override via --wrap=Hunk_AllocName.
- * Logs every hunk allocation to serial so we can see exactly which allocation
- * triggers the Hunk_Alloc: failed error (both name and size). */
-extern void *__real_Hunk_AllocName(int size, char *name);
-void *__wrap_Hunk_AllocName(int size, char *name)
-{
-    char buf[128];
-    int n = snprintf(buf, sizeof(buf), "[HUNK] %7d  %s\n", size, name ? name : "(null)");
-    serial_puts(buf, n);
-    return __real_Hunk_AllocName(size, name);
 }
 
 /* Sys_Printf override via linker --wrap=Sys_Printf.
@@ -137,20 +128,35 @@ void QG_SetPalette(unsigned char palette[768])
         g_palette[i] = palette[i];
 }
 
-/* Blit an 8-bit indexed 320×240 frame to the window */
+/* Blit an 8-bit indexed 320×240 frame to the window at 2× scale (640×480) */
 void QG_DrawFrame(void *pixels)
 {
     const unsigned char *src = (const unsigned char *)pixels;
-    unsigned char *dst = rgb_buf;
-    int n = QUAKE_W * QUAKE_H;
-    while (n--) {
-        unsigned int idx = (unsigned int)(*src++) * 3u;
-        *dst++ = g_palette[idx + 0];   /* R */
-        *dst++ = g_palette[idx + 1];   /* G */
-        *dst++ = g_palette[idx + 2];   /* B */
+    int sy, sx;
+    for (sy = 0; sy < QUAKE_H; sy++) {
+        /* Build one scaled row (written twice for the vertical doubling) */
+        unsigned char row[DISP_W * 3];
+        unsigned char *rp = row;
+        for (sx = 0; sx < QUAKE_W; sx++) {
+            unsigned int idx = (unsigned int)(src[sy * QUAKE_W + sx]) * 3u;
+            unsigned char r = g_palette[idx + 0];
+            unsigned char g = g_palette[idx + 1];
+            unsigned char b = g_palette[idx + 2];
+            /* write pixel twice (horizontal 2×) */
+            *rp++ = r; *rp++ = g; *rp++ = b;
+            *rp++ = r; *rp++ = g; *rp++ = b;
+        }
+        /* copy row twice (vertical 2×) */
+        unsigned char *dst0 = rgb_buf + (sy * 2 + 0) * DISP_W * 3;
+        unsigned char *dst1 = rgb_buf + (sy * 2 + 1) * DISP_W * 3;
+        int i;
+        for (i = 0; i < DISP_W * 3; i++) {
+            dst0[i] = row[i];
+            dst1[i] = row[i];
+        }
     }
     /* SYS_DRAW_PIXELS blits to (0,0) in the window client area */
-    sys_draw_pixels(rgb_buf, 0, 0, QUAKE_W, QUAKE_H);
+    sys_draw_pixels(rgb_buf, 0, 0, DISP_W, DISP_H);
 }
 
 /* ── keyboard ────────────────────────────────────────────────────────────── */
@@ -324,16 +330,21 @@ int main(void)
     char *argv[] = { "quake", "-basedir", "/", NULL };
     QG_Create(3, argv);
 
-    /* Main loop: measure real elapsed time in microseconds */
+    /* Main loop: measure real elapsed time in microseconds.
+     * Target ~35 fps: sleep 20 ms after each tick so the loop doesn't spin,
+     * and pass the actual elapsed dt so game speed matches real time. */
     unsigned long long last_us = sys_get_micros();
     for (;;) {
         unsigned long long now_us = sys_get_micros();
         double dt = (double)(now_us - last_us) * 0.000001;
         last_us = now_us;
-        /* Cap dt to avoid spiral-of-death on long frames */
-        if (dt > 0.2)  dt = 0.2;
-        if (dt < 0.001) dt = 0.001;
+        /* Cap dt to avoid spiral-of-death after long stalls */
+        if (dt > 0.2) dt = 0.2;
+        if (dt <= 0.0) dt = 0.000001;
         QG_Tick(dt);
+        /* Sleep one timer tick (~20 ms at 50 Hz) to yield CPU and
+         * naturally cap the frame rate at ~50 fps. */
+        sys_sleep_ms(20);
     }
     return 0;
 }

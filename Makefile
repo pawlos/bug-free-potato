@@ -375,7 +375,7 @@ $(QUAKE_BUILD)/quakegeneric_potato.o: $(QUAKE_DIR)/quakegeneric_potato.c $(QUAKE
 	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
 
 $(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) --no-relax --wrap=Sys_Error --wrap=Sys_Printf --wrap=Hunk_AllocName \
+	$(LD) --no-relax --wrap=Sys_Error --wrap=Sys_Printf \
 	      -T src/userspace/libc/libc.ld -o $@ \
 	      $(LIBC_CRT0) $(QUAKE_BUILD)/quakegeneric_potato.o $(QUAKEGEN_OBJS) $(LIBC_A)
 
