@@ -386,15 +386,16 @@ pt::uint32_t FAT32::read_file(File* file, void* buffer,
     FAT32State* state = fat32_state(file);
     pt::uint32_t current_cluster;
 
+    // seek_file keeps current_cluster/current_cluster_idx in sync with
+    // current_position, so we only need to walk the delta from the cache.
     if (cluster_idx >= state->current_cluster_idx) {
-        // Seek forward from cached position
         current_cluster = state->current_cluster;
         for (pt::uint32_t i = state->current_cluster_idx;
              i < cluster_idx && !is_eoc(current_cluster); i++) {
             current_cluster = get_next_cluster(current_cluster);
         }
     } else {
-        // Backward seek — must restart from first cluster
+        // Shouldn't happen after seek_file update, but handle gracefully.
         current_cluster = state->first_cluster;
         for (pt::uint32_t i = 0;
              i < cluster_idx && !is_eoc(current_cluster); i++) {
@@ -454,7 +455,22 @@ pt::uint32_t FAT32::seek_file(File* file, pt::int32_t offset, int whence) {
     }
     if (new_pos > file->file_size) new_pos = file->file_size;
     file->current_position = new_pos;
-    // Cluster cache stays valid; read_file will walk forward/backward as needed.
+
+    // Eagerly update the cluster cache so read_file can start immediately
+    // from the right cluster without any forward/backward navigation.
+    // We always walk from first_cluster to guarantee correctness across
+    // repeated seek-and-read patterns on a shared file handle (e.g. PAK).
+    FAT32State* state = fat32_state(file);
+    pt::uint32_t bytes_per_cluster =
+        (pt::uint32_t)bpb.sectors_per_cluster * bpb.bytes_per_sector;
+    pt::uint32_t new_cluster_idx = (bytes_per_cluster > 0)
+                                   ? new_pos / bytes_per_cluster : 0;
+    pt::uint32_t cluster = state->first_cluster;
+    for (pt::uint32_t i = 0; i < new_cluster_idx && !is_eoc(cluster); i++)
+        cluster = get_next_cluster(cluster);
+    state->current_cluster     = cluster;
+    state->current_cluster_idx = new_cluster_idx;
+
     return new_pos;
 }
 

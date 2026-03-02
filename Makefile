@@ -72,6 +72,7 @@ clean:
 	-rm -f $(FSWRITE_OBJ)   $(FSWRITE_BIN)
 	-rm -f $(WM_TEST_OBJ)   $(WM_TEST_BIN)
 	-rm -f $(SNAKE_OBJ)     $(SNAKE_BIN)
+	-rm -f $(PAKTEST_OBJ)   $(PAKTEST_BIN)
 	-rm -f $(SH_ELF_OBJ)   $(SH_ELF_BIN)
 	-rm -rf $(DOOM_BUILD)
 	-rm -f  $(DOOM_ELF)
@@ -190,6 +191,16 @@ $(SNAKE_OBJ): src/userspace/snake.c $(LIBC_A)
 
 $(SNAKE_BIN): $(SNAKE_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SNAKE_OBJ) $(LIBC_A)
+
+# ── PAK VFS stress test ───────────────────────────────────────────────────────
+PAKTEST_OBJ = build/userspace/paktest.o
+PAKTEST_BIN = src/impl/x86_64/bins/paktest.elf
+
+$(PAKTEST_OBJ): src/userspace/paktest.c $(LIBC_A)
+	$(CC) -c $(CFLAGS_USER) -o $@ $<
+
+$(PAKTEST_BIN): $(PAKTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PAKTEST_OBJ) $(LIBC_A)
 
 # ── userland shell ────────────────────────────────────────────────────────────
 SH_ELF_OBJ = build/userspace/sh.o
@@ -330,8 +341,11 @@ CFLAGS_QUAKE = -ffreestanding -fno-stack-protector -fno-builtin \
                -I $(QUAKEGEN_DIR)
 
 # Fetch quakegeneric on demand (depth-1 clone, ~3 MB).
+# After cloning, increase the hardcoded 8 MB memory pool to 64 MB so the
+# full game pak0.pak fits without Hunk_Alloc failures.
 $(QUAKEGEN_DIR)/quakegeneric.h:
 	git clone --depth=1 https://github.com/erysdren/quakegeneric.git $(QUAKE_DIR)/quakegeneric
+	sed -i 's/parms\.memsize = 8\*1024\*1024/parms.memsize = 64*1024*1024/' $(QUAKEGEN_DIR)/quakegeneric.c
 
 # All quakegeneric engine sources (from CMakeLists.txt)
 QUAKEGEN_SRCS := $(addprefix $(QUAKEGEN_DIR)/, \
@@ -361,7 +375,8 @@ $(QUAKE_BUILD)/quakegeneric_potato.o: $(QUAKE_DIR)/quakegeneric_potato.c $(QUAKE
 	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
 
 $(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
+	$(LD) --no-relax --wrap=Sys_Error --wrap=Sys_Printf --wrap=Hunk_AllocName \
+	      -T src/userspace/libc/libc.ld -o $@ \
 	      $(LIBC_CRT0) $(QUAKE_BUILD)/quakegeneric_potato.o $(QUAKEGEN_OBJS) $(LIBC_A)
 
 quake: $(QUAKE_ELF)
@@ -377,7 +392,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(PAKTEST_BIN) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=128 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -404,6 +419,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file $(WM_TEST_BIN)    WM_TEST.ELF; \
 	copy_file $(SH_ELF_BIN)     SH.ELF; \
 	copy_file $(SNAKE_BIN)      SNAKE.ELF; \
+	copy_file $(PAKTEST_BIN)    PAKTEST.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD; \
 	copy_file $(QUAKE_ELF)      QUAKE.ELF; \

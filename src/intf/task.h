@@ -106,7 +106,7 @@ class TaskScheduler {
 public:
     static constexpr pt::size_t MAX_TASKS = 16;
     static constexpr pt::size_t TASK_STACK_SIZE = 16384;  // 16KB kernel interrupt stack
-    static constexpr pt::size_t USER_STACK_SIZE  = 65536; // 64KB user execution stack
+    static constexpr pt::size_t USER_STACK_SIZE  = 2097152; // 2MB user execution stack (Quake needs ~200KB for renderer arrays)
     // How many timer ticks between forced preemptions.
     // At 50 Hz this gives ~200 ms time slices.
     static constexpr pt::size_t SCHEDULER_QUANTUM = 10;

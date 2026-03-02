@@ -40,6 +40,7 @@
 #define SYS_GET_MICROS       33  /* () → microseconds since boot (uint64)              */
 #define SYS_AUDIO_WRITE      34  /* rdi=data, rsi=bytes, rdx=rate; 1=ok 0=busy -1=none */
 #define SYS_AUDIO_PLAYING    35  /* () → 1=playing, 0=idle, -1=no AC97                 */
+#define SYS_WRITE_SERIAL     36  /* rdi=buf, rsi=len; write raw bytes to COM1 serial   */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -226,3 +227,7 @@ static inline long sys_audio_write(const void *data, unsigned long bytes,
 /* Returns 1 if AC97 is currently playing, 0 if idle, -1 if absent. */
 static inline long sys_audio_is_playing(void)
     { return __sc0(SYS_AUDIO_PLAYING); }
+
+/* Write raw bytes to the kernel COM1 serial port (appears in QEMU -serial stdio). */
+static inline long sys_write_serial(const char *buf, size_t n)
+    { return __sc2(SYS_WRITE_SERIAL, (long)buf, (long)n); }

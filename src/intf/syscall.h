@@ -39,3 +39,4 @@ constexpr pt::uint64_t SYS_GET_MOUSE_EVENT  = 32; // () → encoded event or (ui
 constexpr pt::uint64_t SYS_GET_MICROS       = 33; // () → microseconds since boot (uint64)
 constexpr pt::uint64_t SYS_AUDIO_WRITE      = 34; // rdi=data, rsi=bytes, rdx=rate; 1=ok, 0=busy, -1=absent
 constexpr pt::uint64_t SYS_AUDIO_PLAYING    = 35; // () → 1=playing, 0=idle, -1=no AC97
+constexpr pt::uint64_t SYS_WRITE_SERIAL     = 36; // rdi=buf, rsi=len; write raw bytes to COM1 serial log

@@ -120,6 +120,55 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
             if (flag_left) for (int i = plen; i < width; i++) EMIT(' ');
             continue;
         }
+        else if (spec == 'f' || spec == 'F' ||
+                 spec == 'e' || spec == 'E' ||
+                 spec == 'g' || spec == 'G') {
+            /* floating-point: floats are promoted to double in varargs */
+            double dval = va_arg(ap, double);
+            if (prec < 0) prec = 6;
+            int neg = 0;
+            if (dval < 0.0) { neg = 1; dval = -dval; }
+            /* round to requested precision */
+            double rounder = 0.5;
+            for (int i = 0; i < prec; i++) rounder *= 0.1;
+            dval += rounder;
+            /* split into integer and fractional parts */
+            unsigned long long ipart = (unsigned long long)dval;
+            double fpart = dval - (double)ipart;
+            char istr[32]; int ilen = 0;
+            if (ipart == 0) { istr[ilen++] = '0'; }
+            else {
+                unsigned long long t2 = ipart;
+                while (t2) { istr[ilen++] = (char)('0' + t2 % 10); t2 /= 10; }
+                for (int i = 0, j = ilen-1; i < j; i++, j--)
+                    { char t = istr[i]; istr[i] = istr[j]; istr[j] = t; }
+            }
+            istr[ilen] = '\0';
+            /* fractional digits */
+            char fstr[32]; int flen = prec;
+            for (int i = 0; i < prec; i++) {
+                fpart *= 10.0;
+                int d = (int)fpart; if (d > 9) d = 9;
+                fstr[i] = (char)('0' + d);
+                fpart -= (double)d;
+            }
+            fstr[flen] = '\0';
+            /* %g/%G: strip trailing zeros from fraction */
+            if (spec == 'g' || spec == 'G') {
+                while (flen > 0 && fstr[flen-1] == '0') flen--;
+            }
+            int pfxlen = (neg || flag_plus || flag_space) ? 1 : 0;
+            int total = pfxlen + ilen + (flen > 0 ? 1 + flen : 0);
+            char padc = (flag_zero && !flag_left) ? '0' : ' ';
+            if (!flag_left) for (int i = total; i < width; i++) EMIT(padc);
+            if (neg) EMIT('-');
+            else if (flag_plus) EMIT('+');
+            else if (flag_space) EMIT(' ');
+            EMITSTR(istr, (size_t)ilen);
+            if (flen > 0) { EMIT('.'); EMITSTR(fstr, (size_t)flen); }
+            if (flag_left) for (int i = total; i < width; i++) EMIT(' ');
+            continue;
+        }
 
         /* fetch the value */
         unsigned long uval;

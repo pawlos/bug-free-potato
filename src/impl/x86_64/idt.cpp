@@ -912,6 +912,14 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			if (!AC97::is_present()) return (pt::uint64_t)-1;
 			return AC97::is_playing() ? 1 : 0;
 
+		case SYS_WRITE_SERIAL: {
+			const char* buf = reinterpret_cast<const char*>(arg1);
+			pt::uint64_t len = arg2;
+			for (pt::uint64_t i = 0; i < len; i++)
+				debug.print_ch(buf[i]);
+			return len;
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

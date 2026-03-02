@@ -7,11 +7,11 @@ constexpr pt::uint32_t COM2 = 0x2F8;
 constexpr pt::uint32_t COM3 = 0x3E8;
 constexpr pt::uint32_t COM4 = 0x2E8;
 
-class ComDevice 
+class ComDevice
 {
-    void print_ch(char a);
     public:
         ComDevice();
+        void print_ch(char a);
         void print_str(const char *str, va_list args);
         void print_str(const char *str, ...);
 };

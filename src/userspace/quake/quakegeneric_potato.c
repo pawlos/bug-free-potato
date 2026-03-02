@@ -17,10 +17,13 @@
 
 #include "quakegeneric.h"
 #include <stddef.h>   /* NULL */
+#include <stdarg.h>   /* va_list for __wrap_Sys_Error */
 
 /* Use libc/ headers via the -I src/userspace include path */
 #include "libc/syscall.h"
 #include "libc/string.h"
+#include "libc/stdio.h"   /* printf, vsnprintf */
+#include "libc/stdlib.h"  /* atexit, exit */
 
 /* ── display ─────────────────────────────────────────────────────────────── */
 
@@ -51,19 +54,79 @@ static void create_quake_window(void)
     g_wid = sys_create_window(cx, cy, QUAKE_W, QUAKE_H);
 }
 
+/* ── error visibility ─────────────────────────────────────────────────────── */
+
+/* Registered as atexit handler: keep the window open so errors remain readable
+ * before the task is torn down.  Registered FIRST so it runs LAST (LIFO). */
+static void exit_pause(void)
+{
+    printf("\n[potatOS] Quake exited — window closes in 15 s\n");
+    sys_sleep_ms(15000);
+}
+
+/* Write a string to COM1 serial (QEMU -serial stdio). */
+static void serial_puts(const char *s, int len)
+{
+    if (len > 0)
+        sys_write_serial(s, (size_t)len);
+}
+
+/* Hunk_AllocName override via --wrap=Hunk_AllocName.
+ * Logs every hunk allocation to serial so we can see exactly which allocation
+ * triggers the Hunk_Alloc: failed error (both name and size). */
+extern void *__real_Hunk_AllocName(int size, char *name);
+void *__wrap_Hunk_AllocName(int size, char *name)
+{
+    char buf[128];
+    int n = snprintf(buf, sizeof(buf), "[HUNK] %7d  %s\n", size, name ? name : "(null)");
+    serial_puts(buf, n);
+    return __real_Hunk_AllocName(size, name);
+}
+
+/* Sys_Printf override via linker --wrap=Sys_Printf.
+ * Routes all engine log output to both the window and serial. */
+void __wrap_Sys_Printf(char *fmt, ...)
+{
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (n > 0) {
+        printf("%s", buf);
+        serial_puts(buf, n);
+    }
+}
+
+/* Sys_Error override via linker --wrap=Sys_Error.
+ * Formats the engine error message, then falls through to exit(1) which
+ * calls exit_pause (via atexit) so the user can read the error. */
+void __wrap_Sys_Error(char *error, ...)
+{
+    char buf[512];
+    va_list ap;
+    va_start(ap, error);
+    vsnprintf(buf, sizeof(buf), error, ap);
+    va_end(ap);
+    const char *prefix = "\n** QUAKE ERROR: ";
+    const char *suffix = " **\n";
+    serial_puts(prefix, 17);
+    serial_puts(buf, (int)strlen(buf));
+    serial_puts(suffix, 4);
+    printf("\n** QUAKE ERROR: %s **\n", buf);
+    exit(1);   /* triggers atexit → exit_pause */
+}
+
 /* Called by quakegeneric before Host_Init */
 void QG_Init(void)
 {
+    atexit(exit_pause);      /* register early so it runs last on exit */
     create_quake_window();   /* idempotent */
 }
 
 void QG_Quit(void)
 {
-    if (g_wid >= 0) {
-        sys_destroy_window(g_wid);
-        g_wid = -1;
-    }
-    sys_exit(0);
+    exit(0);   /* go through atexit → exit_pause, then sys_exit */
 }
 
 /* Store Quake's 768-byte (256 × RGB) palette */
