@@ -103,6 +103,16 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
             continue;
         }
 
+        /* Catch truly unknown specifiers before we touch va_arg.
+         * d/i/u/x/X/o are handled by the integer path below;
+         * p/f/F/e/E/g/G/%/c/s/n all have explicit handlers above. */
+        if (spec != 'd' && spec != 'i' && spec != 'u' &&
+            spec != 'x' && spec != 'X' && spec != 'o') {
+            EMIT('%');
+            EMIT(spec);
+            continue;
+        }
+
         /* integer specifiers */
         int is_signed = (spec == 'd' || spec == 'i');
         int base = 10;
@@ -167,14 +177,6 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
             EMITSTR(istr, (size_t)ilen);
             if (flen > 0) { EMIT('.'); EMITSTR(fstr, (size_t)flen); }
             if (flag_left) for (int i = total; i < width; i++) EMIT(' ');
-            continue;
-        }
-        else {
-            /* unknown specifier — emit %X literally so output is at least
-             * visible and subsequent va_args are not consumed from the wrong
-             * register (which silently corrupts all following arguments). */
-            EMIT('%');
-            EMIT(spec);
             continue;
         }
 
