@@ -64,16 +64,8 @@ clean:
 	-rm -f $(TEST_ELF_OBJ) $(TEST_ELF_BIN)
 	-rm -f $(BLINK_ELF_OBJ) $(BLINK_ELF_BIN)
 	-rm -rf build/userspace/libc
-	-rm -f $(LIBC_CRT0) $(LIBC_A) $(HELLO_ELF_BIN)
-	-rm -f $(FORK_TEST_OBJ) $(FORK_TEST_BIN)
-	-rm -f $(PIPE_TEST_OBJ) $(PIPE_TEST_BIN)
-	-rm -f $(MATHTEST_OBJ)  $(MATHTEST_BIN)
-	-rm -f $(KEYTEST_OBJ)   $(KEYTEST_BIN)
-	-rm -f $(FSWRITE_OBJ)   $(FSWRITE_BIN)
-	-rm -f $(WM_TEST_OBJ)   $(WM_TEST_BIN)
-	-rm -f $(SNAKE_OBJ)     $(SNAKE_BIN)
-	-rm -f $(PAKTEST_OBJ)   $(PAKTEST_BIN)
-	-rm -f $(SH_ELF_OBJ)   $(SH_ELF_BIN)
+	-rm -f $(LIBC_CRT0) $(LIBC_A)
+	-rm -f $(SIMPLE_OBJS) $(SIMPLE_BINS)
 	-rm -rf $(DOOM_BUILD)
 	-rm -f  $(DOOM_ELF)
 	-rm -rf $(QUAKE_BUILD)
@@ -112,115 +104,19 @@ $(LIBC_ASM_OBJS): build/userspace/libc/%.o : src/userspace/libc/%.asm
 $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 	ar rcs $@ $^
 
-# ── Hello demo (C userspace program) ─────────────────────────────────────
-HELLO_ELF_OBJ = build/userspace/hello.o
-HELLO_ELF_BIN = src/impl/x86_64/bins/hello.elf
+# ── Simple C userspace programs (pattern rules) ──────────────────────────
+SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
+               sleep_test wm_test snake paktest sh mathtest
 
-$(HELLO_ELF_OBJ): src/userspace/hello.c $(LIBC_A)
+SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
+SIMPLE_BINS = $(patsubst %, src/impl/x86_64/bins/%.elf, $(SIMPLE_PROGS))
+
+$(SIMPLE_OBJS): build/userspace/%.o: src/userspace/%.c $(LIBC_A)
+	mkdir -p build/userspace
 	$(CC) -c $(CFLAGS_USER) -o $@ $<
 
-$(HELLO_ELF_BIN): $(HELLO_ELF_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(HELLO_ELF_OBJ) $(LIBC_A)
-
-# ── fork/exec/waitpid test ────────────────────────────────────────────────
-FORK_TEST_OBJ = build/userspace/fork_test.o
-FORK_TEST_BIN = src/impl/x86_64/bins/fork_test.elf
-
-$(FORK_TEST_OBJ): src/userspace/fork_test.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(FORK_TEST_BIN): $(FORK_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(FORK_TEST_OBJ) $(LIBC_A)
-
-# ── pipe test ────────────────────────────────────────────────────────────────
-PIPE_TEST_OBJ = build/userspace/pipe_test.o
-PIPE_TEST_BIN = src/impl/x86_64/bins/pipe_test.elf
-
-$(PIPE_TEST_OBJ): src/userspace/pipe_test.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(PIPE_TEST_BIN): $(PIPE_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PIPE_TEST_OBJ) $(LIBC_A)
-
-# ── filesystem write test ─────────────────────────────────────────────────────
-FSWRITE_OBJ = build/userspace/fswrite_test.o
-FSWRITE_BIN = src/impl/x86_64/bins/fswrite_test.elf
-
-$(FSWRITE_OBJ): src/userspace/fswrite_test.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(FSWRITE_BIN): $(FSWRITE_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(FSWRITE_OBJ) $(LIBC_A)
-
-# ── key event test ────────────────────────────────────────────────────────────
-KEYTEST_OBJ = build/userspace/keytest.o
-KEYTEST_BIN = src/impl/x86_64/bins/keytest.elf
-
-$(KEYTEST_OBJ): src/userspace/keytest.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(KEYTEST_BIN): $(KEYTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(KEYTEST_OBJ) $(LIBC_A)
-
-# ── sleep test ────────────────────────────────────────────────────────────────
-SLEEP_TEST_OBJ = build/userspace/sleep_test.o
-SLEEP_TEST_BIN = src/impl/x86_64/bins/sleep_test.elf
-
-$(SLEEP_TEST_OBJ): src/userspace/sleep_test.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(SLEEP_TEST_BIN): $(SLEEP_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SLEEP_TEST_OBJ) $(LIBC_A)
-
-# ── window manager test ───────────────────────────────────────────────────────
-WM_TEST_OBJ = build/userspace/wm_test.o
-WM_TEST_BIN = src/impl/x86_64/bins/wm_test.elf
-
-$(WM_TEST_OBJ): src/userspace/wm_test.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(WM_TEST_BIN): $(WM_TEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(WM_TEST_OBJ) $(LIBC_A)
-
-# ── Snake game ────────────────────────────────────────────────────────────────
-SNAKE_OBJ = build/userspace/snake.o
-SNAKE_BIN = src/impl/x86_64/bins/snake.elf
-
-$(SNAKE_OBJ): src/userspace/snake.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(SNAKE_BIN): $(SNAKE_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SNAKE_OBJ) $(LIBC_A)
-
-# ── PAK VFS stress test ───────────────────────────────────────────────────────
-PAKTEST_OBJ = build/userspace/paktest.o
-PAKTEST_BIN = src/impl/x86_64/bins/paktest.elf
-
-$(PAKTEST_OBJ): src/userspace/paktest.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(PAKTEST_BIN): $(PAKTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(PAKTEST_OBJ) $(LIBC_A)
-
-# ── userland shell ────────────────────────────────────────────────────────────
-SH_ELF_OBJ = build/userspace/sh.o
-SH_ELF_BIN = src/impl/x86_64/bins/sh.elf
-
-$(SH_ELF_OBJ): src/userspace/sh.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(SH_ELF_BIN): $(SH_ELF_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(SH_ELF_OBJ) $(LIBC_A)
-
-# ── math test ─────────────────────────────────────────────────────────────────
-MATHTEST_OBJ = build/userspace/mathtest.o
-MATHTEST_BIN = src/impl/x86_64/bins/mathtest.elf
-
-$(MATHTEST_OBJ): src/userspace/mathtest.c $(LIBC_A)
-	$(CC) -c $(CFLAGS_USER) -o $@ $<
-
-$(MATHTEST_BIN): $(MATHTEST_OBJ) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $(MATHTEST_OBJ) $(LIBC_A)
+$(SIMPLE_BINS): src/impl/x86_64/bins/%.elf: build/userspace/%.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $< $(LIBC_A)
 
 # Userspace test ELF
 TEST_ELF_OBJ  = build/userspace/test.o
@@ -392,7 +288,7 @@ ASSET_FILES = src/impl/x86_64/bins/font.psf \
               src/impl/x86_64/bins/potato.txt \
               src/impl/x86_64/bins/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FORK_TEST_BIN) $(PIPE_TEST_BIN) $(MATHTEST_BIN) $(KEYTEST_BIN) $(FSWRITE_BIN) $(SLEEP_TEST_BIN) $(WM_TEST_BIN) $(SH_ELF_BIN) $(SNAKE_BIN) $(PAKTEST_BIN) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=128 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -409,17 +305,17 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(HELLO_ELF_BIN) $(FOR
 	copy_file src/impl/x86_64/bins/boot.raw   BOOT.RAW; \
 	copy_file $(TEST_ELF_BIN)   TEST.ELF; \
 	copy_file $(BLINK_ELF_BIN)  BLINK.ELF; \
-	copy_file $(HELLO_ELF_BIN)  HELLO.ELF; \
-	copy_file $(FORK_TEST_BIN)  FORK_TEST.ELF; \
-	copy_file $(PIPE_TEST_BIN)  PIPE_TEST.ELF; \
-	copy_file $(MATHTEST_BIN)   MATHTEST.ELF; \
-	copy_file $(KEYTEST_BIN)    KEYTEST.ELF; \
-	copy_file $(FSWRITE_BIN)    FSWRITE.ELF; \
-	copy_file $(SLEEP_TEST_BIN) SLEEP_TEST.ELF; \
-	copy_file $(WM_TEST_BIN)    WM_TEST.ELF; \
-	copy_file $(SH_ELF_BIN)     SH.ELF; \
-	copy_file $(SNAKE_BIN)      SNAKE.ELF; \
-	copy_file $(PAKTEST_BIN)    PAKTEST.ELF; \
+	copy_file src/impl/x86_64/bins/hello.elf       HELLO.ELF; \
+	copy_file src/impl/x86_64/bins/fork_test.elf   FORK_TEST.ELF; \
+	copy_file src/impl/x86_64/bins/pipe_test.elf   PIPE_TEST.ELF; \
+	copy_file src/impl/x86_64/bins/mathtest.elf    MATHTEST.ELF; \
+	copy_file src/impl/x86_64/bins/keytest.elf     KEYTEST.ELF; \
+	copy_file src/impl/x86_64/bins/fswrite_test.elf FSWRITE.ELF; \
+	copy_file src/impl/x86_64/bins/sleep_test.elf  SLEEP_TEST.ELF; \
+	copy_file src/impl/x86_64/bins/wm_test.elf     WM_TEST.ELF; \
+	copy_file src/impl/x86_64/bins/sh.elf          SH.ELF; \
+	copy_file src/impl/x86_64/bins/snake.elf       SNAKE.ELF; \
+	copy_file src/impl/x86_64/bins/paktest.elf     PAKTEST.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD; \
 	copy_file $(QUAKE_ELF)      QUAKE.ELF; \

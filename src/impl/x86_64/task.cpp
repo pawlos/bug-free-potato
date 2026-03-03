@@ -1082,9 +1082,10 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     //    For user VA `va` in [USER_STACK_BOT, USER_STACK_TOP):
     //      pt_idx = (va - USER_STACK_BOT) >> 12
     //      byte ptr = (new_stack_pt[pt_idx] & ~0xFFF) + (va & 0xFFF)
-    // Start at USER_STACK_TOP - 8 so [rsp] = argc = 0 (from zeroed stack frame),
+    // Start at USER_STACK_TOP - 16 so [rsp] = argc = 0 (from zeroed stack frame),
     // within the mapped stack pages (PDPT[0]), not at the PDPT[1] boundary.
-    pt::uint64_t new_user_rsp = USER_STACK_TOP - 8;
+    // Must be 16-byte aligned to satisfy the SysV ABI at _start.
+    pt::uint64_t new_user_rsp = USER_STACK_TOP - 16;
 
     if (real_argc > 0) {
         pt::uint64_t rsp = USER_STACK_TOP;
@@ -1111,6 +1112,15 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
 
         // Align rsp down to 8 bytes.
         rsp &= ~(pt::uint64_t)7;
+
+        // Ensure final RSP (after pushing NULL + argv + argc) is 16-byte aligned.
+        // Total qwords to push below: 1 (NULL) + real_argc (argv ptrs) + 1 (argc).
+        // If (rsp - total*8) is not 16-byte aligned, add 8 bytes of padding.
+        {
+            pt::uint64_t final_rsp = rsp - (pt::uint64_t)(real_argc + 2) * 8;
+            if (final_rsp & 0xF)
+                rsp -= 8;
+        }
 
         // Write NULL sentinel qword.
         rsp -= 8;
