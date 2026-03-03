@@ -66,7 +66,7 @@ void print_help() {
     klog("  history          - Show command history\n");
     klog("  shutdown         - Shutdown system (ACPI or PS/2)\n");
     klog("  reboot           - Reboot system\n");
-    klog("  task [create]    - Show tasks or create test task\n");
+    klog("  task [create|map] - Show tasks, create test task, or dump memory map\n");
     klog("  write <file> <text> - Create a new file with text content\n");
     klog("  rm <file>        - Delete a file\n");
     klog("  exec <file>      - Load and run an ELF program\n");
@@ -357,14 +357,8 @@ void Shell::execute_task(const char* cmd) {
     if (*args == '\0')
     {
         // List all tasks
-        klog("[SHELL] Task list:\n");
         Task* current = TaskScheduler::get_current_task();
         klog("  Current task ID: %d\n", current->id);
-        klog("  Task states:\n");
-        for (int i = 0; i < 16; i++) {
-            // We can't directly access tasks array, so just show current
-            klog("    Running task %d (ticks alive: %d)\n", current->id, (int)current->ticks_alive);
-        }
         return;
     }
 
@@ -374,17 +368,33 @@ void Shell::execute_task(const char* cmd) {
         klog("[SHELL] Creating test task...\n");
         pt::uint32_t task_id = TaskScheduler::create_task(&test_task_fn);
         if (task_id != 0xFFFFFFFF)
-        {
             klog("[SHELL] Created task with ID %d\n", task_id);
-        }
         else
-        {
             klog("[SHELL] Failed to create task\n");
+        return;
+    }
+
+    // "task map [id]" — dump memory map for a task
+    if (args[0] == 'm' && args[1] == 'a' && args[2] == 'p') {
+        const char* id_str = args + 3;
+        while (*id_str == ' ' || *id_str == '\t') id_str++;
+        if (*id_str == '\0') {
+            // Dump all non-dead tasks.
+            for (pt::uint32_t i = 0; i < TaskScheduler::MAX_TASKS; i++)
+                TaskScheduler::dump_task_map(i);
+        } else {
+            // Parse decimal task id.
+            pt::uint32_t tid = 0;
+            while (*id_str >= '0' && *id_str <= '9') {
+                tid = tid * 10 + (*id_str - '0');
+                id_str++;
+            }
+            TaskScheduler::dump_task_map(tid);
         }
         return;
     }
 
-    klog("Usage: task [create]\n");
+    klog("Usage: task [create|map [id]]\n");
 }
 
 void Shell::execute_help(const char* cmd) {

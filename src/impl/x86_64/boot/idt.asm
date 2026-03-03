@@ -76,11 +76,22 @@ GLOBAL irq1
 ; Passes saved register block (RSP after PUSHALL) to irq0_schedule.
 ; irq0_schedule returns the RSP to resume (same task or next task).
 [extern irq0_schedule]
+[extern g_next_cr3]
 irq0:
     PUSHALL
     mov rdi, rsp            ; arg: pointer to saved context (PUSHALL frame)
     call irq0_schedule      ; returns new RSP (same or next task)
-    mov rsp, rax            ; switch to (possibly different) task context
+    mov rsp, rax            ; switch RSP to new task's kernel stack (high-half VA)
+    ; Load the pending CR3 switch (if any) now that RSP is on the new task's
+    ; high-half kernel stack.  g_next_cr3 is at a kernel high-half VA, readable
+    ; via PML4[256] in any CR3 (ring-0 supervisor access ignores the U/S bit).
+    mov rax, [rel g_next_cr3]
+    test rax, rax
+    jz .irq0_no_cr3
+    mov cr3, rax
+    xor rax, rax
+    mov [rel g_next_cr3], rax
+.irq0_no_cr3:
     POPALL
     iretq
 GLOBAL irq0
@@ -93,6 +104,14 @@ _int_yield_stub:
     mov rdi, rsp
     call yield_schedule
     mov rsp, rax
+    ; Same deferred CR3 switch as irq0.
+    mov rax, [rel g_next_cr3]
+    test rax, rax
+    jz .yield_no_cr3
+    mov cr3, rax
+    xor rax, rax
+    mov [rel g_next_cr3], rax
+.yield_no_cr3:
     POPALL
     iretq
 GLOBAL _int_yield_stub

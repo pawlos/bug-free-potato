@@ -14,10 +14,21 @@ void tss_init() {
     memset(&kernel_tss, 0, sizeof(TSS64));
     kernel_tss.iomap_base = sizeof(TSS64);  // no IO permission map
 
-    // Read the current GDT base via sgdt.  The GDT is in low physical memory
-    // (identity-mapped), so gdtr.base is its accessible virtual address too.
+    // Read the current GDT base via sgdt.  The boot stub loaded the GDT with a
+    // low physical address (identity-mapped via PML4[0] boot PDPT).  Relocate the
+    // GDTR to the high-half alias (KERNEL_OFFSET + PA) so that the GDT stays
+    // accessible in user-task CR3s where PML4[0] → user_pdpt (not the boot PDPT).
+    // PML4[256] always covers the full first 4 GB, so KERNEL_OFFSET + low_PA is
+    // always reachable regardless of which CR3 is active.
     GDTPointer gdtr;
     asm volatile("sgdt %0" : "=m"(gdtr));
+    if (gdtr.base < KERNEL_OFFSET) {
+        GDTPointer high_gdtr;
+        high_gdtr.limit = gdtr.limit;
+        high_gdtr.base  = gdtr.base + KERNEL_OFFSET;
+        asm volatile("lgdt %0" : : "m"(high_gdtr) : "memory");
+        gdtr.base = high_gdtr.base;
+    }
 
     pt::uint64_t base  = (pt::uint64_t)&kernel_tss;
     pt::uint64_t limit = sizeof(TSS64) - 1;  // 103

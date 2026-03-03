@@ -60,17 +60,18 @@ struct Task {
     // Per-task open file descriptors.  slot.open==false means free.
     File fd_table[MAX_FDS];
 
-    // Private page-table frames carved out for user ELF code isolation.
-    // Each user ELF task gets its own PDPT/PD/PT(s) so that the code region
-    // (0xFFFF800018000000) maps to task-private physical frames, allowing
-    // multiple ELF tasks to run concurrently without overwriting each other.
-    // All entries are 0 for kernel tasks or tasks without create_elf_task.
+    // Per-task user-space page-table frames.
+    // user_pdpt/user_pd are fresh (not boot-table copies), wired at PML4[0].
+    // priv_pt[] holds code PT frames; stack_pt holds the 2MB stack PT.
+    // All zero for kernel tasks or tasks without create_elf_task.
     // MAX_PRIV_PTS=8 covers up to 8×512×4KB = 16 MB of ELF code.
     static constexpr pt::size_t MAX_PRIV_PTS = 8;
-    pt::uintptr_t priv_pdpt;                  // physical addr of private PDPT frame (or 0)
-    pt::uintptr_t priv_pd;                    // physical addr of private PD frame   (or 0)
-    pt::uintptr_t priv_pt[MAX_PRIV_PTS];      // physical addrs of private PT frames
+    pt::uintptr_t user_pdpt;                  // PA of per-task user PDPT (PML4[0] target)
+    pt::uintptr_t user_pd;                    // PA of per-task user PD   (PDPT[0] target)
+    pt::uintptr_t priv_pt[MAX_PRIV_PTS];      // PA of code PT frames
     pt::size_t    num_priv_pts;               // how many priv_pt[] entries are valid
+    pt::uintptr_t stack_pt;                   // PA of stack PT frame  (PD[511] target)
+    pt::uintptr_t user_heap_top;              // next free user heap VA (for SYS_MMAP)
 
     // Process hierarchy and exit status (for fork/waitpid).
     pt::uint32_t parent_id;    // 0xFFFFFFFF = no parent
@@ -102,14 +103,31 @@ struct Task {
 // to inspect/clone/patch the calling user task's register state.
 extern pt::uintptr_t g_syscall_rsp;
 
+// Pending CR3 value to load in the timer/yield assembly stub after RSP is
+// already switched to the new task's kernel stack.  Set by do_switch_to_next;
+// cleared by the assembly after loading.  0 = no switch pending.
+// Must be declared extern so idt.asm can reference it via [extern g_next_cr3].
+extern pt::uintptr_t g_next_cr3;
+
 class TaskScheduler {
 public:
     static constexpr pt::size_t MAX_TASKS = 16;
     static constexpr pt::size_t TASK_STACK_SIZE = 16384;  // 16KB kernel interrupt stack
-    static constexpr pt::size_t USER_STACK_SIZE  = 2097152; // 2MB user execution stack (Quake needs ~200KB for renderer arrays)
+    static constexpr pt::size_t USER_STACK_SIZE  = 2097152; // 2MB user execution stack
     // How many timer ticks between forced preemptions.
     // At 50 Hz this gives ~200 ms time slices.
     static constexpr pt::size_t SCHEDULER_QUANTUM = 10;
+
+    // User-space virtual address layout constants.
+    static constexpr pt::uintptr_t USER_CODE_BASE    = 0x0000000000400000ULL; // ELF load base
+    static constexpr pt::uintptr_t USER_HEAP_BASE    = 0x0000000001000000ULL; // heap start
+    static constexpr pt::uintptr_t USER_STACK_BOT    = 0x000000003FE00000ULL; // PD[511] start
+    static constexpr pt::uintptr_t USER_STACK_TOP    = 0x0000000040000000ULL; // initial RSP
+    static constexpr pt::size_t    USER_PML4_IDX     = 0;    // PML4 index for user space
+    static constexpr pt::size_t    USER_PDPT_IDX     = 0;    // PDPT index for first 1GB
+    static constexpr pt::size_t    USER_CODE_PD_IDX  = 2;    // 0x400000 / 2MB = 2
+    static constexpr pt::size_t    USER_STACK_PD_IDX = 511;  // 0x3FE00000 / 2MB = 511
+    static constexpr pt::size_t    USER_STACK_PAGES  = 512;  // 2MB / 4KB
 
     // Initialize scheduler
     static void initialize();
@@ -169,6 +187,15 @@ public:
     // Block the current task for at least ms milliseconds, then resume.
     // Returns immediately if ms == 0.
     static void sleep_task(pt::uint64_t ms);
+
+    // Map [va, va+size) into the task's user address space by allocating
+    // physical frames and inserting them into the task's user_pd hierarchy.
+    // Called from the SYS_MMAP handler (task CR3 active — uses KERNEL_OFFSET).
+    static void map_user_pages(Task* t, pt::uintptr_t va, pt::size_t size);
+
+    // Dump a compact memory map of a task's user address space to klog.
+    // Walks user_pd entries and prints contiguous mapped regions.
+    static void dump_task_map(pt::uint32_t task_id);
 
 private:
     static Task tasks[MAX_TASKS];

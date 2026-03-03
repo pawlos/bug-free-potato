@@ -27,21 +27,70 @@ static void close_fd(File* f)
     }
 }
 
-// Free all private PT frames (and their mapped code frames) for a task.
-// Does NOT free priv_pd or priv_pdpt — those are freed by the caller.
-static void free_priv_pts(Task* t)
+// Free all user-space page-table frames and their mapped physical frames.
+// Covers code PTs (priv_pt[]), stack PT (stack_pt), heap PTs (user_pd entries),
+// and the user_pd / user_pdpt frames themselves.
+//
+// Uses KERNEL_OFFSET + PA for all frame accesses so it works under both
+// the kernel CR3 (identity map via PML4[0]) and a task CR3 (ring-0 uses
+// the kernel half at PML4[256] which maps KERNEL_OFFSET + PA).
+static void free_user_pagetables(Task* t)
 {
-    for (pt::size_t k = 0; k < t->num_priv_pts; k++) {
+    pt::size_t num_code_pts = t->num_priv_pts;
+
+    // 1. Free code PT frames and their mapped code frames.
+    for (pt::size_t k = 0; k < num_code_pts; k++) {
         if (!t->priv_pt[k]) continue;
-        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(t->priv_pt[k]);
+        pt::uint64_t* cpt = reinterpret_cast<pt::uint64_t*>(
+            KERNEL_OFFSET + t->priv_pt[k]);
         for (int j = 0; j < 512; j++) {
-            if (pt[j] & 0x01)
-                vmm.free_frame(pt[j] & ~(pt::uintptr_t)0xFFF);
+            if (cpt[j] & 0x01)
+                vmm.free_frame(cpt[j] & ~(pt::uintptr_t)0xFFF);
         }
         vmm.free_frame(t->priv_pt[k]);
         t->priv_pt[k] = 0;
     }
     t->num_priv_pts = 0;
+
+    // 2. Free stack PT frame and all stack frames it maps.
+    if (t->stack_pt) {
+        pt::uint64_t* spt = reinterpret_cast<pt::uint64_t*>(
+            KERNEL_OFFSET + t->stack_pt);
+        for (int j = 0; j < 512; j++) {
+            if (spt[j] & 0x01)
+                vmm.free_frame(spt[j] & ~(pt::uintptr_t)0xFFF);
+        }
+        vmm.free_frame(t->stack_pt);
+        t->stack_pt = 0;
+    }
+
+    // 3. Free heap PT frames and heap frames (user_pd[heap_start..USER_STACK_PD_IDX-1]).
+    if (t->user_pd) {
+        pt::uint64_t* upd = reinterpret_cast<pt::uint64_t*>(
+            KERNEL_OFFSET + t->user_pd);
+        pt::size_t heap_start = TaskScheduler::USER_CODE_PD_IDX + num_code_pts;
+        for (pt::size_t i = heap_start; i < TaskScheduler::USER_STACK_PD_IDX; i++) {
+            if (!(upd[i] & 0x01)) continue;
+            if (upd[i] & 0x80) continue;  // 2MB huge page (boot identity entry) — not a PT
+            pt::uint64_t* hpt = reinterpret_cast<pt::uint64_t*>(
+                KERNEL_OFFSET + (upd[i] & ~(pt::uintptr_t)0xFFF));
+            for (int j = 0; j < 512; j++) {
+                if (hpt[j] & 0x01)
+                    vmm.free_frame(hpt[j] & ~(pt::uintptr_t)0xFFF);
+            }
+            vmm.free_frame(upd[i] & ~(pt::uintptr_t)0xFFF);
+        }
+        vmm.free_frame(t->user_pd);
+        t->user_pd = 0;
+    }
+
+    // 4. Free user PDPT frame.
+    if (t->user_pdpt) {
+        vmm.free_frame(t->user_pdpt);
+        t->user_pdpt = 0;
+    }
+
+    t->user_heap_top = 0;
 }
 
 // Static member initialization
@@ -58,6 +107,12 @@ static pt::uint8_t default_fxsave[512] __attribute__((aligned(16)));
 // Kernel RSP captured by _syscall_stub immediately after PUSHALL.
 // Declared extern in task.h and idt.asm.
 pt::uintptr_t g_syscall_rsp = 0;
+
+// Pending CR3 to load in irq0/yield assembly after RSP is already on the new
+// task's kernel stack (high-half VA).  Avoids crashing when the old task's
+// stack is at a low VA (e.g. task 0's boot stack) that is unmapped in the new
+// task's CR3.  0 = no switch pending.
+pt::uintptr_t g_next_cr3 = 0;
 
 void TaskScheduler::initialize()
 {
@@ -77,10 +132,12 @@ void TaskScheduler::initialize()
         tasks[i].cr3 = 0;
         tasks[i].user_mode = false;
         tasks[i].user_stack_base = 0;
-        tasks[i].priv_pdpt    = 0;
-        tasks[i].priv_pd      = 0;
+        tasks[i].user_pdpt    = 0;
+        tasks[i].user_pd      = 0;
         for (pt::size_t j = 0; j < Task::MAX_PRIV_PTS; j++) tasks[i].priv_pt[j] = 0;
         tasks[i].num_priv_pts = 0;
+        tasks[i].stack_pt     = 0;
+        tasks[i].user_heap_top = 0;
         tasks[i].parent_id        = 0xFFFFFFFF;
         tasks[i].waiting_for      = 0xFFFFFFFF;
         tasks[i].exit_code        = 0;
@@ -147,16 +204,8 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         new_task->cr3 = 0;
     }
 
-    // Lazy cleanup of private ELF code frames from a previous create_elf_task.
-    free_priv_pts(new_task);
-    if (new_task->priv_pd != 0) {
-        vmm.free_frame(new_task->priv_pd);
-        new_task->priv_pd = 0;
-    }
-    if (new_task->priv_pdpt != 0) {
-        vmm.free_frame(new_task->priv_pdpt);
-        new_task->priv_pdpt = 0;
-    }
+    // Lazy cleanup of user page tables from a previous create_elf_task.
+    free_user_pagetables(new_task);
 
     new_task->sleep_deadline = 0;
     new_task->window_id      = INVALID_WID;
@@ -196,39 +245,30 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->cr3 = pml4_frame;
     new_task->user_mode = user_mode;
     new_task->user_stack_base = 0;
-    new_task->priv_pdpt    = 0;
-    new_task->priv_pd      = 0;
+    new_task->user_pdpt    = 0;
+    new_task->user_pd      = 0;
     for (pt::size_t j = 0; j < Task::MAX_PRIV_PTS; j++) new_task->priv_pt[j] = 0;
     new_task->num_priv_pts = 0;
+    new_task->stack_pt     = 0;
+    new_task->user_heap_top = 0;
     new_task->parent_id        = 0xFFFFFFFF;
     new_task->waiting_for      = 0xFFFFFFFF;
     new_task->exit_code        = 0;
     new_task->syscall_frame_rsp = 0;
 
-    // For ring-3 tasks, allocate a separate user execution stack.
-    //
-    // The kernel_stack is used exclusively as the interrupt/syscall stack
-    // (TSS RSP0).  When an int fires the CPU pushes an interrupt frame below
-    // RSP0, then the handler saves all registers via PUSHALL.  If user code
-    // were also running with RSP inside that same region the interrupt frame
-    // would silently overwrite saved return addresses and locals, causing the
-    // corrupted-stack crash observed when any syscall is made from C code.
-    //
-    // Keeping the two stacks in separate allocations eliminates the collision:
-    //   kernel_stack → used only during ring-3 → ring-0 transitions (TSS RSP0)
-    //   user_stack   → used only by ring-3 C/asm code (call, ret, push, pop)
+    // For ring-3 tasks, the user execution stack is mapped at USER_STACK_BOT..USER_STACK_TOP
+    // by create_elf_task() after we return.  Set initial RSP to USER_STACK_TOP - 16 so
+    // that:
+    //   1. [rsp] = 0 (argc=0) — within mapped stack, not at the PDPT[1] boundary.
+    //   2. RSP % 16 == 0 at _start — satisfies the SysV ABI requirement that RSP is
+    //      16-byte aligned at the CALL instruction, so that inside main() after
+    //      "push rbp; mov rbp, rsp", rbp is 16-byte aligned and SSE locals
+    //      at [rbp-k*16] are also 16-byte aligned (avoids MOVAPS #GP faults).
+    // The zeroed stack frames ensure [rsp] = 0 (argc=0) and [rsp+8] = 0 (argv=NULL).
+    // For kernel tasks, RSP = top of the kernel stack allocation.
     pt::uint64_t user_rsp;
     if (user_mode) {
-        void* user_stack_mem = vmm.kmalloc(USER_STACK_SIZE);
-        if (user_stack_mem == nullptr)
-        {
-            klog("[SCHEDULER] Failed to allocate user stack for task\n");
-            vmm.kfree(stack_mem);
-            vmm.free_frame(pml4_frame);
-            return 0xFFFFFFFF;
-        }
-        new_task->user_stack_base = (pt::uintptr_t)user_stack_mem;
-        user_rsp = (pt::uint64_t)((pt::uint8_t*)user_stack_mem + USER_STACK_SIZE);
+        user_rsp = USER_STACK_TOP - 16;
     } else {
         user_rsp = (pt::uint64_t)((pt::uint8_t*)stack_mem + stack_size);
     }
@@ -333,19 +373,12 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
     if (tasks[next_id].user_mode && tasks[next_id].kernel_stack_base != 0)
         tss_set_rsp0(tasks[next_id].kernel_stack_base + tasks[next_id].kernel_stack_size);
 
-    // Switch to the new task's address space.
-    // All cloned PML4s share the same kernel (higher-half) mappings so
-    // kernel code and stack remain accessible after the CR3 write.
-    if (tasks[next_id].cr3 != 0) {
-#ifdef SCHEDULER_DEBUG
-        if (tasks[next_id].user_mode) {
-            pt::uint64_t* pml4 = reinterpret_cast<pt::uint64_t*>(tasks[next_id].cr3);
-            klog("[SCHED] Loading CR3=%lx for task %d: PML4[0]=%lx PML4[256]=%lx\n",
-                 tasks[next_id].cr3, next_id, pml4[0], pml4[256]);
-        }
-#endif
-        asm volatile("mov cr3, %0" : : "r"(tasks[next_id].cr3) : "memory");
-    }
+    // Store the new CR3 in g_next_cr3 for the assembly stub to load AFTER it
+    // has already switched RSP to this task's high-half kernel stack.
+    // Loading CR3 here (in C) would leave the old task's low-VA boot stack
+    // active with the new task's CR3 — the 'ret' out of this function would
+    // try to read a return address from an unmapped low VA and triple-fault.
+    g_next_cr3 = tasks[next_id].cr3;
 
     // Save outgoing task's x87/SSE state and restore the incoming task's.
     // FXSAVE/FXRSTOR require a 16-byte aligned operand (guaranteed by alignas(16)).
@@ -438,12 +471,6 @@ void TaskScheduler::kill_user_tasks()
         for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
             close_fd(&t->fd_table[fd]);
 
-        // Free user execution stack.
-        if (t->user_stack_base != 0) {
-            vmm.kfree(reinterpret_cast<void*>(t->user_stack_base));
-            t->user_stack_base = 0;
-        }
-
         // Free kernel interrupt stack.
         if (t->kernel_stack_base != 0) {
             vmm.kfree(reinterpret_cast<void*>(t->kernel_stack_base));
@@ -456,16 +483,8 @@ void TaskScheduler::kill_user_tasks()
             t->cr3 = 0;
         }
 
-        // Free private ELF code frames and page table frames.
-        free_priv_pts(t);
-        if (t->priv_pd != 0) {
-            vmm.free_frame(t->priv_pd);
-            t->priv_pd = 0;
-        }
-        if (t->priv_pdpt != 0) {
-            vmm.free_frame(t->priv_pdpt);
-            t->priv_pdpt = 0;
-        }
+        // Free all user page tables and mapped frames.
+        free_user_pagetables(t);
 
         t->state = TASK_DEAD;
         task_count--;
@@ -488,7 +507,8 @@ static constexpr pt::size_t MAX_ELF_PAGES = Task::MAX_PRIV_PTS * 512;
 
 pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
 {
-    // 1. Load ELF into the shared staging area (phys 0x18000000 / VA 0xFFFF800018000000).
+    // 1. Load ELF into the shared staging area (phys 0x18000000 / ELF_STAGING_VA).
+    //    elf_loader.cpp redirects writes to ELF_STAGING_VA + (p_vaddr - USER_CODE_BASE).
     pt::size_t code_size = 0;
     pt::uintptr_t entry = ElfLoader::load(filename, &code_size);
     if (entry == 0) {
@@ -509,42 +529,43 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     pt::size_t num_pts = (num_code_frames + 511) / 512;
     if (num_pts == 0) num_pts = 1;
 
-    // 2. Read boot PDPT and PD addresses from kernel PML4.
-    pt::uint64_t* kernel_pml4  = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
-    pt::uintptr_t boot_pdpt_phys = kernel_pml4[ELF_PML4_IDX] & ~(pt::uintptr_t)0xFFF;
-    klog("[ELF_TASK] kernel_cr3=%lx PML4[%d]=%lx boot_pdpt_phys=%lx\n",
-         kernel_cr3, (int)ELF_PML4_IDX, kernel_pml4[ELF_PML4_IDX], boot_pdpt_phys);
-    if (boot_pdpt_phys == 0) {
-        klog("[ELF_TASK] boot_pdpt_phys is zero — PML4 not set up?\n");
-        return 0xFFFFFFFF;
-    }
-    pt::uint64_t* boot_pdpt    = reinterpret_cast<pt::uint64_t*>(boot_pdpt_phys);
-    pt::uintptr_t boot_pd_phys   = boot_pdpt[ELF_PDPT_IDX]  & ~(pt::uintptr_t)0xFFF;
-    klog("[ELF_TASK] boot_pdpt[%d]=%lx boot_pd_phys=%lx\n",
-         (int)ELF_PDPT_IDX, boot_pdpt[ELF_PDPT_IDX], boot_pd_phys);
-    if (boot_pd_phys == 0) {
-        klog("[ELF_TASK] boot_pd_phys is zero — PDPT not set up?\n");
-        return 0xFFFFFFFF;
-    }
+    // 2. Allocate fresh user_pdpt and user_pd frames.
+    //    Populate them with the boot identity-map entries (U/S cleared → kernel-only)
+    //    so ring-0 interrupt handlers can access device MMIO (framebuffer at 0xfd000000,
+    //    etc.) while this task's CR3 is active.  Code/stack entries are overridden below.
+    pt::uintptr_t user_pdpt_frame = vmm.allocate_frame();
+    pt::uintptr_t user_pd_frame   = vmm.allocate_frame();
+    pt::uint64_t* user_pdpt = reinterpret_cast<pt::uint64_t*>(user_pdpt_frame);
+    pt::uint64_t* user_pd   = reinterpret_cast<pt::uint64_t*>(user_pd_frame);
 
-    // 3. Allocate private PDPT, PD, and num_pts PT frames; copy boot tables.
-    pt::uintptr_t priv_pdpt_frame = vmm.allocate_frame();
-    pt::uintptr_t priv_pd_frame   = vmm.allocate_frame();
-    pt::uintptr_t priv_pt_frames[Task::MAX_PRIV_PTS];
+    // Read boot PDPT and its PD[0] via direct PA (identity-mapped under boot CR3).
+    pt::uint64_t* boot_pml4  = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
+    pt::uintptr_t boot_pdpt_pa = boot_pml4[0] & ~(pt::uintptr_t)0xFFF;
+    pt::uint64_t* boot_pdpt  = reinterpret_cast<pt::uint64_t*>(boot_pdpt_pa);
+    pt::uintptr_t boot_pd_pa   = boot_pdpt[0] & ~(pt::uintptr_t)0xFFF;
+    pt::uint64_t* boot_pd    = reinterpret_cast<pt::uint64_t*>(boot_pd_pa);
+
+    // user_pdpt[0] is wired to user_pd (with U/S=1) below.
+    // user_pdpt[1..3] copy boot PDPT entries (1..4 GB identity), U/S cleared.
+    memset(user_pdpt, 0, 4096);
+    for (int i = 1; i < 4; i++)
+        user_pdpt[i] = boot_pdpt[i] & ~(pt::uint64_t)0x04;
+
+    // user_pd copies all 512 boot PD0 entries (0..1 GB identity, U/S cleared).
+    // Code and stack entries are overridden with private PTs (U/S=1) below.
+    for (int i = 0; i < 512; i++)
+        user_pd[i] = boot_pd[i] & ~(pt::uint64_t)0x04;
+
+    klog("[ELF_TASK] user_pdpt=%lx user_pd=%lx num_pts=%d\n",
+         user_pdpt_frame, user_pd_frame, (int)num_pts);
+
+    // 3. Allocate code PT frames (zeroed) and populate with code data from staging.
+    pt::uintptr_t code_pt_frames[Task::MAX_PRIV_PTS];
     for (pt::size_t k = 0; k < num_pts; k++) {
-        priv_pt_frames[k] = vmm.allocate_frame();
-        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frames[k]);
-        for (int i = 0; i < 512; i++) pt[i] = 0;
+        code_pt_frames[k] = vmm.allocate_frame();
+        memset(reinterpret_cast<void*>(code_pt_frames[k]), 0, 4096);
     }
-    klog("[ELF_TASK] priv frames: pdpt=%lx pd=%lx num_pts=%d\n",
-         priv_pdpt_frame, priv_pd_frame, (int)num_pts);
 
-    memcpy(reinterpret_cast<void*>(priv_pdpt_frame),
-           reinterpret_cast<void*>(boot_pdpt_phys), 4096);
-    memcpy(reinterpret_cast<void*>(priv_pd_frame),
-           reinterpret_cast<void*>(boot_pd_phys), 4096);
-
-    // 4. Allocate private code frames; copy ELF code from staging area.
     klog("[ELF_TASK] allocating %d code frames across %d PT(s)\n",
          (int)num_code_frames, (int)num_pts);
     for (pt::size_t i = 0; i < num_code_frames; i++) {
@@ -554,45 +575,67 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         memcpy(reinterpret_cast<void*>(frame),
                reinterpret_cast<void*>(ELF_STAGING_VA + i * 4096),
                4096);
-        pt::uint64_t* priv_pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frames[i / 512]);
-        priv_pt[i % 512] = frame | 0x07;  // Present | Writable | User
+        pt::uint64_t* cpt = reinterpret_cast<pt::uint64_t*>(code_pt_frames[i / 512]);
+        cpt[i % 512] = frame | 0x07;  // Present | Writable | User
     }
-    klog("[ELF_TASK] code frames allocated; calling create_task\n");
 
-    // 5. Wire private page tables: priv_pd[ELF_PD_IDX+k] → priv_pt_frames[k]
-    pt::uint64_t* priv_pd   = reinterpret_cast<pt::uint64_t*>(priv_pd_frame);
-    pt::uint64_t* priv_pdpt = reinterpret_cast<pt::uint64_t*>(priv_pdpt_frame);
+    // Wire code PTs into user_pd at USER_CODE_PD_IDX.
     for (pt::size_t k = 0; k < num_pts; k++)
-        priv_pd[ELF_PD_IDX + k] = priv_pt_frames[k] | 0x07;  // no PS bit = 4KB pages
-    priv_pdpt[ELF_PDPT_IDX] = priv_pd_frame | 0x07;
+        user_pd[USER_CODE_PD_IDX + k] = code_pt_frames[k] | 0x07;
 
-    // 6. Create the task (allocates kernel/user stacks and clones boot PML4).
+    // 4. Allocate stack PT and stack frames; wire into user_pd[USER_STACK_PD_IDX].
+    pt::uintptr_t stack_pt_frame = vmm.allocate_frame();
+    pt::uint64_t* stack_pt = reinterpret_cast<pt::uint64_t*>(stack_pt_frame);
+    memset(stack_pt, 0, 4096);
+
+    for (pt::size_t i = 0; i < USER_STACK_PAGES; i++) {
+        pt::uintptr_t frame = vmm.allocate_frame();
+        memset(reinterpret_cast<void*>(frame), 0, 4096);
+        stack_pt[i] = frame | 0x07;
+    }
+    user_pd[USER_STACK_PD_IDX] = stack_pt_frame | 0x07;
+
+    // 5. Wire user_pdpt[0] → user_pd.
+    user_pdpt[USER_PDPT_IDX] = user_pd_frame | 0x07;
+
+    // 6. Create the task (allocates kernel stack, clones boot PML4).
+    klog("[ELF_TASK] code frames allocated; calling create_task\n");
     pt::uint32_t task_id = create_task(reinterpret_cast<void(*)()>(entry),
                                        TASK_STACK_SIZE, true);
     if (task_id == 0xFFFFFFFF) {
-        // Free everything on failure.
+        // Free all allocated frames on failure.
         for (pt::size_t k = 0; k < num_pts; k++) {
-            if (!priv_pt_frames[k]) continue;
-            pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(priv_pt_frames[k]);
+            if (!code_pt_frames[k]) continue;
+            pt::uint64_t* cpt = reinterpret_cast<pt::uint64_t*>(code_pt_frames[k]);
             for (int i = 0; i < 512; i++) {
-                if (pt[i] & 0x01) vmm.free_frame(pt[i] & ~(pt::uintptr_t)0xFFF);
+                if (cpt[i] & 0x01) vmm.free_frame(cpt[i] & ~(pt::uintptr_t)0xFFF);
             }
-            vmm.free_frame(priv_pt_frames[k]);
+            vmm.free_frame(code_pt_frames[k]);
         }
-        vmm.free_frame(priv_pd_frame);
-        vmm.free_frame(priv_pdpt_frame);
+        for (int i = 0; i < 512; i++) {
+            if (stack_pt[i] & 0x01) vmm.free_frame(stack_pt[i] & ~(pt::uintptr_t)0xFFF);
+        }
+        vmm.free_frame(stack_pt_frame);
+        vmm.free_frame(user_pd_frame);
+        vmm.free_frame(user_pdpt_frame);
         return 0xFFFFFFFF;
     }
 
-    // 7. Override task PML4[256] to point to the private PDPT.
+    // 7. Wire new user address space into the task's PML4.
     Task* task = &tasks[task_id];
     pt::uint64_t* task_pml4 = reinterpret_cast<pt::uint64_t*>(task->cr3);
-    task_pml4[ELF_PML4_IDX] = priv_pdpt_frame | 0x07;
+    // PML4[0] → user_pdpt (P|W|U): user code, heap, stack.
+    task_pml4[USER_PML4_IDX] = user_pdpt_frame | 0x07;
+    // PML4[256] → boot PDPT (P|W, no U bit): kernel only.
+    task_pml4[ELF_PML4_IDX] &= ~(pt::uint64_t)0x04;
 
-    task->priv_pdpt    = priv_pdpt_frame;
-    task->priv_pd      = priv_pd_frame;
+    // 8. Store page-table info in task struct.
+    task->user_pdpt    = user_pdpt_frame;
+    task->user_pd      = user_pd_frame;
+    task->stack_pt     = stack_pt_frame;
+    task->user_heap_top = USER_HEAP_BASE;
     task->num_priv_pts = num_pts;
-    for (pt::size_t k = 0; k < num_pts; k++) task->priv_pt[k] = priv_pt_frames[k];
+    for (pt::size_t k = 0; k < num_pts; k++) task->priv_pt[k] = code_pt_frames[k];
     for (pt::size_t k = num_pts; k < Task::MAX_PRIV_PTS; k++) task->priv_pt[k] = 0;
 
     klog("[ELF_TASK] Task %d: '%s' entry=%lx %d code pages\n",
@@ -701,9 +744,11 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
         vmm.free_frame(child->cr3);
         child->cr3 = 0;
     }
-    free_priv_pts(child);
-    if (child->priv_pd != 0)   { vmm.free_frame(child->priv_pd);   child->priv_pd   = 0; }
-    if (child->priv_pdpt != 0) { vmm.free_frame(child->priv_pdpt); child->priv_pdpt = 0; }
+    // free_user_pagetables uses KERNEL_OFFSET-mapped accesses inside, but the
+    // child slot may have been a previous task with old-style kmalloc stack
+    // (user_stack_base freed above) and zero user_pd/user_pdpt/stack_pt, so
+    // this is safe as a cleanup step.
+    free_user_pagetables(child);
 
     // ── Allocate child kernel stack ──────────────────────────────────────────
     void* child_kstack_mem = vmm.kmalloc(TASK_STACK_SIZE);
@@ -712,77 +757,117 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
         return (pt::uint32_t)-1;
     }
 
-    // ── Allocate + copy child user stack ────────────────────────────────────
-    void* child_ustack_mem = vmm.kmalloc(USER_STACK_SIZE);
-    if (!child_ustack_mem) {
-        vmm.kfree(child_kstack_mem);
-        klog("[FORK] Failed to allocate child user stack\n");
-        return (pt::uint32_t)-1;
-    }
-    klog("[FORK] copying ustack: src=%lx dst=%lx size=%d\n",
-         parent->user_stack_base, (pt::uintptr_t)child_ustack_mem, (int)USER_STACK_SIZE);
-    memcpy(child_ustack_mem, (void*)parent->user_stack_base, USER_STACK_SIZE);
-
-#ifdef FORK_DEBUG
-    klog("[FORK_DEBUG] parent ustack=[%lx, %lx) child kstack=[%lx, %lx) child ustack=[%lx, %lx)\n",
-         parent->user_stack_base, parent->user_stack_base + USER_STACK_SIZE,
-         (pt::uintptr_t)child_kstack_mem, (pt::uintptr_t)child_kstack_mem + TASK_STACK_SIZE,
-         (pt::uintptr_t)child_ustack_mem, (pt::uintptr_t)child_ustack_mem + USER_STACK_SIZE);
-#endif
-
-    // ── Clone PML4 ──────────────────────────────────────────────────────────
-
+    // ── Clone parent PML4 (under task CR3; use KERNEL_OFFSET + PA for frames) ──
+    // All physical frame accesses below use KERNEL_OFFSET + PA because the
+    // parent's PML4[0] now only maps user VAs, not the full identity range.
     klog("[FORK] allocating child PML4\n");
     pt::uintptr_t child_pml4_frame = vmm.allocate_frame();
-    klog("[FORK] child PML4 frame=%lx, copying parent cr3=%lx\n", child_pml4_frame, parent->cr3);
-    memcpy((void*)child_pml4_frame, (void*)parent->cr3, 4096);
+    klog("[FORK] child PML4 frame=%lx, copying parent cr3=%lx\n",
+         child_pml4_frame, parent->cr3);
+    memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + child_pml4_frame),
+           reinterpret_cast<void*>(KERNEL_OFFSET + parent->cr3), 4096);
 
-    // ── Deep-copy private ELF code page table frames ─────────────────────
+    // ── Allocate child user_pdpt, user_pd (fresh frames) ─────────────────────
     pt::size_t par_num_pts = parent->num_priv_pts;
-    pt::uintptr_t new_pdpt_frame = 0;
-    pt::uintptr_t new_pd_frame   = 0;
+    pt::uintptr_t child_user_pdpt_frame = vmm.allocate_frame();
+    pt::uintptr_t child_user_pd_frame   = vmm.allocate_frame();
+    pt::uint64_t* child_updpt = reinterpret_cast<pt::uint64_t*>(
+        KERNEL_OFFSET + child_user_pdpt_frame);
+    pt::uint64_t* child_upd = reinterpret_cast<pt::uint64_t*>(
+        KERNEL_OFFSET + child_user_pd_frame);
+
+    // Copy parent's user_pdpt/user_pd so child inherits boot identity-map entries
+    // (U/S=0, kernel-only) at indices 1..3 of pdpt and most of pd.
+    // Code/stack/heap entries are overwritten with deep copies below.
+    memcpy(child_updpt,
+           reinterpret_cast<void*>(KERNEL_OFFSET + parent->user_pdpt), 4096);
+    memcpy(child_upd,
+           reinterpret_cast<void*>(KERNEL_OFFSET + parent->user_pd), 4096);
+
+    // ── Deep-copy code PT frames ───────────────────────────────────────────
     pt::uintptr_t new_pt_frames[Task::MAX_PRIV_PTS];
     for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++) new_pt_frames[k] = 0;
 
-    if (par_num_pts > 0) {
-        klog("[FORK] allocating new PDPT/PD/%d PT frames\n", (int)par_num_pts);
-        new_pdpt_frame = vmm.allocate_frame();
-        new_pd_frame   = vmm.allocate_frame();
-        klog("[FORK] copying parent priv_pdpt=%lx priv_pd=%lx\n",
-             parent->priv_pdpt, parent->priv_pd);
-        memcpy((void*)new_pdpt_frame, (void*)parent->priv_pdpt, 4096);
-        memcpy((void*)new_pd_frame,   (void*)parent->priv_pd,   4096);
-
-        for (pt::size_t k = 0; k < par_num_pts; k++) {
-            new_pt_frames[k] = vmm.allocate_frame();
-            pt::uint64_t* parent_pt = reinterpret_cast<pt::uint64_t*>(parent->priv_pt[k]);
-            pt::uint64_t* new_pt    = reinterpret_cast<pt::uint64_t*>(new_pt_frames[k]);
-            for (int i = 0; i < 512; i++) {
-                if (parent_pt[i] & 0x01) {
-                    pt::uintptr_t src_frame = parent_pt[i] & ~(pt::uintptr_t)0xFFF;
-                    pt::uintptr_t dst_frame = vmm.allocate_frame();
-                    memcpy((void*)dst_frame, (void*)src_frame, 4096);
-                    new_pt[i] = dst_frame | 0x07;
-                } else {
-                    new_pt[i] = 0;
-                }
+    klog("[FORK] deep-copying %d code PTs\n", (int)par_num_pts);
+    for (pt::size_t k = 0; k < par_num_pts; k++) {
+        new_pt_frames[k] = vmm.allocate_frame();
+        pt::uint64_t* parent_pt = reinterpret_cast<pt::uint64_t*>(
+            KERNEL_OFFSET + parent->priv_pt[k]);
+        pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(
+            KERNEL_OFFSET + new_pt_frames[k]);
+        for (int i = 0; i < 512; i++) {
+            if (parent_pt[i] & 0x01) {
+                pt::uintptr_t src_frame = parent_pt[i] & ~(pt::uintptr_t)0xFFF;
+                pt::uintptr_t dst_frame = vmm.allocate_frame();
+                memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + dst_frame),
+                       reinterpret_cast<void*>(KERNEL_OFFSET + src_frame), 4096);
+                new_pt[i] = dst_frame | 0x07;
+            } else {
+                new_pt[i] = 0;
             }
         }
-
-        // Wire private page tables in the child.
-        pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
-        pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
-        for (pt::size_t k = 0; k < par_num_pts; k++)
-            new_pd[ELF_PD_IDX + k] = new_pt_frames[k] | 0x07;
-        new_pdpt[ELF_PDPT_IDX] = new_pd_frame | 0x07;
+        child_upd[USER_CODE_PD_IDX + k] = new_pt_frames[k] | 0x07;
     }
 
-    pt::uint64_t* child_pml4 = reinterpret_cast<pt::uint64_t*>(child_pml4_frame);
-    if (new_pdpt_frame)
-        child_pml4[ELF_PML4_IDX] = new_pdpt_frame | 0x07;
+    // ── Deep-copy stack PT frames ──────────────────────────────────────────
+    pt::uintptr_t child_stack_pt_frame = vmm.allocate_frame();
+    pt::uint64_t* child_spt = reinterpret_cast<pt::uint64_t*>(
+        KERNEL_OFFSET + child_stack_pt_frame);
+    pt::uint64_t* parent_spt = reinterpret_cast<pt::uint64_t*>(
+        KERNEL_OFFSET + parent->stack_pt);
+    for (int i = 0; i < 512; i++) {
+        if (parent_spt[i] & 0x01) {
+            pt::uintptr_t src = parent_spt[i] & ~(pt::uintptr_t)0xFFF;
+            pt::uintptr_t dst = vmm.allocate_frame();
+            memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + dst),
+                   reinterpret_cast<void*>(KERNEL_OFFSET + src), 4096);
+            child_spt[i] = dst | 0x07;
+        } else {
+            child_spt[i] = 0;
+        }
+    }
+    child_upd[USER_STACK_PD_IDX] = child_stack_pt_frame | 0x07;
+
+    // ── Deep-copy heap PT frames ───────────────────────────────────────────
+    if (parent->user_pd) {
+        pt::uint64_t* parent_upd = reinterpret_cast<pt::uint64_t*>(
+            KERNEL_OFFSET + parent->user_pd);
+        pt::size_t heap_start = USER_CODE_PD_IDX + par_num_pts;
+        for (pt::size_t i = heap_start; i < USER_STACK_PD_IDX; i++) {
+            if (!(parent_upd[i] & 0x01)) continue;
+            if (parent_upd[i] & 0x80) continue;  // boot 2MB huge page, already in child_upd
+            pt::uintptr_t child_hpt_frame = vmm.allocate_frame();
+            pt::uint64_t* par_hpt = reinterpret_cast<pt::uint64_t*>(
+                KERNEL_OFFSET + (parent_upd[i] & ~(pt::uintptr_t)0xFFF));
+            pt::uint64_t* child_hpt = reinterpret_cast<pt::uint64_t*>(
+                KERNEL_OFFSET + child_hpt_frame);
+            for (int j = 0; j < 512; j++) {
+                if (par_hpt[j] & 0x01) {
+                    pt::uintptr_t src = par_hpt[j] & ~(pt::uintptr_t)0xFFF;
+                    pt::uintptr_t dst = vmm.allocate_frame();
+                    memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + dst),
+                           reinterpret_cast<void*>(KERNEL_OFFSET + src), 4096);
+                    child_hpt[j] = dst | 0x07;
+                } else {
+                    child_hpt[j] = 0;
+                }
+            }
+            child_upd[i] = child_hpt_frame | 0x07;
+        }
+    }
+
+    // ── Wire child user address space ──────────────────────────────────────
+    child_updpt[USER_PDPT_IDX] = child_user_pd_frame | 0x07;
+
+    pt::uint64_t* child_pml4 = reinterpret_cast<pt::uint64_t*>(
+        KERNEL_OFFSET + child_pml4_frame);
+    child_pml4[USER_PML4_IDX] = child_user_pdpt_frame | 0x07;
+    child_pml4[ELF_PML4_IDX] &= ~(pt::uint64_t)0x04;  // clear U bit on kernel half
 
     // ── Build child kernel stack frame ───────────────────────────────────────
-    // Copy the parent's 160-byte PUSHALL+iretq frame verbatim, then patch it.
+    // Copy the parent's 160-byte PUSHALL+iretq frame verbatim, then patch rax.
+    // RSP and rbp need no adjustment: parent and child share the same user VA
+    // layout (USER_STACK_BOT..USER_STACK_TOP), so the user RSP is identical.
     klog("[FORK] page tables wired; building child kernel stack frame\n");
     pt::uint8_t* child_kstack_top =
         (pt::uint8_t*)child_kstack_mem + TASK_STACK_SIZE - 160;
@@ -791,71 +876,26 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     memcpy(child_kstack_top, (void*)syscall_frame_rsp, 160);
 
     pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(child_kstack_top);
-
     // frame[14] = rax slot → 0 (fork returns 0 in child)
     frame[14] = 0;
-
-    // frame[18] = user RSP slot → adjusted into child's user stack copy.
-    pt::uint64_t parent_user_rsp = *(pt::uint64_t*)(syscall_frame_rsp + 144);
-    pt::uint64_t parent_ustack_base = parent->user_stack_base;
-    pt::uint64_t child_ustack_base  = (pt::uint64_t)child_ustack_mem;
-    pt::uint64_t child_user_rsp =
-        child_ustack_base + (parent_user_rsp - parent_ustack_base);
-    frame[18] = child_user_rsp;
-    klog("[FORK] parent_user_rsp=%lx parent_ustack_base=%lx child_ustack_base=%lx child_user_rsp=%lx\n",
-         parent_user_rsp, parent_ustack_base, child_ustack_base, child_user_rsp);
-
-    // frame[10] = rbp slot → also needs adjustment, for the same reason as RSP.
-    //
-    // Without this fix the child resumes inside __scN's epilogue with the
-    // PARENT's rbp value.  The first thing __scN does post-int-0x80 is:
-    //   mov [rbp-0x8], rax   (store return value)
-    // which would write into the PARENT's user stack, corrupting e.g. the
-    // call-return address stored there and causing the parent to fault.
-    //
-    // We also walk the entire rbp frame-chain in the child's COPIED user stack
-    // and adjust every saved-rbp slot that still points into the parent's stack
-    // range, translating it to the corresponding child stack address.
-    {
-        const pt::uint64_t delta   = child_ustack_base - parent_ustack_base;
-        const pt::uint64_t stk_bot = parent_ustack_base;
-        const pt::uint64_t stk_top = parent_ustack_base + USER_STACK_SIZE;
-
-        // Fix the PUSHALL-saved rbp register (frame[10] = offset +80).
-        pt::uint64_t cur = frame[10];
-        if (cur >= stk_bot && cur < stk_top)
-            frame[10] = cur + delta;
-
-        // Walk the rbp frame chain in the child's copied user stack.
-        // We iterate using PARENT coordinates so the loop termination is
-        // consistent even after we patch the child's memory.
-        // The cap guards against a malformed/cyclic frame chain.
-        int frame_limit = USER_STACK_SIZE / 8;
-        while (cur >= stk_bot && cur < stk_top && frame_limit-- > 0) {
-            // The slot in the child's user stack that mirrors parent's [cur].
-            pt::uint64_t* slot = reinterpret_cast<pt::uint64_t*>(
-                child_ustack_base + (cur - stk_bot));
-            pt::uint64_t prev = *slot;   // value at parent's [cur] = next rbp
-            if (prev >= stk_bot && prev < stk_top)
-                *slot = prev + delta;    // translate to child coords
-            cur = prev;                  // advance to next frame (parent coords)
-        }
-    }
+    // frame[18] = user RSP — unchanged (same user VA as parent)
 
     // ── Populate child Task struct ────────────────────────────────────────────
     child->id                = child_id;
-    child->state             = TASK_BLOCKED;  // not schedulable until preempt_rsp is set
+    child->state             = TASK_BLOCKED;
     child->kernel_stack_base = (pt::uintptr_t)child_kstack_mem;
     child->kernel_stack_size = TASK_STACK_SIZE;
     child->ticks_alive       = 0;
     child->preempt_rsp       = (pt::uintptr_t)child_kstack_top;
-    child->state             = TASK_READY;    // frame fully built; safe to schedule now
+    child->state             = TASK_READY;
     child->cr3               = child_pml4_frame;
     child->user_mode         = true;
-    child->user_stack_base   = child_ustack_base;
-    child->priv_pdpt   = new_pdpt_frame;
-    child->priv_pd     = new_pd_frame;
-    child->num_priv_pts = par_num_pts;
+    child->user_stack_base   = 0;
+    child->user_pdpt         = child_user_pdpt_frame;
+    child->user_pd           = child_user_pd_frame;
+    child->stack_pt          = child_stack_pt_frame;
+    child->user_heap_top     = parent->user_heap_top;
+    child->num_priv_pts      = par_num_pts;
     for (pt::size_t k = 0; k < par_num_pts; k++) child->priv_pt[k] = new_pt_frames[k];
     for (pt::size_t k = par_num_pts; k < Task::MAX_PRIV_PTS; k++) child->priv_pt[k] = 0;
     child->parent_id          = parent->id;
@@ -966,83 +1006,88 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     pt::size_t num_pts = (num_frames + 511) / 512;
     if (num_pts == 0) num_pts = 1;
 
-    // 2. Read boot PDPT/PD to seed the new private tables.
-    pt::uint64_t* kernel_pml4    = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
-    pt::uintptr_t boot_pdpt_phys = kernel_pml4[ELF_PML4_IDX] & ~(pt::uintptr_t)0xFFF;
-    if (boot_pdpt_phys == 0) {
-        klog("[EXEC] boot_pdpt_phys is zero\n");
-        asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
-        return (pt::uint64_t)-1;
-    }
-    pt::uint64_t* boot_pdpt      = reinterpret_cast<pt::uint64_t*>(boot_pdpt_phys);
-    pt::uintptr_t boot_pd_phys   = boot_pdpt[ELF_PDPT_IDX] & ~(pt::uintptr_t)0xFFF;
-    if (boot_pd_phys == 0) {
-        klog("[EXEC] boot_pd_phys is zero\n");
-        asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
-        return (pt::uint64_t)-1;
-    }
+    // 2. Allocate fresh user_pdpt, user_pd, code PT frames, and stack PT.
+    //    (Under kernel_cr3: identity map active, direct PA access OK.)
+    pt::uintptr_t new_user_pdpt_frame = vmm.allocate_frame();
+    pt::uintptr_t new_user_pd_frame   = vmm.allocate_frame();
+    pt::uint64_t* new_user_pdpt = reinterpret_cast<pt::uint64_t*>(new_user_pdpt_frame);
+    pt::uint64_t* new_user_pd   = reinterpret_cast<pt::uint64_t*>(new_user_pd_frame);
 
-    // 3. Allocate new private PDPT, PD, and num_pts PT frames; copy boot tables.
-    pt::uintptr_t new_pdpt_frame = vmm.allocate_frame();
-    pt::uintptr_t new_pd_frame   = vmm.allocate_frame();
+    // Populate with boot identity-map (U/S cleared → kernel-only) so ring-0
+    // interrupt handlers can access device MMIO under this task's CR3.
+    pt::uint64_t* boot_pml4x  = reinterpret_cast<pt::uint64_t*>(kernel_cr3);
+    pt::uintptr_t boot_pdpt_pax = boot_pml4x[0] & ~(pt::uintptr_t)0xFFF;
+    pt::uint64_t* boot_pdptx  = reinterpret_cast<pt::uint64_t*>(boot_pdpt_pax);
+    pt::uintptr_t boot_pd_pax  = boot_pdptx[0] & ~(pt::uintptr_t)0xFFF;
+    pt::uint64_t* boot_pdx    = reinterpret_cast<pt::uint64_t*>(boot_pd_pax);
+
+    memset(new_user_pdpt, 0, 4096);
+    for (int i = 1; i < 4; i++)
+        new_user_pdpt[i] = boot_pdptx[i] & ~(pt::uint64_t)0x04;
+    for (int i = 0; i < 512; i++)
+        new_user_pd[i] = boot_pdx[i] & ~(pt::uint64_t)0x04;
+
     pt::uintptr_t new_pt_frames[Task::MAX_PRIV_PTS];
     for (pt::size_t k = 0; k < num_pts; k++) {
         new_pt_frames[k] = vmm.allocate_frame();
-        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(new_pt_frames[k]);
-        for (int i = 0; i < 512; i++) pt[i] = 0;
+        memset(reinterpret_cast<void*>(new_pt_frames[k]), 0, 4096);
     }
 
-    memcpy((void*)new_pdpt_frame, (void*)boot_pdpt_phys, 4096);
-    memcpy((void*)new_pd_frame,   (void*)boot_pd_phys,   4096);
-
-    // 4. Copy ELF frames from staging area into new private frames.
+    // 3. Copy ELF frames from staging; populate code PTs.
     for (pt::size_t i = 0; i < num_frames; i++) {
         pt::uintptr_t frame = vmm.allocate_frame();
-        memcpy((void*)frame,
-               (void*)(ELF_STAGING_VA + i * 4096),
+        memcpy(reinterpret_cast<void*>(frame),
+               reinterpret_cast<void*>(ELF_STAGING_VA + i * 4096),
                4096);
         pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(new_pt_frames[i / 512]);
         new_pt[i % 512] = frame | 0x07;
     }
-
-    // 5. Wire new page tables.
-    pt::uint64_t* new_pd   = reinterpret_cast<pt::uint64_t*>(new_pd_frame);
-    pt::uint64_t* new_pdpt = reinterpret_cast<pt::uint64_t*>(new_pdpt_frame);
     for (pt::size_t k = 0; k < num_pts; k++)
-        new_pd[ELF_PD_IDX + k] = new_pt_frames[k] | 0x07;
-    new_pdpt[ELF_PDPT_IDX] = new_pd_frame | 0x07;
+        new_user_pd[USER_CODE_PD_IDX + k] = new_pt_frames[k] | 0x07;
 
-    // 6. Free old private code frames and page table frames.
-    free_priv_pts(current);
-    if (current->priv_pd   != 0) vmm.free_frame(current->priv_pd);
-    if (current->priv_pdpt != 0) vmm.free_frame(current->priv_pdpt);
+    // 4. Allocate stack PT and stack frames; wire into new_user_pd[USER_STACK_PD_IDX].
+    pt::uintptr_t new_stack_pt_frame = vmm.allocate_frame();
+    pt::uint64_t* new_stack_pt = reinterpret_cast<pt::uint64_t*>(new_stack_pt_frame);
+    memset(new_stack_pt, 0, 4096);
+    for (pt::size_t i = 0; i < USER_STACK_PAGES; i++) {
+        pt::uintptr_t frame = vmm.allocate_frame();
+        memset(reinterpret_cast<void*>(frame), 0, 4096);
+        new_stack_pt[i] = frame | 0x07;
+    }
+    new_user_pd[USER_STACK_PD_IDX] = new_stack_pt_frame | 0x07;
 
-    // 7. Install new private tables into current task and PML4.
-    current->priv_pdpt    = new_pdpt_frame;
-    current->priv_pd      = new_pd_frame;
+    // 5. Wire user_pdpt[0] → user_pd.
+    new_user_pdpt[USER_PDPT_IDX] = new_user_pd_frame | 0x07;
+
+    // 6. Free old user page tables (code, stack, heap, user_pd, user_pdpt).
+    //    Still under kernel_cr3 — direct PA access OK.
+    free_user_pagetables(current);
+
+    // 7. Install new page tables in task struct and PML4.
+    current->user_pdpt    = new_user_pdpt_frame;
+    current->user_pd      = new_user_pd_frame;
+    current->stack_pt     = new_stack_pt_frame;
+    current->user_heap_top = USER_HEAP_BASE;
     current->num_priv_pts = num_pts;
     for (pt::size_t k = 0; k < num_pts; k++) current->priv_pt[k] = new_pt_frames[k];
     for (pt::size_t k = num_pts; k < Task::MAX_PRIV_PTS; k++) current->priv_pt[k] = 0;
 
-    pt::uint64_t* current_pml4    = reinterpret_cast<pt::uint64_t*>(current->cr3);
-    current_pml4[ELF_PML4_IDX]   = new_pdpt_frame | 0x07;
+    pt::uint64_t* current_pml4 = reinterpret_cast<pt::uint64_t*>(current->cr3);
+    current_pml4[USER_PML4_IDX] = new_user_pdpt_frame | 0x07;
+    current_pml4[ELF_PML4_IDX] &= ~(pt::uint64_t)0x04;  // clear U bit on kernel half
 
-    // 8. New user RSP = top of existing user stack (stack contents discarded).
-    pt::uint64_t new_user_rsp = current->user_stack_base + USER_STACK_SIZE;
+    // 8. Build initial user RSP and optional argv layout.
+    //    Stack frames are at physical addresses under kernel_cr3 — direct PA access OK.
+    //    Access a stack frame: new_stack_pt[pt_idx] & ~0xFFF gives its PA.
+    //    For user VA `va` in [USER_STACK_BOT, USER_STACK_TOP):
+    //      pt_idx = (va - USER_STACK_BOT) >> 12
+    //      byte ptr = (new_stack_pt[pt_idx] & ~0xFFF) + (va & 0xFFF)
+    // Start at USER_STACK_TOP - 8 so [rsp] = argc = 0 (from zeroed stack frame),
+    // within the mapped stack pages (PDPT[0]), not at the PDPT[1] boundary.
+    pt::uint64_t new_user_rsp = USER_STACK_TOP - 8;
 
-    // 8a. Build SysV AMD64 initial stack layout if argc > 0.
-    //     Working downward from new_user_rsp:
-    //       [string data for each arg]
-    //       [8-byte align]
-    //       [NULL sentinel qword]
-    //       [argv[argc-1] pointer qword]
-    //       ...
-    //       [argv[0] pointer qword]
-    //       [argc qword]   ← new_user_rsp points here
     if (real_argc > 0) {
-        pt::uint64_t rsp = new_user_rsp;
-        pt::uint64_t user_stack_bottom = current->user_stack_base;
-        pt::uint8_t* ustack = reinterpret_cast<pt::uint8_t*>(current->user_stack_base);
+        pt::uint64_t rsp = USER_STACK_TOP;
 
         // Write string data downward, record user-space pointers.
         pt::uint64_t uarg_ptrs[ARGV_MAX_LOCAL];
@@ -1051,47 +1096,59 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
             int len = 0; while (s[len]) len++;
             len++;  // include NUL
             rsp -= (pt::uint64_t)len;
-            if (rsp < user_stack_bottom) { rsp += (pt::uint64_t)len; break; }
-            // Copy string into user stack (currently mapped under kernel_cr3).
-            // After the CR3 switch below, the user task will read it there.
-            pt::uint8_t* dst = ustack + (rsp - user_stack_bottom);
-            for (int j = 0; j < len; j++) dst[j] = (pt::uint8_t)s[j];
+            if (rsp < USER_STACK_BOT) { rsp += (pt::uint64_t)len; break; }
+
+            // Write each byte via the physical frame PA.
+            for (int j = 0; j < len; j++) {
+                pt::uint64_t bva = rsp + (pt::uint64_t)j;
+                pt::size_t pt_idx = (bva - USER_STACK_BOT) >> 12;
+                pt::uintptr_t pa = (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF)
+                                   + (bva & 0xFFF);
+                *reinterpret_cast<pt::uint8_t*>(pa) = (pt::uint8_t)s[j];
+            }
             uarg_ptrs[i] = rsp;
         }
 
         // Align rsp down to 8 bytes.
         rsp &= ~(pt::uint64_t)7;
 
-        // NULL sentinel + argv pointers (in reverse order, then fix).
-        rsp -= 8;  // NULL sentinel
-        if (rsp >= user_stack_bottom) {
-            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(ustack + (rsp - user_stack_bottom));
+        // Write NULL sentinel qword.
+        rsp -= 8;
+        if (rsp >= USER_STACK_BOT) {
+            pt::size_t pt_idx = (rsp - USER_STACK_BOT) >> 12;
+            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(
+                (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (rsp & 0xFFF));
             *p = 0;
         }
+
+        // Write argv pointer array (reverse order).
         for (int i = real_argc - 1; i >= 0; i--) {
             rsp -= 8;
-            if (rsp < user_stack_bottom) { rsp += 8; break; }
-            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(ustack + (rsp - user_stack_bottom));
+            if (rsp < USER_STACK_BOT) { rsp += 8; break; }
+            pt::size_t pt_idx = (rsp - USER_STACK_BOT) >> 12;
+            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(
+                (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (rsp & 0xFFF));
             *p = uarg_ptrs[i];
         }
 
-        // argc qword.
+        // Write argc qword.
         rsp -= 8;
-        if (rsp >= user_stack_bottom) {
-            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(ustack + (rsp - user_stack_bottom));
+        if (rsp >= USER_STACK_BOT) {
+            pt::size_t pt_idx = (rsp - USER_STACK_BOT) >> 12;
+            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(
+                (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (rsp & 0xFFF));
             *p = (pt::uint64_t)real_argc;
             new_user_rsp = rsp;
         }
     }
 
-    // 9. Patch the live iretq frame in-place so _syscall_stub's iretq jumps
-    //    to the new ELF entry point with a fresh user RSP.
+    // 9. Patch the live iretq frame in-place.
     pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(syscall_frame_rsp);
     frame[15] = entry;        // [+120] = new RIP
     frame[18] = new_user_rsp; // [+144] = new user RSP
 
-    // 10. Switch back to task CR3 (now wired to new private tables) and flush TLB.
-    klog("[EXEC] Task %d: iretq -> %lx\n", current->id, entry);
+    // 10. Switch back to task CR3 (now wired to new user address space) and flush TLB.
+    klog("[EXEC] Task %d: iretq -> %lx rsp=%lx\n", current->id, entry, new_user_rsp);
     asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
 
     return 0;
@@ -1145,29 +1202,141 @@ pt::uint64_t TaskScheduler::waitpid_task(pt::uint32_t child_id,
     klog("[WAITPID] Task %d: child %d exited with code %d\n",
          parent->id, child_id, (int)child->exit_code);
 
-#ifdef FORK_DEBUG
-    // Diagnostic: dump the REAL iretq frame and user stack contents.
-    // Useful for verifying the parent's return path is not corrupted after fork.
-    pt::uintptr_t real_frame = parent->syscall_frame_rsp;
-    klog("[WAITPID_DEBUG] real_frame=%lx g_syscall_rsp=%lx\n",
-         real_frame, g_syscall_rsp);
-    if (real_frame != 0) {
-        pt::uint64_t user_rsp = *(pt::uint64_t*)(real_frame + 144);
-        klog("[WAITPID_DEBUG] iretq frame: RIP=%lx CS=%lx RFLAGS=%lx RSP=%lx SS=%lx\n",
-             *(pt::uint64_t*)(real_frame + 120),
-             *(pt::uint64_t*)(real_frame + 128),
-             *(pt::uint64_t*)(real_frame + 136),
-             user_rsp,
-             *(pt::uint64_t*)(real_frame + 152));
-        klog("[WAITPID_DEBUG] user stack dump (pre-iretq):\n");
-        for (int _d = -1; _d <= 4; _d++) {
-            pt::uint64_t addr = user_rsp + (pt::uint64_t)(_d * 8);
-            klog("[WAITPID_DEBUG]   [%lx] = %lx%s\n",
-                 addr, *(pt::uint64_t*)addr,
-                 (_d == 0 ? "  <- saved rbp" :
-                  _d == 1 ? "  <- return addr" : ""));
+    return 0;
+}
+
+// ─── map_user_pages ────────────────────────────────────────────────────────────
+//
+// Map [va, va+size) into the task's user address space by allocating physical
+// frames and inserting them into the per-task user_pd hierarchy.
+//
+// Called from SYS_MMAP with the task's CR3 active.  Physical frames are NOT
+// in the user's identity range, so all PT accesses use KERNEL_OFFSET + PA.
+//
+void TaskScheduler::map_user_pages(Task* t, pt::uintptr_t va, pt::size_t size)
+{
+    if (!t->user_pd) return;
+    pt::uint64_t* upd = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + t->user_pd);
+
+    for (pt::uintptr_t addr = va; addr < va + size; addr += 4096) {
+        pt::size_t pd_idx = (addr >> 21) & 0x1FF;
+        pt::size_t pt_idx = (addr >> 12) & 0x1FF;
+
+        // Allocate a new heap PT frame if this PD entry is empty or a 2MB huge page
+        // (boot identity entry that must be replaced with a 4KB PT for heap use).
+        if (!(upd[pd_idx] & 0x01) || (upd[pd_idx] & 0x80)) {
+            pt::uintptr_t pt_frame = vmm.allocate_frame();
+            pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(
+                KERNEL_OFFSET + pt_frame);
+            memset(new_pt, 0, 4096);
+            upd[pd_idx] = pt_frame | 0x07;
+        }
+
+        pt::uintptr_t pt_pa = upd[pd_idx] & ~(pt::uintptr_t)0xFFF;
+        pt::uint64_t* hpt = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + pt_pa);
+        if (!(hpt[pt_idx] & 0x01)) {
+            pt::uintptr_t frame = vmm.allocate_frame();
+            pt::uint64_t* fp = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + frame);
+            memset(fp, 0, 4096);
+            hpt[pt_idx] = frame | 0x07;
+            asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
         }
     }
-#endif
-    return 0;
+}
+
+// ─── dump_task_map ─────────────────────────────────────────────────────────────
+//
+// Print a compact memory map of a task's user address space to klog.
+// Walks user_pd entries and prints each mapped region with page counts.
+//
+void TaskScheduler::dump_task_map(pt::uint32_t task_id)
+{
+    if (task_id >= MAX_TASKS) {
+        klog("[MAP] invalid task id %d\n", (int)task_id);
+        return;
+    }
+    Task* t = &tasks[task_id];
+    if (t->state == TASK_DEAD) {
+        klog("[MAP] task %d is dead\n", (int)task_id);
+        return;
+    }
+
+    klog("-- task %d --\n", (int)task_id);
+    klog("  state=%d user=%d cr3=%lx\n",
+         (int)t->state, (int)t->user_mode, t->cr3);
+
+    if (!t->user_pd) {
+        klog("  (kernel task — no user page tables)\n");
+        return;
+    }
+
+    klog("  user_pdpt=%lx  user_pd=%lx  stack_pt=%lx\n",
+         t->user_pdpt, t->user_pd, t->stack_pt);
+    klog("  heap_top=%lx  num_code_pts=%d\n",
+         t->user_heap_top, (int)t->num_priv_pts);
+
+    pt::uint64_t* upd = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + t->user_pd);
+
+    // Walk PD entries, coalescing contiguous regions of the same type.
+    pt::uintptr_t region_start = 0;
+    int region_pages = 0;
+    const char* region_label = nullptr;
+
+    for (int pd_i = 0; pd_i < 512; pd_i++) {
+        if (!(upd[pd_i] & 0x01) || (upd[pd_i] & 0x80)) {
+            // Not present or 2MB huge page (boot identity) — flush region.
+            if (region_pages > 0) {
+                klog("  %lx-%lx  %4dK  %s\n", region_start,
+                     region_start + (pt::uintptr_t)region_pages * 4096,
+                     region_pages * 4, region_label);
+                region_pages = 0;
+            }
+            continue;
+        }
+
+        // 4KB PT — count present entries.
+        pt::uintptr_t pt_pa = upd[pd_i] & ~(pt::uintptr_t)0xFFF;
+        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + pt_pa);
+        int count = 0;
+        for (int j = 0; j < 512; j++) {
+            if (pt[j] & 0x01) count++;
+        }
+        if (count == 0) {
+            if (region_pages > 0) {
+                klog("  %lx-%lx  %4dK  %s\n", region_start,
+                     region_start + (pt::uintptr_t)region_pages * 4096,
+                     region_pages * 4, region_label);
+                region_pages = 0;
+            }
+            continue;
+        }
+
+        const char* label;
+        if (pd_i == (int)USER_STACK_PD_IDX)
+            label = "stack";
+        else if (pd_i >= (int)USER_CODE_PD_IDX &&
+                 pd_i <  (int)USER_CODE_PD_IDX + (int)t->num_priv_pts)
+            label = "code";
+        else
+            label = "heap";
+
+        // Extend current region if same label, otherwise flush and start new.
+        if (region_label == label && region_pages > 0) {
+            region_pages += count;
+        } else {
+            if (region_pages > 0) {
+                klog("  %lx-%lx  %4dK  %s\n", region_start,
+                     region_start + (pt::uintptr_t)region_pages * 4096,
+                     region_pages * 4, region_label);
+            }
+            region_start = (pt::uintptr_t)pd_i << 21;
+            region_pages = count;
+            region_label = label;
+        }
+    }
+    if (region_pages > 0) {
+        klog("  %lx-%lx  %4dK  %s\n", region_start,
+             region_start + (pt::uintptr_t)region_pages * 4096,
+             region_pages * 4, region_label);
+    }
 }

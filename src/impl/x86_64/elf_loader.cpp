@@ -74,11 +74,13 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
         pt::uintptr_t seg_end = phdr->p_vaddr + phdr->p_memsz;
         if (seg_end > va_max) va_max = seg_end;
 
-        // Boot 2MB superpages already map all higher-half VA up to 4GB with RWU flags,
-        // so the segment VA is already accessible — no new mapping needed.
-
-        // Copy file data to virtual address
-        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(phdr->p_vaddr);
+        // ELF has p_vaddr = USER_CODE_BASE + offset.  Write to the shared staging
+        // area at ELF_STAGING_VA using the offset from USER_CODE_BASE so that
+        // create_elf_task can later copy frames from ELF_STAGING_VA + i*4096.
+        static constexpr pt::uintptr_t ELF_STAGING_VA  = 0xFFFF800018000000ULL;
+        static constexpr pt::uintptr_t USER_CODE_BASE_  = 0x400000ULL;
+        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(
+            ELF_STAGING_VA + (phdr->p_vaddr - USER_CODE_BASE_));
         const pt::uint8_t* src = buf + phdr->p_offset;
         for (pt::uint64_t b = 0; b < phdr->p_filesz; b++) {
             dst[b] = src[b];
