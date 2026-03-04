@@ -89,6 +89,9 @@ struct Task {
     // VTerm ID bound to this task; INVALID_VT (0xFFFFFFFF) = not bound.
     pt::uint32_t vterm_id;
 
+    // ELF filename that was loaded into this task (set by create_elf_task / exec_task).
+    char name[16];
+
     // 512-byte FXSAVE area for x87/SSE state (must be 16-byte aligned).
     // Saved/restored by the scheduler on every context switch so tasks
     // don't corrupt each other's floating-point state.

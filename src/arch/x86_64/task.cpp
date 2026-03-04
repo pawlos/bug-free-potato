@@ -211,6 +211,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->sleep_deadline = 0;
     new_task->window_id      = INVALID_WID;
     new_task->vterm_id       = INVALID_VT;
+    new_task->name[0]        = '\0';
 
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -646,6 +647,14 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     for (pt::size_t k = 0; k < num_pts; k++) task->priv_pt[k] = code_pt_frames[k];
     for (pt::size_t k = num_pts; k < Task::MAX_PRIV_PTS; k++) task->priv_pt[k] = 0;
 
+    // Store filename for display (truncate to fit).
+    {
+        pt::size_t i = 0;
+        for (; i < sizeof(task->name) - 1 && filename[i]; i++)
+            task->name[i] = filename[i];
+        task->name[i] = '\0';
+    }
+
     klog("[ELF_TASK] Task %d: '%s' entry=%lx %d code pages\n",
          task_id, filename, entry, (int)num_code_frames);
 
@@ -913,6 +922,7 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->syscall_frame_rsp  = 0;
     child->window_id          = INVALID_WID;
     child->vterm_id           = INVALID_VT;
+    memcpy(child->name, parent->name, sizeof(child->name));
 
     // Inherit parent's FPU/SSE state so the child resumes with valid x87/SSE context.
     memcpy(child->fxsave_area, parent->fxsave_area, 512);
@@ -1167,6 +1177,14 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     frame[18] = new_user_rsp; // [+144] = new user RSP
 
     // 10. Switch back to task CR3 (now wired to new user address space) and flush TLB.
+    // Update task name to the new binary.
+    {
+        pt::size_t i = 0;
+        for (; i < sizeof(current->name) - 1 && fname_buf[i]; i++)
+            current->name[i] = fname_buf[i];
+        current->name[i] = '\0';
+    }
+
     klog("[EXEC] Task %d: iretq -> %lx rsp=%lx\n", current->id, entry, new_user_rsp);
     asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");
 
@@ -1280,7 +1298,8 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         return;
     }
 
-    vterm_printf("-- task %d --\n", (int)task_id);
+    vterm_printf("-- task %d%s%s --\n", (int)task_id,
+         t->name[0] ? " " : "", t->name);
     vterm_printf("  state=%d user=%d cr3=%lx\n",
          (int)t->state, (int)t->user_mode, t->cr3);
 
@@ -1305,7 +1324,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         if (!(upd[pd_i] & 0x01) || (upd[pd_i] & 0x80)) {
             // Not present or 2MB huge page (boot identity) — flush region.
             if (region_pages > 0) {
-                vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
+                vterm_printf("  %lx-%lx  %dK  %s\n", region_start,
                      region_start + (pt::uintptr_t)region_pages * 4096,
                      region_pages * 4, region_label);
                 region_pages = 0;
@@ -1322,7 +1341,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         }
         if (count == 0) {
             if (region_pages > 0) {
-                vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
+                vterm_printf("  %lx-%lx  %dK  %s\n", region_start,
                      region_start + (pt::uintptr_t)region_pages * 4096,
                      region_pages * 4, region_label);
                 region_pages = 0;
@@ -1344,7 +1363,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
             region_pages += count;
         } else {
             if (region_pages > 0) {
-                vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
+                vterm_printf("  %lx-%lx  %dK  %s\n", region_start,
                      region_start + (pt::uintptr_t)region_pages * 4096,
                      region_pages * 4, region_label);
             }
@@ -1354,7 +1373,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         }
     }
     if (region_pages > 0) {
-        vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
+        vterm_printf("  %lx-%lx  %dK  %s\n", region_start,
              region_start + (pt::uintptr_t)region_pages * 4096,
              region_pages * 4, region_label);
     }
