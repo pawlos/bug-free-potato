@@ -35,12 +35,16 @@ QEMU_AUDIO_BACKEND=alsa make run  # ALSA
 
 ### Directory Structure
 
-- `src/intf/` - Header files (interfaces for all modules)
-- `src/impl/kernel/` - Kernel-agnostic implementation (main loop, shell, line reader)
-- `src/impl/x86_64/` - Architecture-specific implementation
+- `src/include/` - Header files (interfaces for all modules)
+  - `device/` - Hardware driver headers (ac97, acpi, com, disk, fbterm, ide, keyboard, mouse, pci, pic, rtc, timer)
+  - `fs/` - Filesystem headers (fat12, fat32, vfs)
+  - `net/` - Network header (net)
+- `src/kernel/` - Kernel-agnostic implementation (main loop, shell, line reader)
+  - `net/` - Network stack (ARP, IP, UDP, TCP, DHCP, DNS)
+- `src/arch/x86_64/` - Architecture-specific implementation
   - `boot/` - Boot assembly and initialization
-  - `device/` - Device drivers (PCI, keyboard, mouse, disk/IDE, AC97 audio, timer, COM serial)
-  - `filesystem/` - FAT12 filesystem implementation
+  - `device/` - Device drivers (PCI, keyboard, mouse, disk/IDE, AC97 audio, timer, COM serial, RTL8139)
+  - `filesystem/` - FAT12/FAT32 filesystem implementation
   - `libs/` - Standard library utilities
   - `idt.cpp`, `virtual.cpp` - Interrupt handling and virtual memory management
   - `framebuffer.cpp`, `print.cpp` - Display and text output
@@ -50,7 +54,7 @@ QEMU_AUDIO_BACKEND=alsa make run  # ALSA
 
 ### Design Patterns
 
-**Interface/Implementation Split**: Headers in `src/intf/` are included by both kernel and device code. Implementations in `src/impl/kernel/` are platform-agnostic; `src/impl/x86_64/` contains architecture-specific code.
+**Interface/Implementation Split**: Headers in `src/include/` are included by both kernel and device code. Implementations in `src/kernel/` are platform-agnostic; `src/arch/x86_64/` contains architecture-specific code.
 
 **Global Kernel Objects**: Key singletons available globally (defined in boot):
 - `vmm` - Virtual memory manager with `kmalloc()`, `kcalloc()`, `kfree()`
@@ -82,7 +86,7 @@ QEMU_AUDIO_BACKEND=alsa make run  # ALSA
 
 **Error Handling**: Fatal errors call `kernel_panic("message", error_code)`. Error codes defined in `kernel.h` (e.g., `NotAbleToAllocateMemory`).
 
-**Headers**: Use `#pragma once` for include guards; include format is `#include "header.h"` (quotes, not angle brackets).
+**Headers**: Use `#pragma once` for include guards; include format is `#include "header.h"` (quotes, not angle brackets). Categorized headers use subdir-qualified paths (e.g., `#include "device/ac97.h"`, `#include "fs/vfs.h"`).
 
 ## Key Subsystems
 
@@ -108,7 +112,7 @@ No automated unit tests. Manual testing via:
 - QEMU execution: `make run`
 - Kernel shell commands at runtime
 - GDB debugging with `make gdb`
-- Disk image created automatically with test files from `src/impl/x86_64/bins/` directory
+- Disk image created automatically with files from `assets/` and `dist/userspace/`
 
 ## References
 

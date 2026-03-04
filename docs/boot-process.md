@@ -5,7 +5,7 @@ distinct phases before `kernel_main` is called.
 
 ## Phase 1 — 32-bit protected mode (main.asm)
 
-`src/impl/x86_64/boot/main.asm` is the first code to run after GRUB hands off control.
+`src/arch/x86_64/boot/main.asm` is the first code to run after GRUB hands off control.
 
 ### Entry checks
 
@@ -76,7 +76,7 @@ jmp gdt64.code:long_mode_start
 
 ## Phase 2 — 64-bit entry (boot.cpp)
 
-`src/impl/x86_64/boot/boot.cpp` is the C++ `kernel_main` called from the 64-bit asm stub.
+`src/arch/x86_64/boot/boot.cpp` is the C++ `kernel_main` called from the 64-bit asm stub.
 
 ### boot_info parsing
 

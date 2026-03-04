@@ -2,7 +2,7 @@
 
 Two subsystems work together: a **physical frame allocator** (bitmap-based) and a
 **kernel heap** (linked-list allocator with coalescing). Both live in `VMM`
-(`src/intf/virtual.h`, `src/impl/x86_64/virtual.cpp`).
+(`src/include/virtual.h`, `src/arch/x86_64/virtual.cpp`).
 
 ---
 

@@ -1,6 +1,9 @@
 # Third-party sources (clone manually per README)
 src/userspace/doom/doomgeneric/
-src/impl/x86_64/bins/doom1.wad
+
+# Game data (user-supplied, not redistributable)
+assets/doom1.wad
+assets/PAK0.PAK
 
 # Build artifacts
 build/
@@ -10,7 +13,6 @@ target/x86_64/iso/boot/kernel.bin
 # Generated files
 disk.img
 *.iso
-src/impl/x86_64/bins/*.elf
 
 # IDE and debug
 .idea/

@@ -11,7 +11,7 @@ All syscalls use `int 0x80` with the following register convention:
 | `rcx` | arg4 |
 | `r8` | arg5 |
 
-Syscalls are dispatched in `src/impl/x86_64/idt.cpp`.
+Syscalls are dispatched in `src/arch/x86_64/idt.cpp`.
 C wrappers live in `src/userspace/libc/syscall.h`.
 
 ---

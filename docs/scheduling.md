@@ -2,7 +2,7 @@
 
 ## Architecture
 
-The scheduler lives in `src/impl/x86_64/task.cpp` (class `TaskScheduler`).
+The scheduler lives in `src/arch/x86_64/task.cpp` (class `TaskScheduler`).
 Scheduling is **preemptive, round-robin**, driven by the PIT timer at **50 Hz** (20 ms per tick).
 
 Context switches happen inside the timer IRQ handler (`preempt()`), which is invoked from the IDT stub at `int 0x20`.
@@ -22,7 +22,7 @@ TASK_DEAD     — exited, waiting for parent to collect exit code
 
 ## Task struct (relevant fields)
 
-Defined in `src/intf/task.h`:
+Defined in `src/include/task.h`:
 
 ```cpp
 struct Task {

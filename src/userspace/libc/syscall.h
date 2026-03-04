@@ -1,6 +1,6 @@
 #pragma once
 
-/* Syscall numbers — must match src/intf/syscall.h in the kernel. */
+/* Syscall numbers — must match src/include/syscall.h in the kernel. */
 #define SYS_WRITE     0   /* rdi=fd, rsi=buf ptr, rdx=count; fd=1→stdout  */
 #define SYS_EXIT      1   /* rdi = exit code                               */
 #define SYS_READ_KEY  2   /* returns char (0-255) or (long)-1 if no key    */

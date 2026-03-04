@@ -23,11 +23,11 @@ make gdb
 
 ## Project Structure
 
-- `src/impl/kernel/` - Kernel main implementation (C++)
-- `src/impl/x86_64/` - x86_64-specific implementations
-- `src/impl/x86_64/boot/` - Boot assembly files
-- `src/impl/x86_64/device/` - Device drivers (PCI, keyboard, mouse, AC97, etc.)
-- `src/intf/` - Header files
+- `src/kernel/` - Kernel main implementation (C++)
+- `src/arch/x86_64/` - x86_64-specific implementations
+- `src/arch/x86_64/boot/` - Boot assembly files
+- `src/arch/x86_64/device/` - Device drivers (PCI, keyboard, mouse, AC97, etc.)
+- `src/include/` - Header files (with `device/`, `fs/`, `net/` subdirs)
 - `target/x86_64/` - Linker scripts and ISO config
 - `build/` - Object files (generated)
 - `dist/` - Output binaries (generated)
@@ -51,7 +51,8 @@ make gdb
 ### Headers
 - Use `#pragma once` for include guards
 - Include format: `#include "header.h"` (quotes, not angle brackets)
-- Header files go in `src/intf/`
+- Categorized headers use subdir paths: `#include "device/ac97.h"`, `#include "fs/vfs.h"`
+- Header files go in `src/include/` (with `device/`, `fs/`, `net/` subdirs)
 
 ### Assembly Interop
 - Use `ASMCALL` macro for C++ functions called from assembly:
@@ -76,9 +77,9 @@ make gdb
 - Static methods for utility classes (e.g., `IO::outb()`)
 
 ### Code Organization
-- Keep arch-specific code in `src/impl/x86_64/`
-- Device drivers go in `src/impl/x86_64/device/`
-- Platform-agnostic code goes in `src/impl/kernel/`
+- Keep arch-specific code in `src/arch/x86_64/`
+- Device drivers go in `src/arch/x86_64/device/`
+- Platform-agnostic code goes in `src/kernel/`
 
 ### Compiler Flags
 - `-ffreestanding` - freestanding environment (no stdlib)

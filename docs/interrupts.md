@@ -1,6 +1,6 @@
 # Interrupts and Exception Handling
 
-Interrupt handling is set up in `src/impl/x86_64/idt.cpp`. It covers CPU exceptions
+Interrupt handling is set up in `src/arch/x86_64/idt.cpp`. It covers CPU exceptions
 (vectors 0–31), hardware IRQs (32–47), and two software interrupt gates (0x80 syscall,
 0x81 yield).
 

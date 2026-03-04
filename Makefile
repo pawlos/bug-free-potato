@@ -1,11 +1,11 @@
-kernel_source_files := $(shell find src/impl/kernel -name *.cpp)
-kernel_object_files := $(patsubst src/impl/kernel/%.cpp, build/kernel/%.o, $(kernel_source_files))
+kernel_source_files := $(shell find src/kernel -name *.cpp)
+kernel_object_files := $(patsubst src/kernel/%.cpp, build/kernel/%.o, $(kernel_source_files))
 
-x86_64_cpp_source_files := $(shell find src/impl/x86_64 -name *.cpp)
-x86_64_cpp_object_files := $(patsubst src/impl/x86_64/%.cpp, build/x86_64/%.o, $(x86_64_cpp_source_files))
+x86_64_cpp_source_files := $(shell find src/arch/x86_64 -name *.cpp)
+x86_64_cpp_object_files := $(patsubst src/arch/x86_64/%.cpp, build/x86_64/%.o, $(x86_64_cpp_source_files))
 
-x86_64_asm_source_files := $(shell find src/impl/x86_64 -name *.asm)
-x86_64_asm_object_files := $(patsubst src/impl/x86_64/%.asm, build/x86_64/%.o, $(x86_64_asm_source_files))
+x86_64_asm_source_files := $(shell find src/arch/x86_64 -name *.asm)
+x86_64_asm_object_files := $(patsubst src/arch/x86_64/%.asm, build/x86_64/%.o, $(x86_64_asm_source_files))
 
 CPP=g++
 CPPFLAGS=-DKERNEL_LOG
@@ -26,18 +26,18 @@ QEMU_OPTIONS=-m 512M \
 
 x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
-$(kernel_object_files): build/kernel/%.o : src/impl/kernel/%.cpp
+$(kernel_object_files): build/kernel/%.o : src/kernel/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/intf -I src/impl/x86_64 -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/impl/kernel/%.cpp, $@) -o $@
+	$(CPP) -c -I src/include -I src/arch/x86_64 -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/kernel/%.cpp, $@) -o $@
 
-$(x86_64_cpp_object_files): build/x86_64/%.o : src/impl/x86_64/%.cpp
+$(x86_64_cpp_object_files): build/x86_64/%.o : src/arch/x86_64/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/intf -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/impl/x86_64/%.cpp, $@) -o $@
+	$(CPP) -c -I src/include -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/arch/x86_64/%.cpp, $@) -o $@
 
 
-$(x86_64_asm_object_files): build/x86_64/%.o : src/impl/x86_64/%.asm
+$(x86_64_asm_object_files): build/x86_64/%.o : src/arch/x86_64/%.asm
 	mkdir -p $(dir $@) && \
-	$(NASM) -f elf64 $(patsubst build/x86_64/%.o, src/impl/x86_64/%.asm, $@) -o $@
+	$(NASM) -f elf64 $(patsubst build/x86_64/%.o, src/arch/x86_64/%.asm, $@) -o $@
 
 .PHONY: all
 all: build-cd
@@ -109,43 +109,46 @@ SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
-SIMPLE_BINS = $(patsubst %, src/impl/x86_64/bins/%.elf, $(SIMPLE_PROGS))
+SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
 
 $(SIMPLE_OBJS): build/userspace/%.o: src/userspace/%.c $(LIBC_A)
 	mkdir -p build/userspace
 	$(CC) -c $(CFLAGS_USER) -o $@ $<
 
-$(SIMPLE_BINS): src/impl/x86_64/bins/%.elf: build/userspace/%.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+$(SIMPLE_BINS): dist/userspace/%.elf: build/userspace/%.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	mkdir -p dist/userspace
 	$(LD) -T src/userspace/libc/libc.ld -o $@ $(LIBC_CRT0) $< $(LIBC_A)
 
 # Userspace test ELF
 TEST_ELF_OBJ  = build/userspace/test.o
-TEST_ELF_BIN  = src/impl/x86_64/bins/test.elf
+TEST_ELF_BIN  = dist/userspace/test.elf
 
 $(TEST_ELF_OBJ): src/userspace/test.asm
 	mkdir -p build/userspace
 	$(NASM) -f elf64 -o $(TEST_ELF_OBJ) src/userspace/test.asm
 
 $(TEST_ELF_BIN): $(TEST_ELF_OBJ) src/userspace/test.ld
+	mkdir -p dist/userspace
 	$(LD) -T src/userspace/test.ld -o $(TEST_ELF_BIN) $(TEST_ELF_OBJ)
 
 # Userspace blink ELF
 BLINK_ELF_OBJ = build/userspace/blink.o
-BLINK_ELF_BIN = src/impl/x86_64/bins/blink.elf
+BLINK_ELF_BIN = dist/userspace/blink.elf
 
 $(BLINK_ELF_OBJ): src/userspace/blink.asm
 	mkdir -p build/userspace
 	$(NASM) -f elf64 -o $(BLINK_ELF_OBJ) src/userspace/blink.asm
 
 $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
+	mkdir -p dist/userspace
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
 # ── Doom ──────────────────────────────────────────────────────────────────────
 DOOM_DIR    = src/userspace/doom
 DOOMGEN_DIR = $(DOOM_DIR)/doomgeneric/doomgeneric
 DOOM_BUILD  = build/userspace/doom
-DOOM_ELF    = src/impl/x86_64/bins/doom.elf
-DOOM_WAD    = src/impl/x86_64/bins/doom1.wad
+DOOM_ELF    = dist/userspace/doom.elf
+DOOM_WAD    = assets/doom1.wad
 
 # Compile flags: suppress all warnings (-w) so old Doom C doesn't drown the build.
 # -I src/userspace/libc makes #include <stdio.h> etc. find our freestanding libc.
@@ -205,6 +208,7 @@ $(DOOM_BUILD)/doomgeneric_potato_sound.o: $(DOOM_DIR)/doomgeneric_potato_sound.c
 DOOM_POTATO_OBJS = $(DOOM_BUILD)/doomgeneric_potato.o $(DOOM_BUILD)/doomgeneric_potato_sound.o
 
 $(DOOM_ELF): $(DOOMGEN_OBJS) $(DOOM_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	mkdir -p dist/userspace
 	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
 	      $(LIBC_CRT0) $(DOOM_POTATO_OBJS) $(DOOMGEN_OBJS) $(LIBC_A)
 
@@ -223,7 +227,7 @@ doom-disk: $(DOOM_ELF) $(DOOM_WAD)
 QUAKE_DIR    = src/userspace/quake
 QUAKEGEN_DIR = $(QUAKE_DIR)/quakegeneric/source
 QUAKE_BUILD  = build/userspace/quake
-QUAKE_ELF    = src/impl/x86_64/bins/quake.elf
+QUAKE_ELF    = dist/userspace/quake.elf
 
 # Compile flags: suppress all warnings (-w) for old Quake C.
 # -I src/userspace/libc makes system includes find our freestanding libc.
@@ -271,6 +275,7 @@ $(QUAKE_BUILD)/quakegeneric_potato.o: $(QUAKE_DIR)/quakegeneric_potato.c $(QUAKE
 	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
 
 $(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	mkdir -p dist/userspace
 	$(LD) --no-relax --wrap=Sys_Error --wrap=Sys_Printf \
 	      -T src/userspace/libc/libc.ld -o $@ \
 	      $(LIBC_CRT0) $(QUAKE_BUILD)/quakegeneric_potato.o $(QUAKEGEN_OBJS) $(LIBC_A)
@@ -278,15 +283,15 @@ $(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0)
 quake: $(QUAKE_ELF)
 
 # Path to Quake PAK0.PAK (user-supplied; copyrighted — cannot auto-download).
-# Copy PAK0.PAK into src/impl/x86_64/bins/ before running make disk.img.
+# Copy PAK0.PAK into assets/ before running make disk.img.
 # Override: make disk.img QUAKE_PAK=/path/to/pak0.pak
-QUAKE_PAK ?= src/impl/x86_64/bins/PAK0.PAK
+QUAKE_PAK ?= assets/PAK0.PAK
 
 # Create FAT32 disk image with test files from bins folder
-ASSET_FILES = src/impl/x86_64/bins/font.psf \
-              src/impl/x86_64/bins/potato.raw \
-              src/impl/x86_64/bins/potato.txt \
-              src/impl/x86_64/bins/boot.raw
+ASSET_FILES = assets/font.psf \
+              assets/potato.raw \
+              assets/potato.txt \
+              assets/boot.raw
 
 disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
 	@echo "Creating FAT32 disk image..."
@@ -299,23 +304,23 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	  printf "  %-30s %6s  ->  %s\n" "$$(basename $$src)" "$$size" "$$dst"; \
 	  mcopy -i disk.img "$$src" "::$$dst"; \
 	}; \
-	copy_file src/impl/x86_64/bins/font.psf   FONT.PSF; \
-	copy_file src/impl/x86_64/bins/potato.raw POTATO.RAW; \
-	copy_file src/impl/x86_64/bins/potato.txt POTATO.TXT; \
-	copy_file src/impl/x86_64/bins/boot.raw   BOOT.RAW; \
+	copy_file assets/font.psf   FONT.PSF; \
+	copy_file assets/potato.raw POTATO.RAW; \
+	copy_file assets/potato.txt POTATO.TXT; \
+	copy_file assets/boot.raw   BOOT.RAW; \
 	copy_file $(TEST_ELF_BIN)   TEST.ELF; \
 	copy_file $(BLINK_ELF_BIN)  BLINK.ELF; \
-	copy_file src/impl/x86_64/bins/hello.elf       HELLO.ELF; \
-	copy_file src/impl/x86_64/bins/fork_test.elf   FORK_TEST.ELF; \
-	copy_file src/impl/x86_64/bins/pipe_test.elf   PIPE_TEST.ELF; \
-	copy_file src/impl/x86_64/bins/mathtest.elf    MATHTEST.ELF; \
-	copy_file src/impl/x86_64/bins/keytest.elf     KEYTEST.ELF; \
-	copy_file src/impl/x86_64/bins/fswrite_test.elf FSWRITE.ELF; \
-	copy_file src/impl/x86_64/bins/sleep_test.elf  SLEEP_TEST.ELF; \
-	copy_file src/impl/x86_64/bins/wm_test.elf     WM_TEST.ELF; \
-	copy_file src/impl/x86_64/bins/sh.elf          SH.ELF; \
-	copy_file src/impl/x86_64/bins/snake.elf       SNAKE.ELF; \
-	copy_file src/impl/x86_64/bins/paktest.elf     PAKTEST.ELF; \
+	copy_file dist/userspace/hello.elf       HELLO.ELF; \
+	copy_file dist/userspace/fork_test.elf   FORK_TEST.ELF; \
+	copy_file dist/userspace/pipe_test.elf   PIPE_TEST.ELF; \
+	copy_file dist/userspace/mathtest.elf    MATHTEST.ELF; \
+	copy_file dist/userspace/keytest.elf     KEYTEST.ELF; \
+	copy_file dist/userspace/fswrite_test.elf FSWRITE.ELF; \
+	copy_file dist/userspace/sleep_test.elf  SLEEP_TEST.ELF; \
+	copy_file dist/userspace/wm_test.elf     WM_TEST.ELF; \
+	copy_file dist/userspace/sh.elf          SH.ELF; \
+	copy_file dist/userspace/snake.elf       SNAKE.ELF; \
+	copy_file dist/userspace/paktest.elf     PAKTEST.ELF; \
 	copy_file $(DOOM_ELF)       DOOM.ELF; \
 	copy_file $(DOOM_WAD)       DOOM1.WAD; \
 	copy_file $(QUAKE_ELF)      QUAKE.ELF; \

@@ -14,11 +14,11 @@ Added in commit `58f4afc`. Provides a simple multi-window manager for userspace 
 
 | File | Role |
 |---|---|
-| `src/intf/window.h` | `Window` struct, `WindowManager` class, constants, event encoding |
-| `src/impl/x86_64/window.cpp` | Full implementation |
-| `src/impl/x86_64/device/mouse.cpp` | Click-to-focus edge detection |
-| `src/impl/x86_64/device/keyboard.cpp` | Routes key events to `WindowManager::push_key_event()` |
-| `src/impl/x86_64/idt.cpp` | Syscall handlers that call `translate_rect()`/`translate_point()` |
+| `src/include/window.h` | `Window` struct, `WindowManager` class, constants, event encoding |
+| `src/arch/x86_64/window.cpp` | Full implementation |
+| `src/arch/x86_64/device/mouse.cpp` | Click-to-focus edge detection |
+| `src/arch/x86_64/device/keyboard.cpp` | Routes key events to `WindowManager::push_key_event()` |
+| `src/arch/x86_64/idt.cpp` | Syscall handlers that call `translate_rect()`/`translate_point()` |
 
 ## Constants (window.h)
 

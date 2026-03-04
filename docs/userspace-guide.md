@@ -29,7 +29,7 @@ Each program has its own directory and is compiled by the top-level `Makefile`. 
 
 1. Create `src/userspace/<name>/main.c` (or `main.cpp`).
 2. Add the binary to the Makefile's userspace build rules (copy an existing entry).
-3. The resulting ELF is placed in `src/impl/x86_64/bins/` and embedded in the FAT disk image.
+3. The resulting ELF is placed in `dist/userspace/` and embedded in the FAT disk image.
 
 ## Minimal program
 

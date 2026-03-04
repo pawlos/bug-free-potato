@@ -28,4 +28,4 @@ To build with Doom support, clone doomgeneric into the expected location:
 
 You also need a Doom IWAD (e.g. `doom1.wad` from the shareware release) placed at:
 
-    src/impl/x86_64/bins/doom1.wad
+    assets/doom1.wad
