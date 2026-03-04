@@ -24,9 +24,10 @@ typedef struct block_hdr {
 
 static block_hdr *heap_list = (block_hdr *)0;
 
-/* Track raw slab pointers so exit() can return them to the kernel. */
+/* Track raw slab pointers and sizes so exit() can return them to the kernel. */
 #define MAX_SLABS 32
 static void  *slab_ptrs[MAX_SLABS];
+static size_t slab_sizes[MAX_SLABS];
 static int    slab_count = 0;
 
 static block_hdr *heap_grow(size_t need)
@@ -37,8 +38,11 @@ static block_hdr *heap_grow(size_t need)
     void *raw = sys_mmap(chunk);
     if (!raw || (long)raw == -1L) return (block_hdr *)0;
     /* Record slab for cleanup on exit(). */
-    if (slab_count < MAX_SLABS)
-        slab_ptrs[slab_count++] = raw;
+    if (slab_count < MAX_SLABS) {
+        slab_ptrs[slab_count] = raw;
+        slab_sizes[slab_count] = chunk;
+        slab_count++;
+    }
     block_hdr *b = (block_hdr *)raw;
     b->size = chunk - HDR_SIZE;
     b->used = 0;
@@ -124,7 +128,7 @@ void exit(int code)
     /* Return all heap slabs to the kernel so successive execs don't
        exhaust vmm.kmalloc.  Must happen before sys_exit kills the task. */
     for (int i = 0; i < slab_count; i++)
-        sys_munmap(slab_ptrs[i]);
+        sys_munmap(slab_ptrs[i], slab_sizes[i]);
     slab_count = 0;
     sys_exit(code);
     __builtin_unreachable();
@@ -230,7 +234,22 @@ unsigned long strtoul(const char *s, char **endptr, int base)
 int abs(int x)  { return x < 0 ? -x : x; }
 long labs(long x) { return x < 0 ? -x : x; }
 
-char *getenv(const char *name) { (void)name; return (char *)0; }
+char **environ = (char **)0;
+
+char *getenv(const char *name)
+{
+    if (!environ || !name) return (char *)0;
+    int nlen = 0;
+    while (name[nlen]) nlen++;
+    for (char **ep = environ; *ep; ep++) {
+        const char *e = *ep;
+        int i = 0;
+        while (i < nlen && e[i] == name[i]) i++;
+        if (i == nlen && e[i] == '=')
+            return (char *)(e + i + 1);
+    }
+    return (char *)0;
+}
 
 static unsigned long rand_state = 12345UL;
 int rand(void)

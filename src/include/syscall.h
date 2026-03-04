@@ -8,7 +8,7 @@ constexpr pt::uint64_t SYS_OPEN     = 3;  // rdi=filename ptr; returns fd (0-7) 
 constexpr pt::uint64_t SYS_READ     = 4;  // rdi=fd, rsi=buf ptr, rdx=count; returns bytes read or (uint64)-1
 constexpr pt::uint64_t SYS_CLOSE    = 5;  // rdi=fd; returns 0 or (uint64)-1
 constexpr pt::uint64_t SYS_MMAP     = 6;  // rdi=size; returns virt addr or (uint64)-1
-constexpr pt::uint64_t SYS_MUNMAP   = 7;  // rdi=ptr; returns 0 or (uint64)-1
+constexpr pt::uint64_t SYS_MUNMAP   = 7;  // rdi=ptr, rsi=size; returns 0 or (uint64)-1
 constexpr pt::uint64_t SYS_YIELD    = 8;  // cooperative yield
 constexpr pt::uint64_t SYS_GET_TICKS = 9; // returns current tick count
 constexpr pt::uint64_t SYS_GET_TIME  = 10; // returns (hours<<8)|minutes
@@ -42,3 +42,5 @@ constexpr pt::uint64_t SYS_AUDIO_PLAYING    = 35; // () → 1=playing, 0=idle, -
 constexpr pt::uint64_t SYS_WRITE_SERIAL     = 36; // rdi=buf, rsi=len; write raw bytes to COM1 serial log
 constexpr pt::uint64_t SYS_SET_WINDOW_TITLE = 37; // rdi=wid, rsi=title_ptr; set window title bar text
 constexpr pt::uint64_t SYS_BIND_VTERM       = 38; // rdi=vterm_id (0-3); bind calling task to a VTerm; returns 0 or -1
+constexpr pt::uint64_t SYS_GETPID           = 39; // () → current task ID
+constexpr pt::uint64_t SYS_STAT             = 40; // rdi=filename, rsi=stat_buf ptr; returns 0 or -1

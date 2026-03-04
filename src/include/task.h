@@ -83,14 +83,20 @@ struct Task {
     // 0 means the task is not sleeping (default).
     pt::uint64_t sleep_deadline;
 
-    // Window ID owned by this task; INVALID_WID (0xFFFFFFFF) = no window.
+    // Window ID for this task; INVALID_WID (0xFFFFFFFF) = no window.
     pt::uint32_t window_id;
+    bool owns_window;
 
     // VTerm ID bound to this task; INVALID_VT (0xFFFFFFFF) = not bound.
     pt::uint32_t vterm_id;
 
     // ELF filename that was loaded into this task (set by create_elf_task / exec_task).
     char name[16];
+
+    // Flat environment buffer: "KEY=VAL\0KEY2=VAL2\0\0" (double-NUL terminated).
+    static constexpr pt::size_t ENV_BUF_SIZE = 512;
+    char env_buf[ENV_BUF_SIZE];
+    pt::size_t env_buf_len;  // bytes used (including final double-NUL)
 
     // 512-byte FXSAVE area for x87/SSE state (must be 16-byte aligned).
     // Saved/restored by the scheduler on every context switch so tasks
@@ -118,7 +124,7 @@ extern pt::uintptr_t g_next_cr3;
 
 class TaskScheduler {
 public:
-    static constexpr pt::size_t MAX_TASKS = 16;
+    static constexpr pt::size_t MAX_TASKS = 32;
     static constexpr pt::size_t TASK_STACK_SIZE = 16384;  // 16KB kernel interrupt stack
     static constexpr pt::size_t USER_STACK_SIZE  = 2097152; // 2MB user execution stack
     // How many timer ticks between forced preemptions.

@@ -1,8 +1,18 @@
 #include "fs/fat12.h"
 #include "device/disk.h"
+#include "device/rtc.h"
 #include "kernel.h"
 #include "virtual.h"
 #include "vterm.h"
+
+static pt::uint16_t fat12_now_time() {
+    RTCTime t; rtc_read(&t);
+    return (pt::uint16_t)((t.hours << 11) | (t.minutes << 5) | (t.seconds / 2));
+}
+static pt::uint16_t fat12_now_date() {
+    RTCTime t; rtc_read(&t);
+    return (pt::uint16_t)(((t.year - 1980) << 9) | (t.month << 5) | t.day);
+}
 
 extern VMM vmm;
 
@@ -549,6 +559,11 @@ bool FAT12::create_file(const char* filename, const pt::uint8_t* data, pt::uint3
                 for (int b = 0; b < 8; b++) entries[e].filename[b]  = (pt::uint8_t)formatted[b];
                 for (int b = 0; b < 3; b++) entries[e].extension[b] = (pt::uint8_t)formatted[8 + b];
                 entries[e].attributes        = 0x20;  // Archive
+                entries[e].create_time       = fat12_now_time();
+                entries[e].create_date       = fat12_now_date();
+                entries[e].modify_time       = entries[e].create_time;
+                entries[e].modify_date       = entries[e].create_date;
+                entries[e].access_date       = entries[e].create_date;
                 entries[e].first_cluster_low = first_cluster;
                 entries[e].file_size         = size;
                 if (!Disk::write_sector(root_dir_start_sector + s, sector_buffer)) {
@@ -619,6 +634,32 @@ bool FAT12::delete_file(const char* filename) {
     }
 
     klog("[FAT12] delete_file: '%s' not found\n", filename);
+    return false;
+}
+
+bool FAT12::stat_file(const char* filename, StatResult* out) {
+    if (!mounted || !filename || !out) return false;
+
+    pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+    for (pt::uint32_t s = 0; s < root_dir_sectors; s++) {
+        if (!Disk::read_sector(root_dir_start_sector + s, sector_buffer)) continue;
+        FAT12_DirEntry* entries = (FAT12_DirEntry*)sector_buffer;
+        for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+            if (entries[e].filename[0] == 0x00) return false;
+            if (entries[e].filename[0] == 0xE5) continue;
+            if (entries[e].attributes & 0x08) continue;
+            if (entries[e].attributes & 0x10) continue;
+
+            if (compare_filename(&entries[e], filename)) {
+                out->file_size   = entries[e].file_size;
+                out->create_time = entries[e].create_time;
+                out->create_date = entries[e].create_date;
+                out->modify_time = entries[e].modify_time;
+                out->modify_date = entries[e].modify_date;
+                return true;
+            }
+        }
+    }
     return false;
 }
 

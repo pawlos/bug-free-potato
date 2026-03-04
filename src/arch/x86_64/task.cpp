@@ -144,6 +144,7 @@ void TaskScheduler::initialize()
         tasks[i].sleep_deadline   = 0;
         tasks[i].syscall_frame_rsp = 0;
         tasks[i].window_id        = INVALID_WID;
+        tasks[i].owns_window      = false;
         tasks[i].vterm_id         = INVALID_VT;
     }
 
@@ -210,6 +211,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
 
     new_task->sleep_deadline = 0;
     new_task->window_id      = INVALID_WID;
+    new_task->owns_window    = false;
     new_task->vterm_id       = INVALID_VT;
     new_task->name[0]        = '\0';
 
@@ -475,10 +477,11 @@ void TaskScheduler::kill_user_tasks()
             close_fd(&t->fd_table[fd]);
 
         // Destroy window if task owns one.
-        if (t->window_id != INVALID_WID) {
+        if (t->window_id != INVALID_WID && t->owns_window) {
             WindowManager::destroy_window(t->window_id);
-            t->window_id = INVALID_WID;
         }
+        t->window_id = INVALID_WID;
+        t->owns_window = false;
 
         // Free kernel interrupt stack.
         if (t->kernel_stack_base != 0) {
@@ -655,6 +658,81 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         task->name[i] = '\0';
     }
 
+    // Initialize default environment variables for the new task.
+    {
+        const char defaults[] = "HOME=/\0PATH=/";
+        memcpy(task->env_buf, defaults, sizeof(defaults));
+        task->env_buf[sizeof(defaults)] = '\0';  // double-NUL terminator
+        task->env_buf_len = sizeof(defaults) + 1;
+    }
+
+    // Build initial user stack with envp so crt0 can extract environ.
+    // Stack layout (high→low): [env strings][align][NULL envp][envp ptrs][NULL argv][argc=0] ← RSP
+    // stack_pt entries are direct-PA accessible (identity-mapped under kernel CR3).
+    {
+        auto elf_write_byte = [&](pt::uint64_t va, pt::uint8_t b) {
+            pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
+            pt::uintptr_t pa = (stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+            *reinterpret_cast<pt::uint8_t*>(pa) = b;
+        };
+        auto elf_write_qword = [&](pt::uint64_t va, pt::uint64_t val) {
+            pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
+            pt::uintptr_t pa = (stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+            *reinterpret_cast<pt::uint64_t*>(pa) = val;
+        };
+
+        const int ENV_MAX = 16;
+        const char* env_strs[ENV_MAX];
+        int envc = 0;
+        {
+            const char* p = task->env_buf;
+            const char* end = task->env_buf + task->env_buf_len;
+            while (p < end && *p && envc < ENV_MAX) {
+                env_strs[envc++] = p;
+                while (p < end && *p) p++;
+                p++;
+            }
+        }
+
+        pt::uint64_t rsp = USER_STACK_TOP;
+
+        // Write env string data downward.
+        pt::uint64_t uenv_ptrs[ENV_MAX];
+        for (int i = envc - 1; i >= 0; i--) {
+            const char* s = env_strs[i];
+            int len = 0; while (s[len]) len++;
+            len++;
+            rsp -= (pt::uint64_t)len;
+            for (int j = 0; j < len; j++)
+                elf_write_byte(rsp + (pt::uint64_t)j, (pt::uint8_t)s[j]);
+            uenv_ptrs[i] = rsp;
+        }
+
+        rsp &= ~(pt::uint64_t)7;
+
+        // Total qwords: 1(argc=0) + 1(argv NULL) + envc + 1(envp NULL) = envc+3
+        {
+            pt::uint64_t total_qw = (pt::uint64_t)(envc + 3);
+            pt::uint64_t final_rsp = rsp - total_qw * 8;
+            if (final_rsp & 0xF) rsp -= 8;
+        }
+
+        // envp NULL sentinel
+        rsp -= 8; elf_write_qword(rsp, 0);
+        // envp pointers
+        for (int i = envc - 1; i >= 0; i--) {
+            rsp -= 8; elf_write_qword(rsp, uenv_ptrs[i]);
+        }
+        // argv NULL sentinel
+        rsp -= 8; elf_write_qword(rsp, 0);
+        // argc = 0
+        rsp -= 8; elf_write_qword(rsp, 0);
+
+        // Patch the iretq frame's RSP to point to the new stack layout.
+        pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(task->preempt_rsp);
+        frame[18] = rsp;  // user RSP in iretq frame
+    }
+
     klog("[ELF_TASK] Task %d: '%s' entry=%lx %d code pages\n",
          task_id, filename, entry, (int)num_code_frames);
 
@@ -693,10 +771,11 @@ void TaskScheduler::task_exit(int exit_code)
             }
         }
 
-        if (current->window_id != INVALID_WID) {
+        if (current->window_id != INVALID_WID && current->owns_window) {
             WindowManager::destroy_window(current->window_id);
-            current->window_id = INVALID_WID;
         }
+        current->window_id = INVALID_WID;
+        current->owns_window = false;
 
         current->state = TASK_DEAD;
         task_count--;
@@ -920,8 +999,9 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->exit_code          = 0;
     child->sleep_deadline     = 0;
     child->syscall_frame_rsp  = 0;
-    child->window_id          = INVALID_WID;
-    child->vterm_id           = INVALID_VT;
+    child->window_id          = parent->window_id;
+    child->owns_window        = false;
+    child->vterm_id           = parent->vterm_id;
     memcpy(child->name, parent->name, sizeof(child->name));
 
     // Inherit parent's FPU/SSE state so the child resumes with valid x87/SSE context.
@@ -1095,78 +1175,113 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     current_pml4[USER_PML4_IDX] = new_user_pdpt_frame | 0x07;
     current_pml4[ELF_PML4_IDX] &= ~(pt::uint64_t)0x04;  // clear U bit on kernel half
 
-    // 8. Build initial user RSP and optional argv layout.
+    // 8. Build initial user RSP with argv + envp layout.
     //    Stack frames are at physical addresses under kernel_cr3 — direct PA access OK.
-    //    Access a stack frame: new_stack_pt[pt_idx] & ~0xFFF gives its PA.
     //    For user VA `va` in [USER_STACK_BOT, USER_STACK_TOP):
     //      pt_idx = (va - USER_STACK_BOT) >> 12
     //      byte ptr = (new_stack_pt[pt_idx] & ~0xFFF) + (va & 0xFFF)
-    // Start at USER_STACK_TOP - 16 so [rsp] = argc = 0 (from zeroed stack frame),
-    // within the mapped stack pages (PDPT[0]), not at the PDPT[1] boundary.
-    // Must be 16-byte aligned to satisfy the SysV ABI at _start.
+    // Layout (high→low):
+    //   [string data: argv strings + env strings]
+    //   [alignment]
+    //   [NULL]  ← envp sentinel
+    //   [envp[0..m-1]]
+    //   [NULL]  ← argv sentinel
+    //   [argv[0..n-1]]
+    //   [argc]  ← final RSP
     pt::uint64_t new_user_rsp = USER_STACK_TOP - 16;
 
-    if (real_argc > 0) {
+    // Helper lambda: write a byte at user VA via physical address.
+    auto write_byte = [&](pt::uint64_t va, pt::uint8_t b) {
+        pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
+        pt::uintptr_t pa = (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+        *reinterpret_cast<pt::uint8_t*>(pa) = b;
+    };
+    auto write_qword = [&](pt::uint64_t va, pt::uint64_t val) {
+        pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
+        pt::uintptr_t pa = (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+        *reinterpret_cast<pt::uint64_t*>(pa) = val;
+    };
+
+    {
         pt::uint64_t rsp = USER_STACK_TOP;
 
-        // Write string data downward, record user-space pointers.
+        // Count env strings from current task's env_buf (flat "K=V\0K=V\0\0").
+        const int ENV_MAX = 16;
+        const char* env_strs[ENV_MAX];
+        int envc = 0;
+        {
+            const char* p = current->env_buf;
+            const char* end = current->env_buf + current->env_buf_len;
+            while (p < end && *p && envc < ENV_MAX) {
+                env_strs[envc++] = p;
+                while (p < end && *p) p++;
+                p++;  // skip NUL
+            }
+        }
+
+        // Write env string data downward, record user-space pointers.
+        pt::uint64_t uenv_ptrs[ENV_MAX];
+        for (int i = envc - 1; i >= 0; i--) {
+            const char* s = env_strs[i];
+            int len = 0; while (s[len]) len++;
+            len++;
+            rsp -= (pt::uint64_t)len;
+            if (rsp < USER_STACK_BOT) { rsp += (pt::uint64_t)len; break; }
+            for (int j = 0; j < len; j++)
+                write_byte(rsp + (pt::uint64_t)j, (pt::uint8_t)s[j]);
+            uenv_ptrs[i] = rsp;
+        }
+
+        // Write argv string data downward, record user-space pointers.
         pt::uint64_t uarg_ptrs[ARGV_MAX_LOCAL];
         for (int i = real_argc - 1; i >= 0; i--) {
             const char* s = arg_kptrs[i];
             int len = 0; while (s[len]) len++;
-            len++;  // include NUL
+            len++;
             rsp -= (pt::uint64_t)len;
             if (rsp < USER_STACK_BOT) { rsp += (pt::uint64_t)len; break; }
-
-            // Write each byte via the physical frame PA.
-            for (int j = 0; j < len; j++) {
-                pt::uint64_t bva = rsp + (pt::uint64_t)j;
-                pt::size_t pt_idx = (bva - USER_STACK_BOT) >> 12;
-                pt::uintptr_t pa = (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF)
-                                   + (bva & 0xFFF);
-                *reinterpret_cast<pt::uint8_t*>(pa) = (pt::uint8_t)s[j];
-            }
+            for (int j = 0; j < len; j++)
+                write_byte(rsp + (pt::uint64_t)j, (pt::uint8_t)s[j]);
             uarg_ptrs[i] = rsp;
         }
 
         // Align rsp down to 8 bytes.
         rsp &= ~(pt::uint64_t)7;
 
-        // Ensure final RSP (after pushing NULL + argv + argc) is 16-byte aligned.
-        // Total qwords to push below: 1 (NULL) + real_argc (argv ptrs) + 1 (argc).
-        // If (rsp - total*8) is not 16-byte aligned, add 8 bytes of padding.
+        // Total qwords to push: 1(argc) + real_argc + 1(NULL) + envc + 1(NULL)
         {
-            pt::uint64_t final_rsp = rsp - (pt::uint64_t)(real_argc + 2) * 8;
+            pt::uint64_t total_qw = (pt::uint64_t)(real_argc + envc + 3);
+            pt::uint64_t final_rsp = rsp - total_qw * 8;
             if (final_rsp & 0xF)
                 rsp -= 8;
         }
 
-        // Write NULL sentinel qword.
+        // Write envp NULL sentinel.
         rsp -= 8;
-        if (rsp >= USER_STACK_BOT) {
-            pt::size_t pt_idx = (rsp - USER_STACK_BOT) >> 12;
-            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(
-                (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (rsp & 0xFFF));
-            *p = 0;
+        if (rsp >= USER_STACK_BOT) write_qword(rsp, 0);
+
+        // Write envp pointer array (reverse order).
+        for (int i = envc - 1; i >= 0; i--) {
+            rsp -= 8;
+            if (rsp < USER_STACK_BOT) { rsp += 8; break; }
+            write_qword(rsp, uenv_ptrs[i]);
         }
+
+        // Write argv NULL sentinel.
+        rsp -= 8;
+        if (rsp >= USER_STACK_BOT) write_qword(rsp, 0);
 
         // Write argv pointer array (reverse order).
         for (int i = real_argc - 1; i >= 0; i--) {
             rsp -= 8;
             if (rsp < USER_STACK_BOT) { rsp += 8; break; }
-            pt::size_t pt_idx = (rsp - USER_STACK_BOT) >> 12;
-            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(
-                (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (rsp & 0xFFF));
-            *p = uarg_ptrs[i];
+            write_qword(rsp, uarg_ptrs[i]);
         }
 
         // Write argc qword.
         rsp -= 8;
         if (rsp >= USER_STACK_BOT) {
-            pt::size_t pt_idx = (rsp - USER_STACK_BOT) >> 12;
-            pt::uint64_t* p = reinterpret_cast<pt::uint64_t*>(
-                (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (rsp & 0xFFF));
-            *p = (pt::uint64_t)real_argc;
+            write_qword(rsp, (pt::uint64_t)real_argc);
             new_user_rsp = rsp;
         }
     }

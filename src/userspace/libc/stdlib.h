@@ -21,6 +21,7 @@ unsigned long strtoul(const char *s, char **endptr, int base);
 int    abs(int x);
 long   labs(long x);
 char  *getenv(const char *name);
+extern char **environ;
 int    rand(void);
 void   srand(unsigned int seed);
 void   qsort(void *base, size_t nmemb, size_t size,

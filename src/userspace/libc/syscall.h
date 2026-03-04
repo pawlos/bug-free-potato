@@ -8,7 +8,7 @@
 #define SYS_READ      4   /* rdi=fd, rsi=buf, rdx=count; returns bytes     */
 #define SYS_CLOSE     5   /* rdi = fd; returns 0 or -1                     */
 #define SYS_MMAP      6   /* rdi = size; returns virt addr or -1           */
-#define SYS_MUNMAP    7   /* rdi = ptr; returns 0 or -1                    */
+#define SYS_MUNMAP    7   /* rdi=ptr, rsi=size; returns 0 or -1            */
 #define SYS_YIELD     8   /* cooperative yield                             */
 #define SYS_GET_TICKS 9   /* returns current tick count                    */
 #define SYS_GET_TIME  10  /* returns (hours<<8)|minutes                    */
@@ -43,6 +43,8 @@
 #define SYS_WRITE_SERIAL     36  /* rdi=buf, rsi=len; write raw bytes to COM1 serial   */
 #define SYS_SET_WINDOW_TITLE 37  /* rdi=wid, rsi=title_ptr; set window title bar text */
 #define SYS_BIND_VTERM       38  /* rdi=vterm_id (0-3); bind task to a VTerm; returns 0 or -1 */
+#define SYS_GETPID           39  /* () → current task ID                                    */
+#define SYS_STAT             40  /* rdi=filename, rsi=stat_buf ptr; returns 0 or -1         */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -118,8 +120,8 @@ static inline int   sys_close(int fd)
 static inline void *sys_mmap(size_t size)
     { return (void *)__sc1(SYS_MMAP, (long)size); }
 
-static inline void  sys_munmap(void *ptr)
-    { __sc1(SYS_MUNMAP, (long)ptr); }
+static inline void  sys_munmap(void *ptr, size_t size)
+    { __sc2(SYS_MUNMAP, (long)ptr, (long)size); }
 
 static inline void  sys_yield(void)
     { __sc0(SYS_YIELD); }
@@ -241,3 +243,11 @@ static inline long sys_set_window_title(long wid, const char *title)
 /* Bind the calling task to a virtual terminal (0-3) for I/O routing. */
 static inline long sys_bind_vterm(long vterm_id)
     { return __sc1(SYS_BIND_VTERM, vterm_id); }
+
+/* Returns the calling task's ID. */
+static inline long sys_getpid(void)
+    { return __sc0(SYS_GETPID); }
+
+/* Stat a file: fills stat_buf with size + timestamps.  Returns 0 or -1. */
+static inline long sys_stat(const char *filename, void *buf)
+    { return __sc2(SYS_STAT, (long)filename, (long)buf); }

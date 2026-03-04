@@ -440,8 +440,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 					} else if (has_vterm) {
 						vterm_get(wt->vterm_id)->put_char(buf[i]);
 					} else {
-						// Unbound tasks → serial only (no framebuffer)
-						debug.print_ch(buf[i]);
+						// Unbound tasks → active VTerm (visible console)
+						vterm_active()->put_char(buf[i]);
 					}
 				}
 				return (pt::uint64_t)n;
@@ -592,7 +592,23 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return va;
 		}
 		case SYS_MUNMAP: {
-			// no-op: frame leak acceptable; unmap logic can be added later
+			Task* ct = TaskScheduler::get_current_task();
+			pt::uintptr_t va = (pt::uintptr_t)arg1;
+			pt::size_t size = ((pt::size_t)arg2 + 4095) & ~(pt::size_t)4095;
+			if (!ct || !ct->user_pd || va < TaskScheduler::USER_HEAP_BASE || size == 0)
+				return (pt::uint64_t)-1;
+			pt::uint64_t* upd = (pt::uint64_t*)(KERNEL_OFFSET + ct->user_pd);
+			for (pt::uintptr_t addr = va; addr < va + size; addr += 4096) {
+				pt::size_t pd_idx = (addr >> 21) & 0x1FF;
+				pt::size_t pt_idx = (addr >> 12) & 0x1FF;
+				if (!(upd[pd_idx] & 0x01) || (upd[pd_idx] & 0x80)) continue;
+				pt::uint64_t* pt = (pt::uint64_t*)(KERNEL_OFFSET + (upd[pd_idx] & ~(pt::uintptr_t)0xFFF));
+				if (pt[pt_idx] & 0x01) {
+					vmm.free_frame(pt[pt_idx] & ~(pt::uintptr_t)0xFFF);
+					pt[pt_idx] = 0;
+					asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
+				}
+			}
 			return 0;
 		}
 		case SYS_YIELD:
@@ -831,13 +847,14 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 
 		case SYS_CREATE_WINDOW: {
 			Task* t = TaskScheduler::get_current_task();
-			if (!t || t->window_id != INVALID_WID) return (pt::uint64_t)-1;
+			if (!t || (t->window_id != INVALID_WID && t->owns_window)) return (pt::uint64_t)-1;
 			pt::uint32_t wid = WindowManager::create_window(
 			    (pt::uint32_t)arg1, (pt::uint32_t)arg2,
 			    (pt::uint32_t)arg3, (pt::uint32_t)arg4, t->id,
 			    (pt::uint32_t)arg5);
 			if (wid == INVALID_WID) return (pt::uint64_t)-1;
 			t->window_id = wid;
+			t->owns_window = true;
 			return wid;
 		}
 		case SYS_DESTROY_WINDOW: {
@@ -846,6 +863,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			if (!t || !w || w->owner_task_id != t->id) return (pt::uint64_t)-1;
 			WindowManager::destroy_window((pt::uint32_t)arg1);
 			t->window_id = INVALID_WID;
+			t->owns_window = false;
 			return 0;
 		}
 		case SYS_GET_WINDOW_EVENT: {
@@ -947,6 +965,18 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			if (!t) return (pt::uint64_t)-1;
 			t->vterm_id = vt;
 			return 0;
+		}
+
+		case SYS_GETPID: {
+			Task* t = TaskScheduler::get_current_task();
+			return t ? (pt::uint64_t)t->id : (pt::uint64_t)-1;
+		}
+
+		case SYS_STAT: {
+			const char* filename = reinterpret_cast<const char*>(arg1);
+			StatResult* buf = reinterpret_cast<StatResult*>(arg2);
+			if (!filename || !buf) return (pt::uint64_t)-1;
+			return VFS::stat_file(filename, buf) ? 0 : (pt::uint64_t)-1;
 		}
 
 		default:

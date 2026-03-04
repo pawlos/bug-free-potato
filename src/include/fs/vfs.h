@@ -9,6 +9,15 @@ enum class FdType : pt::uint8_t {
     TCP_SOCK = 3,   // TCP socket (pointer to TcpSocket stored in fs_data)
 };
 
+// Result structure for stat_file: file size + FAT timestamps.
+struct StatResult {
+    pt::uint32_t file_size;
+    pt::uint16_t create_time;
+    pt::uint16_t create_date;
+    pt::uint16_t modify_time;
+    pt::uint16_t modify_date;
+};
+
 // Generic file handle - replaces FAT12_File everywhere.
 // fs_data is opaque FS-private state (e.g. FAT12State).
 struct File {
@@ -38,6 +47,7 @@ public:
     // readdir: fill name_out and *size_out for the idx-th regular file (0-based).
     // Returns true if found, false if idx >= file count.
     virtual bool readdir(int /*idx*/, char* /*name_out*/, pt::uint32_t* /*size_out*/) { return false; }
+    virtual bool stat_file(const char* /*filename*/, StatResult* /*out*/) { return false; }
     virtual pt::uint32_t get_bytes_per_cluster() = 0;
     virtual pt::uint32_t get_free_space() = 0;
     virtual pt::uint32_t get_total_space() = 0;
@@ -58,6 +68,7 @@ public:
     static bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size);
     static bool delete_file(const char* filename);
     static bool readdir(int idx, char* name_out, pt::uint32_t* size_out);
+    static bool stat_file(const char* filename, StatResult* out);
     static pt::uint32_t get_bytes_per_cluster();
     static pt::uint32_t get_free_space();
     static pt::uint32_t get_total_space();

@@ -1,8 +1,18 @@
 #include "fs/fat32.h"
 #include "device/disk.h"
+#include "device/rtc.h"
 #include "kernel.h"
 #include "virtual.h"
 #include "vterm.h"
+
+static pt::uint16_t fat_now_time() {
+    RTCTime t; rtc_read(&t);
+    return (pt::uint16_t)((t.hours << 11) | (t.minutes << 5) | (t.seconds / 2));
+}
+static pt::uint16_t fat_now_date() {
+    RTCTime t; rtc_read(&t);
+    return (pt::uint16_t)(((t.year - 1980) << 9) | (t.month << 5) | t.day);
+}
 
 extern VMM vmm;
 
@@ -526,6 +536,8 @@ bool FAT32::update_dir_entry(File* file)
     e->file_size          = file->file_size;
     e->first_cluster_high = (pt::uint16_t)(st->first_cluster >> 16);
     e->first_cluster_low  = (pt::uint16_t)(st->first_cluster & 0xFFFF);
+    e->modify_time = fat_now_time();
+    e->modify_date = fat_now_date();
     return Disk::write_sector(st->dir_entry_sector, fat32_sector_buf);
 }
 
@@ -551,6 +563,11 @@ bool FAT32::create_dir_entry(const char* filename, File* out)
                 for (int i = 0; i < 8; i++) ents[e].filename[i]  = (pt::uint8_t)fmt[i];
                 for (int i = 0; i < 3; i++) ents[e].extension[i] = (pt::uint8_t)fmt[8 + i];
                 ents[e].attributes = 0x20;   // Archive flag
+                ents[e].create_time = fat_now_time();
+                ents[e].create_date = fat_now_date();
+                ents[e].modify_time = ents[e].create_time;
+                ents[e].modify_date = ents[e].create_date;
+                ents[e].access_date = ents[e].create_date;
 
                 if (!Disk::write_sector(sector + s, fat32_sector_buf)) return false;
 
@@ -753,6 +770,52 @@ bool FAT32::delete_file(const char* filename) {
 
     klog("[FAT32] delete_file: deleted '%s'\n", filename);
     return true;
+}
+
+bool FAT32::stat_file(const char* filename, StatResult* out) {
+    if (!mounted || !filename || !out) return false;
+
+    char lfn_buf[261];
+    for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+
+    pt::uint32_t cluster = root_cluster;
+    while (cluster >= 2 && !is_eoc(cluster)) {
+        pt::uint32_t sector = cluster_to_sector(cluster);
+        for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            if (!Disk::read_sector(sector + s, fat32_sector_buf)) continue;
+            pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+            FAT32_DirEntry* entries = (FAT32_DirEntry*)fat32_sector_buf;
+
+            for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+                pt::uint8_t first = entries[e].filename[0];
+                if (first == 0x00) return false;
+                if (first == 0xE5) { lfn_buf[0] = '\0'; continue; }
+
+                if (entries[e].attributes == FAT32_ATTR_LFN) {
+                    const FAT32_LFN_Entry* lfn = (const FAT32_LFN_Entry*)&entries[e];
+                    if (lfn->seq_num & 0x40) {
+                        for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+                    }
+                    lfn_store_entry(lfn, lfn_buf, sizeof(lfn_buf));
+                    continue;
+                }
+                if (entries[e].attributes & FAT32_ATTR_VOLUME_ID) { lfn_buf[0] = '\0'; continue; }
+                if (entries[e].attributes & FAT32_ATTR_DIRECTORY) { lfn_buf[0] = '\0'; continue; }
+
+                if (compare_filename(&entries[e], lfn_buf, filename)) {
+                    out->file_size   = entries[e].file_size;
+                    out->create_time = entries[e].create_time;
+                    out->create_date = entries[e].create_date;
+                    out->modify_time = entries[e].modify_time;
+                    out->modify_date = entries[e].modify_date;
+                    return true;
+                }
+                lfn_buf[0] = '\0';
+            }
+        }
+        cluster = get_next_cluster(cluster);
+    }
+    return false;
 }
 
 // ── Info getters ──────────────────────────────────────────────────────────
