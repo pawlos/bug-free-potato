@@ -41,3 +41,4 @@ constexpr pt::uint64_t SYS_AUDIO_WRITE      = 34; // rdi=data, rsi=bytes, rdx=ra
 constexpr pt::uint64_t SYS_AUDIO_PLAYING    = 35; // () → 1=playing, 0=idle, -1=no AC97
 constexpr pt::uint64_t SYS_WRITE_SERIAL     = 36; // rdi=buf, rsi=len; write raw bytes to COM1 serial log
 constexpr pt::uint64_t SYS_SET_WINDOW_TITLE = 37; // rdi=wid, rsi=title_ptr; set window title bar text
+constexpr pt::uint64_t SYS_BIND_VTERM       = 38; // rdi=vterm_id (0-3); bind calling task to a VTerm; returns 0 or -1

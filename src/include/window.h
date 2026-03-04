@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include "ansi.h"
+#include "vterm.h"
 
 constexpr pt::uint32_t MAX_WINDOWS  = 8;
 constexpr pt::uint32_t TITLE_BAR_H  = 16;  // px; matches PSF1 glyph height
@@ -22,6 +23,7 @@ inline pt::uint64_t wev_make_key(pt::uint8_t sc, bool pressed) {
 struct Window {
     pt::uint32_t id;
     pt::uint32_t owner_task_id;   // INVALID_WID = free slot
+    pt::uint32_t vt_id;           // VT that owns this window
     bool         active;
     bool         chromeless;      // no border/title bar; client area = full rect
 
@@ -96,7 +98,10 @@ public:
     static void        put_char(pt::uint32_t wid, char c);
 
     static pt::uint32_t focused_id;
+    static pt::uint32_t focused_per_vt[VTERM_COUNT];  // per-VT focus tracking
     static bool        is_focused(pt::uint32_t wid) { return focused_id == wid; }
+    static bool        is_on_active_vt(pt::uint32_t wid);
+    static void        on_vt_switch();  // called by vterm_switch()
     static void        draw_chrome(pt::uint32_t wid, bool active);
 
 private:

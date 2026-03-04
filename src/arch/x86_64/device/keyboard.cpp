@@ -2,6 +2,7 @@
 #include "device/com.h"
 #include "kernel.h"
 #include "window.h"
+#include "vterm.h"
 
 constexpr char layout[128] =
 {
@@ -146,17 +147,27 @@ void keyboard_routine(const pt::uint8_t scancode)
 		{
 			ctrlPressed = true;
 		}
+		else if (altPressed && scancode >= 0x3B && scancode <= 0x3E)
+		{
+			vterm_switch(scancode - 0x3B);
+		}
 		else
 		{
 			const char* current_layout = shiftPressed || capsLockOn ? layout_upper : layout;
 			const char key = current_layout[scancode];
-			// Only feed the raw buffer when no window has focus; when a
-			// window is focused its event queue (populated by push_key_event
-			// above via wm_route_key_event) is the sole input channel.
+			// When a window has focus, keys go exclusively to its event queue
+			// (populated by push_key_event above via wm_route_key_event).
+			// Otherwise, route to the active VTerm's input ring (or the
+			// legacy keyboard_buffer if VTerms are not yet initialized).
 			if (WindowManager::focused_id == INVALID_WID) {
-				keyboard_buffer[write_pos % 128] = key;
-				keyboard_log("Putting the '%c' into %d\n", key, write_pos % 128);
-				write_pos = write_pos + 1;
+				VTerm* vt = vterm_active();
+				if (vt) {
+					vt->push_input(key);
+				} else {
+					keyboard_buffer[write_pos % 128] = key;
+					keyboard_log("Putting the '%c' into %d\n", key, write_pos % 128);
+					write_pos = write_pos + 1;
+				}
 			}
 		}
 		if (ctrlPressed && shiftPressed && altPressed)

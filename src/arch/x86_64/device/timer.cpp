@@ -2,6 +2,7 @@
 #include "kernel.h"
 #include "io.h"
 #include "virtual.h"
+#include "vterm.h"
 
 extern VMM vmm;
 
@@ -89,7 +90,7 @@ void timer_cancel(pt::uint64_t timer_id)
 				prev->next = current->next;
 			}
 			vmm.kfree(current);
-			klog("[TIMER] Cancelled and freed timer ID %d\n", timer_id);
+			vterm_printf("[TIMER] Cancelled and freed timer ID %d\n", timer_id);
 			return;
 		}
 		prev = current;
@@ -143,19 +144,19 @@ void timer_list_all()
 	int count = 0;
 
 	if (current == nullptr) {
-		klog("[TIMER] No active timers\n");
+		vterm_printf("[TIMER] No active timers\n");
 		return;
 	}
 
-	klog("[TIMER] Active timers:\n");
-	klog("  ID  | Active | Periodic | Deadline    | Interval  | Callback\n");
-	klog("------|--------|----------|-------------|-----------|----------\n");
+	vterm_printf("[TIMER] Active timers:\n");
+	vterm_printf("  ID  | Active | Periodic | Deadline    | Interval  | Callback\n");
+	vterm_printf("------|--------|----------|-------------|-----------|----------\n");
 
 	while (current != nullptr) {
 		pt::uint64_t ticks_remaining = current->active && current->deadline_ticks > ticks ?
 			current->deadline_ticks - ticks : 0;
 
-		klog("  %d  |   %c   |    %c     | %d (%d) | %d     | %x\n",
+		vterm_printf("  %d  |   %c   |    %c     | %d (%d) | %d     | %x\n",
 			(int)current->id,
 			current->active ? 'Y' : 'N',
 			current->periodic ? 'Y' : 'N',
@@ -168,5 +169,5 @@ void timer_list_all()
 		current = current->next;
 	}
 
-	klog("[TIMER] Total: %d timer(s)\n", count);
+	vterm_printf("[TIMER] Total: %d timer(s)\n", count);
 }

@@ -1,20 +1,21 @@
 #include "line_reader.h"
 #include "kernel.h"
+#include "vterm.h"
 
 LineReader::LineReader() : pos(0), line_ready(false) {
     buffer[0] = '\0';
 }
 
 void LineReader::echo(char c) {
-    klog("%c", c);
+    vterm_printf("%c", c);
 }
 
 void LineReader::echo_backspace() {
-    klog("\b \b");
+    vterm_printf("\b \b");
 }
 
 void LineReader::echo_newline() {
-    klog("\n");
+    vterm_printf("\n");
 }
 
 bool LineReader::process(char c) {

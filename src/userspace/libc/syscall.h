@@ -42,6 +42,7 @@
 #define SYS_AUDIO_PLAYING    35  /* () → 1=playing, 0=idle, -1=no AC97                 */
 #define SYS_WRITE_SERIAL     36  /* rdi=buf, rsi=len; write raw bytes to COM1 serial   */
 #define SYS_SET_WINDOW_TITLE 37  /* rdi=wid, rsi=title_ptr; set window title bar text */
+#define SYS_BIND_VTERM       38  /* rdi=vterm_id (0-3); bind task to a VTerm; returns 0 or -1 */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -236,3 +237,7 @@ static inline long sys_write_serial(const char *buf, size_t n)
 /* Set the title bar text for a window (max 31 chars). */
 static inline long sys_set_window_title(long wid, const char *title)
     { return __sc2(SYS_SET_WINDOW_TITLE, wid, (long)title); }
+
+/* Bind the calling task to a virtual terminal (0-3) for I/O routing. */
+static inline long sys_bind_vterm(long vterm_id)
+    { return __sc1(SYS_BIND_VTERM, vterm_id); }

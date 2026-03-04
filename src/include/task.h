@@ -1,6 +1,7 @@
 #pragma once
 #include "defs.h"
 #include "fs/vfs.h"
+#include "vterm.h"
 
 // Task states
 enum TaskState {
@@ -84,6 +85,9 @@ struct Task {
 
     // Window ID owned by this task; INVALID_WID (0xFFFFFFFF) = no window.
     pt::uint32_t window_id;
+
+    // VTerm ID bound to this task; INVALID_VT (0xFFFFFFFF) = not bound.
+    pt::uint32_t vterm_id;
 
     // 512-byte FXSAVE area for x87/SSE state (must be 16-byte aligned).
     // Saved/restored by the scheduler on every context switch so tasks

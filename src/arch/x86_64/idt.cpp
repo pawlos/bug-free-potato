@@ -16,6 +16,7 @@
 #include "virtual.h"
 #include "window.h"
 #include "net/net.h"
+#include "vterm.h"
 
 extern pt::uintptr_t g_syscall_rsp;
 extern IDT64 _idt[256];
@@ -430,20 +431,17 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			const char* buf = reinterpret_cast<const char*>(arg2);
 			pt::uint32_t n  = (pt::uint32_t)arg3;
 			if (fd == 1) {
-				// stdout: windowed tasks render text into their client area;
-				// tasks without a window use the global fbterm as before.
 				Task* wt = TaskScheduler::get_current_task();
 				bool has_window = wt && wt->window_id != INVALID_WID;
+				bool has_vterm  = wt && wt->vterm_id  != INVALID_VT;
 				for (pt::uint32_t i = 0; i < n; i++) {
 					if (has_window) {
 						WindowManager::put_char(wt->window_id, buf[i]);
+					} else if (has_vterm) {
+						vterm_get(wt->vterm_id)->put_char(buf[i]);
 					} else {
-						fbterm.put_char(buf[i]);
-						// mirror to serial only for non-windowed tasks;
-						// windowed tasks have their own display and their
-						// output (incl. ANSI sequences) must not pollute the log.
-						char tmp[2] = { buf[i], '\0' };
-						debug.print_str(tmp);
+						// Unbound tasks → serial only (no framebuffer)
+						debug.print_ch(buf[i]);
 					}
 				}
 				return (pt::uint64_t)n;
@@ -495,6 +493,11 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				char ch = keyboard_scancode_to_char(sc);
 				if (ch == 0) return (pt::uint64_t)-1;   // non-printable / modifier
 				return (pt::uint64_t)(pt::uint8_t)ch;
+			}
+			if (wt && wt->vterm_id != INVALID_VT) {
+				char c = vterm_get(wt->vterm_id)->pop_input();
+				if (c == (char)-1) return (pt::uint64_t)-1;
+				return (pt::uint64_t)(pt::uint8_t)c;
 			}
 			const char c = get_char();
 			// get_char() returns -1 (as char) when no key is available.
@@ -611,6 +614,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			{
 				Task* t = TaskScheduler::get_current_task();
 				if (t && t->window_id != INVALID_WID) {
+					if (!WindowManager::is_on_active_vt(t->window_id))
+						return 0;
 					pt::uint32_t sx, sy, sw, sh;
 					if (!WindowManager::translate_rect(t->window_id,
 					        (pt::uint32_t)arg1, (pt::uint32_t)arg2,
@@ -637,6 +642,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			{
 				Task* t = TaskScheduler::get_current_task();
 				if (t && t->window_id != INVALID_WID) {
+					if (!WindowManager::is_on_active_vt(t->window_id))
+						return 0;
 					pt::uint32_t sx, sy;
 					if (!WindowManager::translate_point(t->window_id,
 					        (pt::uint32_t)arg1, (pt::uint32_t)arg2, sx, sy))
@@ -772,6 +779,8 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			{
 				Task* t = TaskScheduler::get_current_task();
 				if (t && t->window_id != INVALID_WID) {
+					if (!WindowManager::is_on_active_vt(t->window_id))
+						return 0;
 					pt::uint32_t sx, sy, sw, sh;
 					if (!WindowManager::translate_rect(t->window_id,
 					        (pt::uint32_t)arg2, (pt::uint32_t)arg3,
@@ -928,6 +937,15 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			for (; i < 31 && src[i]; ++i) w->title[i] = src[i];
 			w->title[i] = '\0';
 			WindowManager::draw_chrome(w->id, WindowManager::is_focused(w->id));
+			return 0;
+		}
+
+		case SYS_BIND_VTERM: {
+			pt::uint32_t vt = (pt::uint32_t)arg1;
+			if (vt >= VTERM_COUNT) return (pt::uint64_t)-1;
+			Task* t = TaskScheduler::get_current_task();
+			if (!t) return (pt::uint64_t)-1;
+			t->vterm_id = vt;
 			return 0;
 		}
 

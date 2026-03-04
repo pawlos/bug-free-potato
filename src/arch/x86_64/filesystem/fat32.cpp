@@ -2,6 +2,7 @@
 #include "device/disk.h"
 #include "kernel.h"
 #include "virtual.h"
+#include "vterm.h"
 
 extern VMM vmm;
 
@@ -234,7 +235,7 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
                 if (!searching) {
                     // List mode
                     if (lfn_buf[0] != '\0') {
-                        klog("  FILE %s %d bytes\n",
+                        vterm_printf("  FILE %s %d bytes\n",
                              lfn_buf, entries[e].file_size);
                     } else {
                         char name[13]; int k = 0;
@@ -246,7 +247,7 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
                                 name[k++] = entries[e].extension[i];
                         }
                         name[k] = '\0';
-                        klog("  FILE %s %d bytes\n", name, entries[e].file_size);
+                        vterm_printf("  FILE %s %d bytes\n", name, entries[e].file_size);
                     }
                 } else if (compare_filename(&entries[e], lfn_buf, filename)) {
                     // Found it
@@ -302,8 +303,8 @@ bool FAT32::file_exists(const char* filename) {
 }
 
 void FAT32::list_root_directory() {
-    if (!mounted) { klog("[FAT32] Not mounted\n"); return; }
-    klog("[FAT32] Root directory:\n");
+    if (!mounted) { vterm_printf("[FAT32] Not mounted\n"); return; }
+    vterm_printf("[FAT32] Root directory:\n");
     scan_directory(root_cluster, nullptr, nullptr);
 }
 

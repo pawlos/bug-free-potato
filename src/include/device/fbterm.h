@@ -47,6 +47,11 @@ public:
 
     bool is_ready() const { return m_ready; }
 
+    pt::uint32_t get_cols() const { return m_cols; }
+    pt::uint32_t get_rows() const { return m_rows; }
+    pt::uint32_t get_term_w() const { return m_term_w; }
+    Framebuffer* get_fb() const { return m_fb; }
+
 private:
     void draw_glyph(char c, pt::uint32_t px, pt::uint32_t py);
     void newline();

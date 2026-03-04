@@ -19,6 +19,7 @@
 #include "tss.h"
 #include "window.h"
 #include "net/net.h"
+#include "vterm.h"
 
 extern char get_char();
 static IDT idt;
@@ -90,6 +91,8 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
         else
             klog("[MAIN] Framebuffer terminal init failed\n");
     }
+    if (fbterm.is_ready())
+        vterm_init(fbterm.get_cols(), fbterm.get_rows());
     WindowManager::initialize();
     if (TaskScheduler::create_elf_task("BLINK.ELF") == 0xFFFFFFFF)
         klog("[MAIN] BLINK.ELF not found or failed to start\n");
@@ -113,7 +116,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
     LineReader reader;
     while (true) {
-        reader.process(get_char());
+        VTerm* active = vterm_active();
+        if (active)
+            reader.process(active->pop_input());
         if (reader.has_line()) {
             const char* line = reader.get_line();
             if (line[0] != '\0') {

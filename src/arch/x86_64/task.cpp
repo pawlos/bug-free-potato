@@ -144,6 +144,7 @@ void TaskScheduler::initialize()
         tasks[i].sleep_deadline   = 0;
         tasks[i].syscall_frame_rsp = 0;
         tasks[i].window_id        = INVALID_WID;
+        tasks[i].vterm_id         = INVALID_VT;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
@@ -209,6 +210,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
 
     new_task->sleep_deadline = 0;
     new_task->window_id      = INVALID_WID;
+    new_task->vterm_id       = INVALID_VT;
 
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -470,6 +472,12 @@ void TaskScheduler::kill_user_tasks()
         // Close any open file descriptors.
         for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
             close_fd(&t->fd_table[fd]);
+
+        // Destroy window if task owns one.
+        if (t->window_id != INVALID_WID) {
+            WindowManager::destroy_window(t->window_id);
+            t->window_id = INVALID_WID;
+        }
 
         // Free kernel interrupt stack.
         if (t->kernel_stack_base != 0) {
@@ -904,6 +912,7 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->sleep_deadline     = 0;
     child->syscall_frame_rsp  = 0;
     child->window_id          = INVALID_WID;
+    child->vterm_id           = INVALID_VT;
 
     // Inherit parent's FPU/SSE state so the child resumes with valid x87/SSE context.
     memcpy(child->fxsave_area, parent->fxsave_area, 512);
@@ -1262,27 +1271,27 @@ void TaskScheduler::map_user_pages(Task* t, pt::uintptr_t va, pt::size_t size)
 void TaskScheduler::dump_task_map(pt::uint32_t task_id)
 {
     if (task_id >= MAX_TASKS) {
-        klog("[MAP] invalid task id %d\n", (int)task_id);
+        vterm_printf("[MAP] invalid task id %d\n", (int)task_id);
         return;
     }
     Task* t = &tasks[task_id];
     if (t->state == TASK_DEAD) {
-        klog("[MAP] task %d is dead\n", (int)task_id);
+        vterm_printf("[MAP] task %d is dead\n", (int)task_id);
         return;
     }
 
-    klog("-- task %d --\n", (int)task_id);
-    klog("  state=%d user=%d cr3=%lx\n",
+    vterm_printf("-- task %d --\n", (int)task_id);
+    vterm_printf("  state=%d user=%d cr3=%lx\n",
          (int)t->state, (int)t->user_mode, t->cr3);
 
     if (!t->user_pd) {
-        klog("  (kernel task — no user page tables)\n");
+        vterm_printf("  (kernel task — no user page tables)\n");
         return;
     }
 
-    klog("  user_pdpt=%lx  user_pd=%lx  stack_pt=%lx\n",
+    vterm_printf("  user_pdpt=%lx  user_pd=%lx  stack_pt=%lx\n",
          t->user_pdpt, t->user_pd, t->stack_pt);
-    klog("  heap_top=%lx  num_code_pts=%d\n",
+    vterm_printf("  heap_top=%lx  num_code_pts=%d\n",
          t->user_heap_top, (int)t->num_priv_pts);
 
     pt::uint64_t* upd = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + t->user_pd);
@@ -1296,7 +1305,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         if (!(upd[pd_i] & 0x01) || (upd[pd_i] & 0x80)) {
             // Not present or 2MB huge page (boot identity) — flush region.
             if (region_pages > 0) {
-                klog("  %lx-%lx  %4dK  %s\n", region_start,
+                vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
                      region_start + (pt::uintptr_t)region_pages * 4096,
                      region_pages * 4, region_label);
                 region_pages = 0;
@@ -1313,7 +1322,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         }
         if (count == 0) {
             if (region_pages > 0) {
-                klog("  %lx-%lx  %4dK  %s\n", region_start,
+                vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
                      region_start + (pt::uintptr_t)region_pages * 4096,
                      region_pages * 4, region_label);
                 region_pages = 0;
@@ -1335,7 +1344,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
             region_pages += count;
         } else {
             if (region_pages > 0) {
-                klog("  %lx-%lx  %4dK  %s\n", region_start,
+                vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
                      region_start + (pt::uintptr_t)region_pages * 4096,
                      region_pages * 4, region_label);
             }
@@ -1345,7 +1354,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         }
     }
     if (region_pages > 0) {
-        klog("  %lx-%lx  %4dK  %s\n", region_start,
+        vterm_printf("  %lx-%lx  %4dK  %s\n", region_start,
              region_start + (pt::uintptr_t)region_pages * 4096,
              region_pages * 4, region_label);
     }

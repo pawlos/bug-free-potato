@@ -2,6 +2,7 @@
 #include "device/disk.h"
 #include "kernel.h"
 #include "virtual.h"
+#include "vterm.h"
 
 extern VMM vmm;
 
@@ -380,11 +381,11 @@ bool FAT12::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
 
 void FAT12::list_root_directory() {
     if (!mounted) {
-        klog("[FAT12] Not mounted\n");
+        vterm_printf("[FAT12] Not mounted\n");
         return;
     }
 
-    klog("[FAT12] Root directory:\n");
+    vterm_printf("[FAT12] Root directory:\n");
 
     pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
     int file_count = 0;
@@ -423,13 +424,13 @@ void FAT12::list_root_directory() {
             name[k] = '\0';
 
             const char* type = (entries[e].attributes & 0x10) ? "DIR" : "FILE";
-            klog("  %s %s %d bytes\n", type, name, entries[e].file_size);
+            vterm_printf("  %s %s %d bytes\n", type, name, entries[e].file_size);
             file_count++;
         }
     }
 
     if (file_count == 0) {
-        klog("  (empty)\n");
+        vterm_printf("  (empty)\n");
     }
 }
 

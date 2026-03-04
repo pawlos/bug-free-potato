@@ -1,9 +1,11 @@
 #include "window.h"
 #include "device/fbterm.h"
 #include "framebuffer.h"
+#include "vterm.h"
 
 Window       WindowManager::windows[MAX_WINDOWS];
 pt::uint32_t WindowManager::focused_id = INVALID_WID;
+pt::uint32_t WindowManager::focused_per_vt[VTERM_COUNT];
 
 void WindowManager::initialize()
 {
@@ -31,8 +33,30 @@ void WindowManager::initialize()
         windows[i].ansi.state       = AnsiParser::NORMAL;
         windows[i].ansi.n_params    = 0;
         windows[i].ansi.private_mode = false;
+        windows[i].vt_id            = INVALID_VT;
     }
     focused_id = INVALID_WID;
+    for (pt::uint32_t v = 0; v < VTERM_COUNT; v++)
+        focused_per_vt[v] = INVALID_WID;
+}
+
+bool WindowManager::is_on_active_vt(pt::uint32_t wid)
+{
+    return g_active_vt < VTERM_COUNT &&
+           wid < MAX_WINDOWS && windows[wid].active && windows[wid].vt_id == g_active_vt;
+}
+
+void WindowManager::on_vt_switch()
+{
+    if (g_active_vt >= VTERM_COUNT) return;
+    focused_id = focused_per_vt[g_active_vt];
+    // Validate that saved focus is still valid
+    if (focused_id != INVALID_WID &&
+        (focused_id >= MAX_WINDOWS || !windows[focused_id].active ||
+         windows[focused_id].vt_id != g_active_vt))
+        focused_id = INVALID_WID;
+    // Redraw chrome for windows on the new VT
+    redraw_all_chrome();
 }
 
 pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
@@ -85,12 +109,15 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->ansi.n_params      = 0;
     win->ansi.private_mode  = false;
     win->title[0]           = '\0';
+    win->vt_id              = g_active_vt;
 
     // Chromeless windows (background widgets) never hold keyboard focus.
     if (!win->chromeless) {
         if (focused_id != INVALID_WID)
             draw_chrome(focused_id, false);
         focused_id = wid;
+        if (g_active_vt < VTERM_COUNT)
+            focused_per_vt[g_active_vt] = wid;
         draw_chrome(wid, true);
     }
 
@@ -103,25 +130,36 @@ void WindowManager::destroy_window(pt::uint32_t wid)
     Window* win = &windows[wid];
     if (!win->active) return;
 
-    // Erase chrome + client area from screen
-    Framebuffer* fb = Framebuffer::get_instance();
-    if (fb)
-        fb->FillRect(win->screen_x, win->screen_y,
-                     win->total_w, win->total_h, 0, 0, 0);
+    pt::uint32_t dead_vt = win->vt_id;
+    bool visible = is_on_active_vt(wid);
+
+    // Erase chrome + client area from screen (only if on active VT)
+    if (visible) {
+        Framebuffer* fb = Framebuffer::get_instance();
+        if (fb)
+            fb->FillRect(win->screen_x, win->screen_y,
+                         win->total_w, win->total_h, 0, 0, 0);
+    }
 
     win->active        = false;
     win->owner_task_id = INVALID_WID;
 
-    if (focused_id == wid) {
-        focused_id = INVALID_WID;
-        // Scan from highest index downward for the last focusable window
+    // Update per-VT focus for the dead window's VT
+    if (dead_vt < VTERM_COUNT && focused_per_vt[dead_vt] == wid) {
+        focused_per_vt[dead_vt] = INVALID_WID;
         for (pt::uint32_t i = MAX_WINDOWS; i-- > 0; ) {
-            if (windows[i].active && !windows[i].chromeless) {
-                focused_id = i;
-                draw_chrome(i, true);
+            if (windows[i].active && !windows[i].chromeless && windows[i].vt_id == dead_vt) {
+                focused_per_vt[dead_vt] = i;
                 break;
             }
         }
+    }
+
+    // Update global focused_id if the destroyed window was focused
+    if (focused_id == wid) {
+        focused_id = (dead_vt == g_active_vt) ? focused_per_vt[dead_vt] : INVALID_WID;
+        if (visible && focused_id != INVALID_WID)
+            draw_chrome(focused_id, true);
     }
 }
 
@@ -131,6 +169,7 @@ void WindowManager::draw_chrome(pt::uint32_t wid, bool active)
     Window* win = &windows[wid];
     if (!win->active) return;
     if (win->chromeless) return;
+    if (!is_on_active_vt(wid)) return;
 
     Framebuffer* fb = Framebuffer::get_instance();
     if (!fb) return;
@@ -238,7 +277,8 @@ pt::uint32_t WindowManager::get_task_window(pt::uint32_t task_id)
 static void handle_csi(Window* win, char cmd,
                        const pt::uint32_t* p, pt::uint32_t np,
                        pt::uint32_t cols, pt::uint32_t rows,
-                       pt::uint32_t gw, pt::uint32_t gh)
+                       pt::uint32_t gw, pt::uint32_t gh,
+                       bool visible)
 {
     auto P = [&](pt::uint32_t i, pt::uint32_t def) -> pt::uint32_t {
         return (i < np && p[i] != 0) ? p[i] : def;
@@ -278,16 +318,21 @@ static void handle_csi(Window* win, char cmd,
         break;
     }
     case 'J': {  // erase display
-        if (fb) {
-            pt::uint32_t mode = p[0];
-            pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
-            pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
-            pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
-            if (mode == 2) {
+        pt::uint32_t mode = p[0];
+        if (mode == 2) {
+            if (fb && visible) {
+                pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
+                pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
+                pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
                 fb->FillRect(win->client_ox, win->client_oy,
                              win->client_w,  win->client_h, bgr, bgg, bgb);
-                win->text_col = win->text_row = 0;
-            } else if (mode == 0) {
+            }
+            win->text_col = win->text_row = 0;
+        } else if (mode == 0) {
+            if (fb && visible) {
+                pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
+                pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
+                pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
                 pt::uint32_t py = win->client_oy + win->text_row * gh;
                 pt::uint32_t px = win->client_ox + win->text_col * gw;
                 fb->FillRect(px, py, win->client_w - win->text_col * gw, gh,
@@ -301,8 +346,8 @@ static void handle_csi(Window* win, char cmd,
         break;
     }
     case 'K': {  // erase line
-        if (fb) {
-            pt::uint32_t mode = p[0];
+        pt::uint32_t mode = p[0];
+        if (fb && visible) {
             pt::uint32_t py = win->client_oy + win->text_row * gh;
             pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
             pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
@@ -314,9 +359,9 @@ static void handle_csi(Window* win, char cmd,
             } else if (mode == 2) {  // whole line
                 fb->FillRect(win->client_ox, py, win->client_w, gh,
                              bgr, bgg, bgb);
-                win->text_col = 0;
             }
         }
+        if (mode == 2) win->text_col = 0;
         break;
     }
     case 's':
@@ -354,6 +399,8 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     const pt::uint32_t rows = win->client_h / gh;
     if (cols == 0 || rows == 0) return;
 
+    bool visible = is_on_active_vt(wid);
+
     // ANSI escape sequence handling
     char final_byte = 0;
     bool complete   = win->ansi.feed(c, final_byte);
@@ -361,7 +408,7 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     if (complete) {
         handle_csi(win, final_byte,
                    win->ansi.params, win->ansi.n_params,
-                   cols, rows, gw, gh);
+                   cols, rows, gw, gh, visible);
         return;
     }
     // Char was consumed by parser if state is not (and was not) NORMAL
@@ -370,9 +417,11 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     // Normal character handling
     if (c == '\f') {
         // Form feed: clear client area and home the cursor.
-        Framebuffer* fb = Framebuffer::get_instance();
-        if (fb) fb->FillRect(win->client_ox, win->client_oy,
-                             win->client_w,  win->client_h, 0, 0, 0);
+        if (visible) {
+            Framebuffer* fb = Framebuffer::get_instance();
+            if (fb) fb->FillRect(win->client_ox, win->client_oy,
+                                 win->client_w,  win->client_h, 0, 0, 0);
+        }
         win->text_col = 0;
         win->text_row = 0;
         return;
@@ -397,9 +446,11 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
         }
     } else {
         // Render glyph at current cursor
-        pt::uint32_t px = win->client_ox + win->text_col * gw;
-        pt::uint32_t py = win->client_oy + win->text_row * gh;
-        fbterm.put_char_at(c, px, py, win->fg, win->bg);
+        if (visible) {
+            pt::uint32_t px = win->client_ox + win->text_col * gw;
+            pt::uint32_t py = win->client_oy + win->text_row * gh;
+            fbterm.put_char_at(c, px, py, win->fg, win->bg);
+        }
         win->text_col++;
         if (win->text_col >= cols) {
             win->text_col = 0;
@@ -409,8 +460,9 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
 
     // Scroll if we've passed the last row
     if (win->text_row >= rows) {
-        fbterm.scroll_region(win->client_ox, win->client_oy,
-                             win->client_w, win->client_h, gh);
+        if (visible)
+            fbterm.scroll_region(win->client_ox, win->client_oy,
+                                 win->client_w, win->client_h, gh);
         win->text_row = rows - 1;
     }
 }
@@ -422,17 +474,22 @@ void WindowManager::set_focus(pt::uint32_t wid)
         if (focused_id != INVALID_WID) {
             draw_chrome(focused_id, false);
             focused_id = INVALID_WID;
+            if (g_active_vt < VTERM_COUNT)
+                focused_per_vt[g_active_vt] = INVALID_WID;
         }
         return;
     }
     if (wid >= MAX_WINDOWS || !windows[wid].active) return;
     if (windows[wid].chromeless) return;  // background widgets are not focusable
+    if (!is_on_active_vt(wid)) return;    // reject windows on other VTs
     if (focused_id == wid) return;
 
     if (focused_id != INVALID_WID)
         draw_chrome(focused_id, false);
 
     focused_id = wid;
+    if (g_active_vt < VTERM_COUNT)
+        focused_per_vt[g_active_vt] = wid;
     draw_chrome(wid, true);
 }
 
@@ -444,6 +501,7 @@ pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
     for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {
         Window* w = &windows[i];
         if (!w->active) continue;
+        if (!is_on_active_vt(i)) continue;
         if (ux >= w->screen_x && ux < w->screen_x + w->total_w &&
             uy >= w->screen_y && uy < w->screen_y + w->total_h)
             return i;
@@ -454,7 +512,7 @@ pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
 void WindowManager::redraw_all_chrome()
 {
     for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {
-        if (windows[i].active && !windows[i].chromeless)
+        if (windows[i].active && !windows[i].chromeless && is_on_active_vt(i))
             draw_chrome(i, focused_id == i);
     }
 }

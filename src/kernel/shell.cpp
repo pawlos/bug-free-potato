@@ -1,5 +1,6 @@
 #include "shell.h"
 #include "kernel.h"
+#include "vterm.h"
 #include "elf_loader.h"
 #include "print.h"
 #include "framebuffer.h"
@@ -47,36 +48,36 @@ constexpr char nslookup_cmd[] = "nslookup";
 constexpr char wget_cmd[]     = "wget";
 
 void print_help() {
-    klog("Available commands:\n");
-    klog("  mem              - Display free memory\n");
-    klog("  vmm              - Show page table entries\n");
-    klog("  ticks            - Display system ticks\n");
-    klog("  alloc [size]     - Allocate and free memory (default 256 bytes)\n");
-    klog("  disk             - Show disk info\n");
-    klog("  ls               - List files on disk\n");
-    klog("  cat <filename>   - Read and display file\n");
-    klog("  play <filename>  - Play audio file (AC97)\n");
-    klog("  map [test]       - Show page table or test dynamic mapping (test)\n");
-    klog("  pci              - Enumerate PCI devices\n");
-    klog("  blue/red/green   - Clear screen with color\n");
-    klog("  echo <text>      - Print text to screen\n");
-    klog("  clear            - Clear screen to black\n");
-    klog("  timers           - List all active timers\n");
-    klog("  cancel <id>      - Cancel a timer by ID\n");
-    klog("  history          - Show command history\n");
-    klog("  shutdown         - Shutdown system (ACPI or PS/2)\n");
-    klog("  reboot           - Reboot system\n");
-    klog("  task [create|map] - Show tasks, create test task, or dump memory map\n");
-    klog("  write <file> <text> - Create a new file with text content\n");
-    klog("  rm <file>        - Delete a file\n");
-    klog("  exec <file>      - Load and run an ELF program\n");
-    klog("  net              - Show network configuration\n");
-    klog("  ping <ip|host>   - Send ICMP echo requests (resolves hostname via DNS)\n");
-    klog("  dhcp             - Run DHCP to acquire IP address\n");
-    klog("  nslookup <host>  - Resolve hostname via DNS\n");
-    klog("  wget <host> [path] - HTTP/1.0 GET request via TCP\n");
-    klog("  help             - Show this help\n");
-    klog("  quit             - Exit kernel\n");
+    vterm_printf("Available commands:\n");
+    vterm_printf("  mem              - Display free memory\n");
+    vterm_printf("  vmm              - Show page table entries\n");
+    vterm_printf("  ticks            - Display system ticks\n");
+    vterm_printf("  alloc [size]     - Allocate and free memory (default 256 bytes)\n");
+    vterm_printf("  disk             - Show disk info\n");
+    vterm_printf("  ls               - List files on disk\n");
+    vterm_printf("  cat <filename>   - Read and display file\n");
+    vterm_printf("  play <filename>  - Play audio file (AC97)\n");
+    vterm_printf("  map [test]       - Show page table or test dynamic mapping (test)\n");
+    vterm_printf("  pci              - Enumerate PCI devices\n");
+    vterm_printf("  blue/red/green   - Clear screen with color\n");
+    vterm_printf("  echo <text>      - Print text to screen\n");
+    vterm_printf("  clear            - Clear screen to black\n");
+    vterm_printf("  timers           - List all active timers\n");
+    vterm_printf("  cancel <id>      - Cancel a timer by ID\n");
+    vterm_printf("  history          - Show command history\n");
+    vterm_printf("  shutdown         - Shutdown system (ACPI or PS/2)\n");
+    vterm_printf("  reboot           - Reboot system\n");
+    vterm_printf("  task [create|map] - Show tasks, create test task, or dump memory map\n");
+    vterm_printf("  write <file> <text> - Create a new file with text content\n");
+    vterm_printf("  rm <file>        - Delete a file\n");
+    vterm_printf("  exec <file>      - Load and run an ELF program\n");
+    vterm_printf("  net              - Show network configuration\n");
+    vterm_printf("  ping <ip|host>   - Send ICMP echo requests (resolves hostname via DNS)\n");
+    vterm_printf("  dhcp             - Run DHCP to acquire IP address\n");
+    vterm_printf("  nslookup <host>  - Resolve hostname via DNS\n");
+    vterm_printf("  wget <host> [path] - HTTP/1.0 GET request via TCP\n");
+    vterm_printf("  help             - Show this help\n");
+    vterm_printf("  quit             - Exit kernel\n");
 }
 
 Shell::Shell() : history_count(0), history_index(0) {
@@ -117,20 +118,20 @@ void Shell::add_to_history(const char* cmd) {
 }
 
 void Shell::print_history() {
-    klog("Command history:\n");
+    vterm_printf("Command history:\n");
     int start = (history_index - history_count + MAX_HISTORY) % MAX_HISTORY;
     for (int i = 0; i < history_count; i++) {
         int idx = (start + i) % MAX_HISTORY;
-        klog("  %d: %s\n", i + 1, history[idx]);
+        vterm_printf("  %d: %s\n", i + 1, history[idx]);
     }
 }
 
 void Shell::execute_mem(const char* cmd) {
-    klog("Free memory: %l\n", vmm.memsize());
+    vterm_printf("Free memory: %l\n", vmm.memsize());
 }
 
 void Shell::execute_ticks(const char* cmd) {
-    klog("Ticks: %l\n", get_ticks());
+    vterm_printf("Ticks: %l\n", get_ticks());
 }
 
 void Shell::execute_alloc(const char* cmd) {
@@ -143,9 +144,9 @@ void Shell::execute_alloc(const char* cmd) {
     }
 
     const auto ptr = vmm.kcalloc(size);
-    klog("Allocated %d bytes at %x\n", size, ptr);
+    vterm_printf("Allocated %d bytes at %x\n", size, ptr);
     vmm.kfree(ptr);
-    klog("Freed successfully\n");
+    vterm_printf("Freed successfully\n");
 }
 
 void Shell::execute_clear_color(const char* cmd, pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) {
@@ -154,10 +155,10 @@ void Shell::execute_clear_color(const char* cmd, pt::uint8_t r, pt::uint8_t g, p
 
 void Shell::execute_vmm(const char* cmd) {
     auto *pml4 = reinterpret_cast<pt::uint64_t *>(vmm.GetPageTableL3());
-    klog("Paging struct at address: %x\n", pml4);
+    vterm_printf("Paging struct at address: %x\n", pml4);
     for (int i = 0; i < 512; i++) {
         if (pml4[i] != 0) {
-            klog("Page table entry for index %d: %x\n", i, pml4[i]);
+            vterm_printf("Page table entry for index %d: %x\n", i, pml4[i]);
         }
     }
 }
@@ -167,11 +168,11 @@ void Shell::execute_pci(const char* cmd) {
     auto device = devices;
     while (device != nullptr && device->vendor_id != 0xffff)
     {
-        klog("PCI device: \n");
-        klog("\t\tVendorId: %x\n", device->vendor_id);
-        klog("\t\tDeviceId: %x\n", device->device_id);
-        klog("\t\tClass: %x\n", device->class_code);
-        klog("\t\tSubclass: %x\n", device->subclass_code);
+        vterm_printf("PCI device: \n");
+        vterm_printf("\t\tVendorId: %x\n", device->vendor_id);
+        vterm_printf("\t\tDeviceId: %x\n", device->device_id);
+        vterm_printf("\t\tClass: %x\n", device->class_code);
+        vterm_printf("\t\tSubclass: %x\n", device->subclass_code);
         device++;
     }
     vmm.kfree(devices);
@@ -188,12 +189,12 @@ void Shell::execute_map(const char* cmd) {
     {
         // Display current page table mappings
         auto *pageTableL3 = reinterpret_cast<int *>(vmm.GetPageTableL3());
-        klog("Page table root at %x\n", pageTableL3);
+        vterm_printf("Page table root at %x\n", pageTableL3);
         for (int i = 0; i < 10; i++)
         {
             if (*(pageTableL3 + i) != 0x0)
             {
-                klog("  L4[%d]: %x\n", i, *(pageTableL3 + i));
+                vterm_printf("  L4[%d]: %x\n", i, *(pageTableL3 + i));
             }
         }
         return;
@@ -202,39 +203,39 @@ void Shell::execute_map(const char* cmd) {
     // Check for "map test" command
     if (args[0] == 't' && args[1] == 'e' && args[2] == 's' && args[3] == 't')
     {
-        klog("[MAP TEST] Testing dynamic page allocation and mapping...\n");
+        vterm_printf("[MAP TEST] Testing dynamic page allocation and mapping...\n");
 
         // Test 1: Allocate some pages
-        klog("[MAP TEST] Test 1: Allocating and mapping high virtual address...\n");
+        vterm_printf("[MAP TEST] Test 1: Allocating and mapping high virtual address...\n");
         pt::uintptr_t test_virt = 0x10000000;  // High virtual address
         pt::uintptr_t test_phys = vmm.allocate_frame();  // Get physical frame
-        klog("[MAP TEST] Got physical frame at %x\n", test_phys);
+        vterm_printf("[MAP TEST] Got physical frame at %x\n", test_phys);
 
         // Map the page
         vmm.map_page(test_virt, test_phys, 0x03);  // RW flags
-        klog("[MAP TEST] Mapped virt %x to phys %x\n", test_virt, test_phys);
+        vterm_printf("[MAP TEST] Mapped virt %x to phys %x\n", test_virt, test_phys);
 
         // Verify the mapping
         pt::uintptr_t verify = vmm.virt_to_phys_walk(test_virt);
         if (verify == test_phys)
         {
-            klog("[MAP TEST] [OK] Verification passed: %x -> %x\n", test_virt, verify);
+            vterm_printf("[MAP TEST] [OK] Verification passed: %x -> %x\n", test_virt, verify);
         }
         else
         {
-            klog("[MAP TEST] [FAIL] Verification FAILED: expected %x, got %x\n", test_phys, verify);
+            vterm_printf("[MAP TEST] [FAIL] Verification FAILED: expected %x, got %x\n", test_phys, verify);
         }
 
         // Test 2: Multiple allocations
-        klog("[MAP TEST] Test 2: Allocating multiple frames...\n");
+        vterm_printf("[MAP TEST] Test 2: Allocating multiple frames...\n");
         pt::uintptr_t frames[5];
         for (int i = 0; i < 5; i++)
         {
             frames[i] = vmm.allocate_frame();
-            klog("[MAP TEST]   Frame %d: %x\n", i, frames[i]);
+            vterm_printf("[MAP TEST]   Frame %d: %x\n", i, frames[i]);
         }
 
-        klog("[MAP TEST] All tests completed!\n");
+        vterm_printf("[MAP TEST] All tests completed!\n");
         return;
     }
 
@@ -249,11 +250,11 @@ void Shell::execute_map(const char* cmd) {
     pt::uintptr_t phys = vmm.virt_to_phys_walk(virt);
     if (phys != 0)
     {
-        klog("Virt %x -> Phys %x\n", virt, phys);
+        vterm_printf("Virt %x -> Phys %x\n", virt, phys);
     }
     else
     {
-        klog("Virt %x not mapped\n", virt);
+        vterm_printf("Virt %x not mapped\n", virt);
     }
 }
 
@@ -267,24 +268,24 @@ void Shell::execute_ls(const char* cmd) {
 
 void Shell::execute_disk(const char* cmd) {
     if (Disk::is_present()) {
-        klog("Disk present: %d sectors (%d MB)\n",
+        vterm_printf("Disk present: %d sectors (%d MB)\n",
              Disk::get_sector_count(),
              (Disk::get_sector_count() * 512) / (1024 * 1024));
     } else {
-        klog("No disk present\n");
+        vterm_printf("No disk present\n");
     }
 }
 
 void Shell::execute_play(const char* cmd) {
     const char* filename = cmd + 5;
     if (filename[0] == '\0') {
-        klog("Usage: play <filename>\n");
+        vterm_printf("Usage: play <filename>\n");
     } else if (!AC97::is_present()) {
-        klog("AC97 audio not available\n");
+        vterm_printf("AC97 audio not available\n");
     } else {
         File file;
         if (VFS::open_file(filename, &file)) {
-            klog("Playing: %s (%d bytes)\n", file.filename, file.file_size);
+            vterm_printf("Playing: %s (%d bytes)\n", file.filename, file.file_size);
             pt::uint8_t* buf = (pt::uint8_t*)vmm.kmalloc(file.file_size);
             if (buf) {
                 pt::uint32_t bytes_read = VFS::read_file(&file, buf, file.file_size);
@@ -295,7 +296,7 @@ void Shell::execute_play(const char* cmd) {
             }
             VFS::close_file(&file);
         } else {
-            klog("File not found: %s\n", filename);
+            vterm_printf("File not found: %s\n", filename);
         }
     }
 }
@@ -304,47 +305,47 @@ void Shell::execute_cat(const char* cmd) {
     // Cat command - cmd starts with "cat "
     const char* filename = cmd + 4; // Skip "cat "
     if (filename[0] == '\0') {
-        klog("Usage: cat <filename>\n");
+        vterm_printf("Usage: cat <filename>\n");
     } else {
         File file;
         if (VFS::open_file(filename, &file)) {
-            klog("File: %s (%d bytes)\n", file.filename, file.file_size);
+            vterm_printf("File: %s (%d bytes)\n", file.filename, file.file_size);
             char* buffer = (char*)vmm.kmalloc(file.file_size + 1);
             if (buffer) {
                 pt::uint32_t bytes_read = VFS::read_file(&file, buffer, file.file_size);
                 buffer[bytes_read] = '\0';
-                klog("Contents:\n%s\n", buffer);
+                vterm_printf("Contents:\n%s\n", buffer);
                 vmm.kfree(buffer);
             }
             VFS::close_file(&file);
         } else {
-            klog("File not found: %s\n", filename);
+            vterm_printf("File not found: %s\n", filename);
         }
     }
 }
 
 void Shell::execute_shutdown(const char* cmd) {
-    klog("Shutting down...\n");
+    vterm_printf("Shutting down...\n");
     ACPI::shutdown();
     // If we reach here, the system didn't shut down
-    klog("Shutdown failed\n");
+    vterm_printf("Shutdown failed\n");
 }
 
 void Shell::execute_reboot(const char* cmd) {
-    klog("Rebooting...\n");
+    vterm_printf("Rebooting...\n");
     ACPI::reboot();
     // If we reach here, the system didn't reboot
-    klog("Reboot failed\n");
+    vterm_printf("Reboot failed\n");
 }
 
 // Simple test task that prints a few messages then exits
 void test_task_fn() {
-    klog("[TASK] Test task running!\n");
+    vterm_printf("[TASK] Test task running!\n");
     for (int i = 0; i < 5; i++) {
-        klog("[TASK] Test task iteration %d\n", i);
+        vterm_printf("[TASK] Test task iteration %d\n", i);
         TaskScheduler::task_yield();
     }
-    klog("[TASK] Test task exiting\n");
+    vterm_printf("[TASK] Test task exiting\n");
     TaskScheduler::task_exit();
 }
 
@@ -358,19 +359,19 @@ void Shell::execute_task(const char* cmd) {
     {
         // List all tasks
         Task* current = TaskScheduler::get_current_task();
-        klog("  Current task ID: %d\n", current->id);
+        vterm_printf("  Current task ID: %d\n", current->id);
         return;
     }
 
     // Check for "task create" command
     if (args[0] == 'c' && args[1] == 'r' && args[2] == 'e' && args[3] == 'a' && args[4] == 't' && args[5] == 'e')
     {
-        klog("[SHELL] Creating test task...\n");
+        vterm_printf("[SHELL] Creating test task...\n");
         pt::uint32_t task_id = TaskScheduler::create_task(&test_task_fn);
         if (task_id != 0xFFFFFFFF)
-            klog("[SHELL] Created task with ID %d\n", task_id);
+            vterm_printf("[SHELL] Created task with ID %d\n", task_id);
         else
-            klog("[SHELL] Failed to create task\n");
+            vterm_printf("[SHELL] Failed to create task\n");
         return;
     }
 
@@ -394,7 +395,7 @@ void Shell::execute_task(const char* cmd) {
         return;
     }
 
-    klog("Usage: task [create|map [id]]\n");
+    vterm_printf("Usage: task [create|map [id]]\n");
 }
 
 void Shell::execute_help(const char* cmd) {
@@ -415,7 +416,7 @@ void Shell::execute_write(const char* cmd) {
     filename[fn_len] = '\0';
 
     if (fn_len == 0) {
-        klog("Usage: write <filename> <content>\n");
+        vterm_printf("Usage: write <filename> <content>\n");
         return;
     }
 
@@ -427,12 +428,12 @@ void Shell::execute_write(const char* cmd) {
     while (content[len]) len++;
 
     if (VFS::create_file(filename, (const pt::uint8_t*)content, len)) {
-        klog("Created file '%s' (%d bytes)\n", filename, len);
+        vterm_printf("Created file '%s' (%d bytes)\n", filename, len);
     } else {
         if (VFS::file_exists(filename)) {
-            klog("Error: file already exists\n");
+            vterm_printf("Error: file already exists\n");
         } else {
-            klog("Error: disk full or write failed\n");
+            vterm_printf("Error: disk full or write failed\n");
         }
     }
 }
@@ -443,39 +444,39 @@ void Shell::execute_write(const char* cmd) {
 void Shell::execute_exec(const char* cmd) {
     const char* filename = cmd + 5;  // skip "exec "
     if (filename[0] == '\0') {
-        klog("Usage: exec <filename>\n");
+        vterm_printf("Usage: exec <filename>\n");
         return;
     }
     pt::uint32_t task_id = TaskScheduler::create_elf_task(filename);
     if (task_id == 0xFFFFFFFF)
-        klog("exec: failed to start '%s'\n", filename);
+        vterm_printf("exec: failed to start '%s'\n", filename);
     else
-        klog("exec: started '%s' as task %d\n", filename, task_id);
+        vterm_printf("exec: started '%s' as task %d\n", filename, task_id);
 }
 
 void Shell::execute_rm(const char* cmd) {
     const char* filename = cmd + 3;  // Skip "rm "
     if (filename[0] == '\0') {
-        klog("Usage: rm <filename>\n");
+        vterm_printf("Usage: rm <filename>\n");
         return;
     }
     if (VFS::delete_file(filename)) {
-        klog("Deleted '%s'\n", filename);
+        vterm_printf("Deleted '%s'\n", filename);
     } else {
-        klog("Error: file not found or delete failed\n");
+        vterm_printf("Error: file not found or delete failed\n");
     }
 }
 
 void Shell::execute_echo(const char* cmd) {
     // Echo command - print everything after "echo "
     const char* text = cmd + 5;
-    klog("%s\n", text);
+    vterm_printf("%s\n", text);
 }
 
 // Helper: print a 32-bit IP in network byte order as dotted decimal
 static void print_ip(pt::uint32_t ip) {
     const pt::uint8_t* b = reinterpret_cast<const pt::uint8_t*>(&ip);
-    klog("%d.%d.%d.%d", (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
+    vterm_printf("%d.%d.%d.%d", (int)b[0], (int)b[1], (int)b[2], (int)b[3]);
 }
 
 // Helper: parse dotted-decimal IP string into network-byte-order uint32_t.
@@ -500,25 +501,25 @@ static pt::uint32_t parse_ip(const char* s) {
 void Shell::execute_net(const char* cmd) {
     (void)cmd;
     if (!RTL8139::is_present()) {
-        klog("RTL8139 not present\n");
+        vterm_printf("RTL8139 not present\n");
         return;
     }
     pt::uint8_t mac[6];
     RTL8139::get_mac(mac);
-    klog("Net: ");
+    vterm_printf("Net: ");
     print_ip(g_my_ip);
-    klog(" / ");
+    vterm_printf(" / ");
     print_ip(make_ip(255, 255, 255, 0));
-    klog("  gw ");
+    vterm_printf("  gw ");
     print_ip(g_gateway_ip);
-    klog("\n");
-    klog("DNS: ");
+    vterm_printf("\n");
+    vterm_printf("DNS: ");
     print_ip(g_dns_ip);
-    klog("\n");
-    klog("MAC: %x:%x:%x:%x:%x:%x\n",
+    vterm_printf("\n");
+    vterm_printf("MAC: %x:%x:%x:%x:%x:%x\n",
          (int)mac[0], (int)mac[1], (int)mac[2],
          (int)mac[3], (int)mac[4], (int)mac[5]);
-    klog("RTL8139 @ io=0x%x  IRQ=11\n", (pt::uint32_t)RTL8139::get_io_base());
+    vterm_printf("RTL8139 @ io=0x%x  IRQ=11\n", (pt::uint32_t)RTL8139::get_io_base());
 }
 
 void Shell::execute_ping(const char* cmd) {
@@ -526,40 +527,40 @@ void Shell::execute_ping(const char* cmd) {
     const char* arg = cmd + 4;
     while (*arg == ' ') arg++;
     if (*arg == '\0') {
-        klog("Usage: ping <ip|hostname>\n");
+        vterm_printf("Usage: ping <ip|hostname>\n");
         return;
     }
     if (!RTL8139::is_present()) {
-        klog("RTL8139 not present\n");
+        vterm_printf("RTL8139 not present\n");
         return;
     }
 
     pt::uint32_t dst = parse_ip(arg);
     if (dst == 0) {
         // Try DNS resolution
-        klog("Resolving %s ...\n", arg);
+        vterm_printf("Resolving %s ...\n", arg);
         if (!dns_resolve(arg, 100, dst) || dst == 0) {
-            klog("Unknown host: %s\n", arg);
+            vterm_printf("Unknown host: %s\n", arg);
             return;
         }
     }
 
-    klog("PING ");
+    vterm_printf("PING ");
     print_ip(dst);
-    klog("\n");
+    vterm_printf("\n");
 
     for (pt::uint16_t seq = 1; seq <= 4; seq++) {
         pt::uint64_t t0 = get_ticks();
         icmp_ping(dst, seq);
         if (icmp_wait_reply(seq, 100)) {
             pt::uint64_t rtt = icmp_last_reply_tick() - t0;
-            klog("64 bytes from ");
+            vterm_printf("64 bytes from ");
             print_ip(dst);
-            klog(": seq=%d time=%d ticks\n", (int)seq, (int)rtt);
+            vterm_printf(": seq=%d time=%d ticks\n", (int)seq, (int)rtt);
         } else if (icmp_last_unreachable_seq() == seq) {
-            klog("Destination unreachable: seq=%d\n", (int)seq);
+            vterm_printf("Destination unreachable: seq=%d\n", (int)seq);
         } else {
-            klog("Request timeout for seq %d\n", (int)seq);
+            vterm_printf("Request timeout for seq %d\n", (int)seq);
         }
     }
 }
@@ -567,16 +568,16 @@ void Shell::execute_ping(const char* cmd) {
 void Shell::execute_dhcp(const char* cmd) {
     (void)cmd;
     if (!RTL8139::is_present()) {
-        klog("RTL8139 not present\n");
+        vterm_printf("RTL8139 not present\n");
         return;
     }
-    klog("Running DHCP...\n");
+    vterm_printf("Running DHCP...\n");
     if (dhcp_acquire(250)) {
-        klog("DHCP OK: ");
+        vterm_printf("DHCP OK: ");
         print_ip(g_my_ip);
-        klog("\n");
+        vterm_printf("\n");
     } else {
-        klog("DHCP failed\n");
+        vterm_printf("DHCP failed\n");
     }
 }
 
@@ -584,21 +585,21 @@ void Shell::execute_nslookup(const char* cmd) {
     const char* host = cmd + 8; // skip "nslookup"
     while (*host == ' ') host++;
     if (*host == '\0') {
-        klog("Usage: nslookup <hostname>\n");
+        vterm_printf("Usage: nslookup <hostname>\n");
         return;
     }
     if (!RTL8139::is_present()) {
-        klog("RTL8139 not present\n");
+        vterm_printf("RTL8139 not present\n");
         return;
     }
-    klog("Resolving %s ...\n", host);
+    vterm_printf("Resolving %s ...\n", host);
     pt::uint32_t ip = 0;
     if (dns_resolve(host, 100, ip)) {
-        klog("%s -> ", host);
+        vterm_printf("%s -> ", host);
         print_ip(ip);
-        klog("\n");
+        vterm_printf("\n");
     } else {
-        klog("No answer for %s\n", host);
+        vterm_printf("No answer for %s\n", host);
     }
 }
 
@@ -606,11 +607,11 @@ void Shell::execute_wget(const char* cmd) {
     const char* arg = cmd + 4;  // skip "wget"
     while (*arg == ' ') arg++;
     if (*arg == '\0') {
-        klog("Usage: wget <host> [path]\n");
+        vterm_printf("Usage: wget <host> [path]\n");
         return;
     }
     if (!RTL8139::is_present()) {
-        klog("RTL8139 not present\n");
+        vterm_printf("RTL8139 not present\n");
         return;
     }
 
@@ -634,23 +635,23 @@ void Shell::execute_wget(const char* cmd) {
     // Resolve host to IP
     pt::uint32_t ip = parse_ip(host);
     if (ip == 0) {
-        klog("Resolving %s...\n", host);
+        vterm_printf("Resolving %s...\n", host);
         if (!dns_resolve(host, 100, ip) || ip == 0) {
-            klog("wget: cannot resolve '%s'\n", host);
+            vterm_printf("wget: cannot resolve '%s'\n", host);
             return;
         }
     }
 
-    klog("Connecting to ");
+    vterm_printf("Connecting to ");
     print_ip(ip);
-    klog(":80...\n");
+    vterm_printf(":80...\n");
 
     TcpSocket* sock = tcp_connect(ip, 80, 250);
     if (!sock) {
-        klog("wget: connection failed\n");
+        vterm_printf("wget: connection failed\n");
         return;
     }
-    klog("Connected.\n");
+    vterm_printf("Connected.\n");
 
     // Build HTTP/1.0 GET request
     static pt::uint8_t req[512];
@@ -670,10 +671,10 @@ void Shell::execute_wget(const char* cmd) {
         int n = tcp_read(sock, rbuf, sizeof(rbuf) - 1, 500);
         if (n <= 0) break;
         rbuf[n] = '\0';
-        klog("%s", (const char*)rbuf);
+        vterm_printf("%s", (const char*)rbuf);
         total += n;
     }
-    klog("\n--- %d bytes received ---\n", total);
+    vterm_printf("\n--- %d bytes received ---\n", total);
 
     tcp_close(sock);
 }
@@ -693,7 +694,7 @@ void Shell::execute_cancel(const char* cmd) {
     const char* id_str = cmd + 7;  // Skip "cancel "
     pt::uint64_t timer_id = parse_decimal(id_str);
     if (timer_id == 0) {
-        klog("Usage: cancel <timer_id>\n");
+        vterm_printf("Usage: cancel <timer_id>\n");
     } else {
         timer_cancel(timer_id);
     }
@@ -795,11 +796,11 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {
-        klog("bye bye ;)\n");
+        vterm_printf("bye bye ;)\n");
         return false;
     }
     else {
-        klog("Invalid command\n");
+        vterm_printf("Invalid command\n");
     }
 
     return true;
