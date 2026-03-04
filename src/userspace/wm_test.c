@@ -37,6 +37,7 @@ int main(void)
         puts("wm_test: failed to create window");
         return 1;
     }
+    sys_set_window_title(wid, "WM Test");
 
     /* Draw background */
     sys_fill_rect(0, 0, WIN_W, WIN_H, COL_BG);

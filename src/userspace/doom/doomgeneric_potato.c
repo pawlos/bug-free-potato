@@ -150,7 +150,7 @@ int DG_GetKey(int *pressed, unsigned char *doomKey)
     }
 }
 
-void DG_SetWindowTitle(const char *title) { (void)title; }
+void DG_SetWindowTitle(const char *title) { sys_set_window_title(g_wid, title); }
 
 /* ── entry point ─────────────────────────────────────────────────────────── */
 

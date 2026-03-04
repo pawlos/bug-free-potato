@@ -919,6 +919,18 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return len;
 		}
 
+		case SYS_SET_WINDOW_TITLE: {
+			Task* t = TaskScheduler::get_current_task();
+			Window* w = WindowManager::get_window((pt::uint32_t)arg1);
+			if (!t || !w || w->owner_task_id != t->id) return (pt::uint64_t)-1;
+			const char* src = reinterpret_cast<const char*>(arg2);
+			int i = 0;
+			for (; i < 31 && src[i]; ++i) w->title[i] = src[i];
+			w->title[i] = '\0';
+			WindowManager::draw_chrome(w->id, WindowManager::is_focused(w->id));
+			return 0;
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

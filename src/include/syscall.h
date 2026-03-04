@@ -40,3 +40,4 @@ constexpr pt::uint64_t SYS_GET_MICROS       = 33; // () → microseconds since b
 constexpr pt::uint64_t SYS_AUDIO_WRITE      = 34; // rdi=data, rsi=bytes, rdx=rate; 1=ok, 0=busy, -1=absent
 constexpr pt::uint64_t SYS_AUDIO_PLAYING    = 35; // () → 1=playing, 0=idle, -1=no AC97
 constexpr pt::uint64_t SYS_WRITE_SERIAL     = 36; // rdi=buf, rsi=len; write raw bytes to COM1 serial log
+constexpr pt::uint64_t SYS_SET_WINDOW_TITLE = 37; // rdi=wid, rsi=title_ptr; set window title bar text

@@ -109,6 +109,7 @@ void __wrap_Sys_Error(char *error, ...)
 void QG_Init(void)
 {
     create_quake_window();   /* idempotent */
+    sys_set_window_title(g_wid, "Quake");
 }
 
 void QG_Quit(void)

@@ -330,7 +330,7 @@ static void shell_loop(void) {
 
 int main(void) {
     long wid = sys_create_window(20, 20, 640, 400);
-    (void)wid;
+    sys_set_window_title(wid, "Shell");
 
     puts("potatOS shell v1.0");
     puts("Type 'help' for commands.\n");

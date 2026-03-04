@@ -96,11 +96,14 @@ int main(void) {
     long wid = sys_create_window(100, 80, WIN_W, WIN_H);
     if (wid < 0) { puts("no window"); return 1; }
 
-    // 2. Draw background and initial content (window-relative coords)
+    // 2. Set window title (displayed in the title bar chrome)
+    sys_set_window_title(wid, "My App");
+
+    // 3. Draw background and initial content (window-relative coords)
     sys_fill_rect(0, 0, WIN_W, WIN_H, 0x001133L);
     sys_draw_text(4, 4, "My Window - press Q to quit", 0xFFFFFF, 0x001133);
 
-    // 3. Event loop
+    // 4. Event loop
     while (1) {
         long ev = sys_get_window_event(wid);
         if (ev == 0) { sys_yield(); continue; }   // empty — yield to avoid busy-spin
@@ -113,7 +116,7 @@ int main(void) {
         if (scancode == 0x10) break;  // Q key (PS/2 set-1)
     }
 
-    // 4. Clean up
+    // 5. Clean up
     sys_destroy_window(wid);
     return 0;
 }

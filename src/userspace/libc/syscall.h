@@ -41,6 +41,7 @@
 #define SYS_AUDIO_WRITE      34  /* rdi=data, rsi=bytes, rdx=rate; 1=ok 0=busy -1=none */
 #define SYS_AUDIO_PLAYING    35  /* () → 1=playing, 0=idle, -1=no AC97                 */
 #define SYS_WRITE_SERIAL     36  /* rdi=buf, rsi=len; write raw bytes to COM1 serial   */
+#define SYS_SET_WINDOW_TITLE 37  /* rdi=wid, rsi=title_ptr; set window title bar text */
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -231,3 +232,7 @@ static inline long sys_audio_is_playing(void)
 /* Write raw bytes to the kernel COM1 serial port (appears in QEMU -serial stdio). */
 static inline long sys_write_serial(const char *buf, size_t n)
     { return __sc2(SYS_WRITE_SERIAL, (long)buf, (long)n); }
+
+/* Set the title bar text for a window (max 31 chars). */
+static inline long sys_set_window_title(long wid, const char *title)
+    { return __sc2(SYS_SET_WINDOW_TITLE, wid, (long)title); }

@@ -246,6 +246,7 @@ int main(void)
         puts("snake: failed to create window");
         return 1;
     }
+    sys_set_window_title(wid, "Snake");
 
     srand((unsigned int)sys_get_ticks());
     draw_title_screen();

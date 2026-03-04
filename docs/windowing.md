@@ -106,6 +106,17 @@ Screen-absolute (0,0 = top-left of framebuffer)
 
 Userspace syscalls (`SYS_FILL_RECT`, `SYS_DRAW_TEXT`, `SYS_DRAW_PIXELS`) always use **window-relative** coordinates. The kernel translates them to screen-absolute before calling into the framebuffer.
 
+## Window titles
+
+Windows can display a title in their title bar via `SYS_SET_WINDOW_TITLE` (syscall 37). The title is stored as a null-terminated string (max 31 characters) in the `Window` struct and rendered over the title bar chrome using the PSF1 font.
+
+```c
+long wid = sys_create_window(100, 80, 400, 300);
+sys_set_window_title(wid, "My App");
+```
+
+The title is drawn in white text on the title bar background colour (blue when focused, gray when unfocused). It is automatically repainted on focus changes.
+
 ## Chrome colours
 
 | State | Title bar colour |

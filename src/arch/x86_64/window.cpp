@@ -84,6 +84,7 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->ansi.state         = AnsiParser::NORMAL;
     win->ansi.n_params      = 0;
     win->ansi.private_mode  = false;
+    win->title[0]           = '\0';
 
     // Chromeless windows (background widgets) never hold keyboard focus.
     if (!win->chromeless) {
@@ -156,6 +157,13 @@ void WindowManager::draw_chrome(pt::uint32_t wid, bool active)
     pt::uint8_t tb = (pt::uint8_t)(tc);
     fb->FillRect(win->screen_x + BORDER_W, win->screen_y + BORDER_W,
                  win->total_w - 2 * BORDER_W, TITLE_BAR_H, tr, tg, tb);
+
+    // Render title text over the title bar
+    if (win->title[0] && fbterm.is_ready()) {
+        pt::uint32_t tx = win->screen_x + BORDER_W + 4;
+        pt::uint32_t ty = win->screen_y + BORDER_W;
+        fbterm.draw_at(tx, ty, win->title, 0xFFFFFF, tc);
+    }
 }
 
 bool WindowManager::translate_rect(pt::uint32_t wid,

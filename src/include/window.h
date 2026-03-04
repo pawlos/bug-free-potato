@@ -46,6 +46,8 @@ struct Window {
     AnsiParser   ansi;
     pt::uint32_t fg, bg;                // current text colors (default 0xFFFFFF, 0x000000)
     pt::uint32_t saved_col, saved_row;  // for \x1b[s / \x1b[u
+
+    char title[32];   // window title (null-terminated, set via SYS_SET_WINDOW_TITLE)
 };
 
 class WindowManager {
@@ -94,10 +96,11 @@ public:
     static void        put_char(pt::uint32_t wid, char c);
 
     static pt::uint32_t focused_id;
+    static bool        is_focused(pt::uint32_t wid) { return focused_id == wid; }
+    static void        draw_chrome(pt::uint32_t wid, bool active);
 
 private:
     static Window windows[MAX_WINDOWS];
-    static void draw_chrome(pt::uint32_t wid, bool active);
 
     static constexpr pt::uint32_t COLOR_BORDER    = 0x404040;
     static constexpr pt::uint32_t COLOR_TITLE_ACT = 0x0055AA;
