@@ -1,13 +1,13 @@
 /* doomgeneric_potato_sound.c — potatOS AC97 sound module for doomgeneric
  *
  * Implements DG_sound_module (8-channel software mixer → AC97 PCM output)
- * and DG_music_module (stubs — no MIDI/OPL playback).
+ * and DG_music_module (OPL3-emulated MUS playback via Nuked-OPL3).
  *
  * Audio pipeline:
- *   WAD lump (DMX 8-bit unsigned mono @ 11025 Hz)
- *   → per-channel volume/pan apply
- *   → mix to 16-bit signed stereo @ 11025 Hz
- *   → SYS_AUDIO_WRITE syscall → kernel AC97::play_pcm()
+ *   SFX: WAD lump (DMX 8-bit unsigned mono @ 11025 Hz)
+ *        → per-channel volume/pan → mix to stereo 16-bit @ 11025 Hz
+ *   Music: MUS lump → OPL3 emulator → stereo 16-bit @ 11025 Hz
+ *   Both mixed into g_mix[] → SYS_AUDIO_WRITE → kernel AC97::play_pcm()
  *
  * Timing: Update() is called every game tic (35 Hz ≈ 28.57 ms).
  *   SAMPLES_PER_TIC = 11025/35 = 315 samples/tic.
@@ -19,8 +19,10 @@
 #include "i_sound.h"
 #include "w_wad.h"
 #include "z_zone.h"
+#include "deh_str.h"
 
 #include "libc/syscall.h"
+#include "mus_opl.h"
 
 /* ── constants ───────────────────────────────────────────────────────────── */
 
@@ -146,7 +148,7 @@ static int Sfx_GetSfxLumpNum(sfxinfo_t *sfx)
 
 static void Sfx_Update(void)
 {
-    int n;
+    int n, i;
     if (!g_sound_ok) return;
 
     /* Mix one tic's worth of audio into the accumulation buffer */
@@ -154,6 +156,19 @@ static void Sfx_Update(void)
     if (g_mix_fill + n > MIX_SAMPLES) n = MIX_SAMPLES - g_mix_fill;
     if (n > 0) {
         mix_slice(g_mix_fill, n);
+
+        /* Render OPL music and add to SFX mix */
+        if (mus_opl_is_playing()) {
+            short mus_buf[SAMPLES_PER_TIC * 2];
+            mus_opl_render(mus_buf, n);
+            for (i = 0; i < n * 2; i++) {
+                int sum = (int)g_mix[g_mix_fill * 2 + i] + (int)mus_buf[i];
+                if (sum >  32767) sum =  32767;
+                if (sum < -32768) sum = -32768;
+                g_mix[g_mix_fill * 2 + i] = (short)sum;
+            }
+        }
+
         g_mix_fill += n;
     }
 
@@ -209,19 +224,73 @@ static void Sfx_CacheSounds(sfxinfo_t *sounds, int num_sounds)
     (void)sounds; (void)num_sounds;  /* lazy loading — no pre-cache needed */
 }
 
-/* ── music_module_t callbacks (stubs — no OPL/MIDI) ─────────────────────── */
+/* ── music_module_t callbacks (OPL3-emulated MUS playback) ───────────────── */
 
-static boolean Mus_Init(void)                      { return true; }
-static void    Mus_Shutdown(void)                  {}
-static void    Mus_SetVolume(int v)                { (void)v; }
-static void    Mus_Pause(void)                     {}
-static void    Mus_Resume(void)                    {}
-static void *  Mus_Register(void *d, int l)        { (void)d; (void)l; return (void*)0; }
-static void    Mus_Unregister(void *h)             { (void)h; }
-static void    Mus_Play(void *h, boolean looping)  { (void)h; (void)looping; }
-static void    Mus_Stop(void)                      {}
-static boolean Mus_IsPlaying(void)                 { return false; }
-static void    Mus_Poll(void)                      {}
+static boolean g_music_paused = false;
+
+static boolean Mus_Init(void)
+{
+    int lump = W_CheckNumForName("GENMIDI");
+    if (lump < 0) return false;
+    void *data = W_CacheLumpNum(lump, PU_STATIC);
+    int len = W_LumpLength(lump);
+    return mus_opl_init(data, len) ? true : false;
+}
+
+static void Mus_Shutdown(void)
+{
+    mus_opl_stop();
+}
+
+static void Mus_SetVolume(int v)
+{
+    mus_opl_set_volume(v);
+}
+
+static void Mus_Pause(void)
+{
+    g_music_paused = true;
+    mus_opl_stop();
+}
+
+static void Mus_Resume(void)
+{
+    g_music_paused = false;
+    /* Music will be restarted by Doom calling Play again if needed */
+}
+
+static void *Mus_Register(void *d, int l)
+{
+    return mus_opl_register(d, l);
+}
+
+static void Mus_Unregister(void *h)
+{
+    (void)h;
+    /* MUS data is WAD-cached, nothing to free */
+}
+
+static void Mus_Play(void *h, boolean looping)
+{
+    (void)h;
+    g_music_paused = false;
+    mus_opl_play(looping ? 1 : 0);
+}
+
+static void Mus_Stop(void)
+{
+    mus_opl_stop();
+}
+
+static boolean Mus_IsPlaying(void)
+{
+    return mus_opl_is_playing() && !g_music_paused ? true : false;
+}
+
+static void Mus_Poll(void)
+{
+    /* Music rendering happens in Sfx_Update via mus_opl_render */
+}
 
 /* ── globals expected by i_sound.c (normally in i_sdlsound.c) ───────────── */
 /* i_sound.c declares these extern and binds them to config variables when

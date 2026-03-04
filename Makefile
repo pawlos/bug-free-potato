@@ -202,11 +202,20 @@ $(DOOM_BUILD)/doomgeneric_potato.o: $(DOOM_DIR)/doomgeneric_potato.c $(DOOMGEN_D
 	mkdir -p $(DOOM_BUILD)
 	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
 
-$(DOOM_BUILD)/doomgeneric_potato_sound.o: $(DOOM_DIR)/doomgeneric_potato_sound.c $(DOOMGEN_DIR)/doomgeneric.h
+$(DOOM_BUILD)/doomgeneric_potato_sound.o: $(DOOM_DIR)/doomgeneric_potato_sound.c $(DOOMGEN_DIR)/doomgeneric.h $(DOOM_DIR)/mus_opl.h
 	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
+	$(CC) -c $(CFLAGS_DOOM) -I $(DOOM_DIR) -o $@ $<
 
-DOOM_POTATO_OBJS = $(DOOM_BUILD)/doomgeneric_potato.o $(DOOM_BUILD)/doomgeneric_potato_sound.o
+$(DOOM_BUILD)/opl3.o: $(DOOM_DIR)/opl3.c $(DOOM_DIR)/opl3.h
+	mkdir -p $(DOOM_BUILD)
+	$(CC) -c $(CFLAGS_DOOM) -I $(DOOM_DIR) -o $@ $<
+
+$(DOOM_BUILD)/mus_opl.o: $(DOOM_DIR)/mus_opl.c $(DOOM_DIR)/mus_opl.h $(DOOM_DIR)/opl3.h
+	mkdir -p $(DOOM_BUILD)
+	$(CC) -c $(CFLAGS_DOOM) -I $(DOOM_DIR) -o $@ $<
+
+DOOM_POTATO_OBJS = $(DOOM_BUILD)/doomgeneric_potato.o $(DOOM_BUILD)/doomgeneric_potato_sound.o \
+                   $(DOOM_BUILD)/opl3.o $(DOOM_BUILD)/mus_opl.o
 
 $(DOOM_ELF): $(DOOMGEN_OBJS) $(DOOM_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	mkdir -p dist/userspace
@@ -259,7 +268,7 @@ QUAKEGEN_SRCS := $(addprefix $(QUAKEGEN_DIR)/, \
     pr_cmds.c pr_edict.c pr_exec.c \
     r_aclip.c r_alias.c r_bsp.c r_draw.c r_edge.c r_efrag.c r_light.c \
     r_main.c r_misc.c r_part.c r_sky.c r_sprite.c r_surf.c r_vars.c \
-    sbar.c screen.c snd_null.c \
+    sbar.c screen.c snd_dma.c snd_mem.c snd_mix.c snd_potato.c \
     sv_main.c sv_move.c sv_phys.c sv_user.c \
     sys_null.c vid_null.c view.c wad.c world.c zone.c quakegeneric.c)
 

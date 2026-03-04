@@ -21,6 +21,7 @@ pt::uint16_t AC97::nam_base    = 0;
 pt::uint16_t AC97::nabm_base   = 0;
 AC97_BDL_Entry* AC97::bdl      = nullptr;
 pt::uint8_t* AC97::dma_buf[AC97_MAX_BDL_ENTRIES] = {};
+static pt::uint32_t cached_sample_rate = 0;
 
 // ---------------------------------------------------------------------------
 // PCI config helpers
@@ -133,15 +134,16 @@ bool AC97::reset_and_wait() {
 // set_sample_rate: write rate to NAM (enables VRA first if needed)
 // ---------------------------------------------------------------------------
 void AC97::set_sample_rate(pt::uint32_t rate) {
+    // Skip if the rate is already set (avoids expensive VRA + io_wait on hot path)
+    if (rate == cached_sample_rate) return;
+
     // Read extended audio ID to check VRA support (Variable Rate Audio)
     pt::uint16_t ext_id = nam_read(AC97_NAM_EXT_AUDIO_ID);
-    klog("[AC97] Extended Audio ID: %x\n", ext_id);
 
     if (ext_id & 0x0001) {
         // VRA supported - enable it so we can set arbitrary rates
         pt::uint16_t ext_ctrl = nam_read(AC97_NAM_EXT_AUDIO_CTRL);
         nam_write(AC97_NAM_EXT_AUDIO_CTRL, ext_ctrl | 0x0001);
-        klog("[AC97] VRA enabled\n");
     }
 
     nam_write(AC97_NAM_PCM_FRONT_RATE, static_cast<pt::uint16_t>(rate));
@@ -150,6 +152,7 @@ void AC97::set_sample_rate(pt::uint32_t rate) {
 
     pt::uint16_t actual = nam_read(AC97_NAM_PCM_FRONT_RATE);
     klog("[AC97] Sample rate: requested %d Hz, got %d Hz\n", rate, actual);
+    cached_sample_rate = rate;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,8 +330,6 @@ bool AC97::start_dma(const pt::uint8_t* data, pt::uint32_t length) {
     // Start DMA: RPBM = 1
     nabm_write_byte(AC97_NABM_PCM_OUT_CTL, AC97_CTL_RPBM);
 
-    klog("[AC97] DMA started: %d entries, %d bytes, BDL@%x\n",
-         n_entries, length, bdl_phys);
     return true;
 }
 
