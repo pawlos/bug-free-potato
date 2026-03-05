@@ -194,6 +194,8 @@ static void lfn_store_entry(const FAT32_LFN_Entry* lfn,
 bool FAT32::scan_directory(pt::uint32_t start_cluster,
                            const char*  filename,
                            File*        out) {
+    // Stack-local sector buffer for reentrancy safety (see read_file comment).
+    pt::uint8_t local_sector_buf[512] __attribute__((aligned(4)));
     char lfn_buf[261];   // up to 20 × 13 = 260 chars + NUL
     for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
     bool searching = (filename != nullptr);
@@ -203,10 +205,10 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
         pt::uint32_t sector = cluster_to_sector(cluster);
 
         for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
-            if (!Disk::read_sector(sector + s, fat32_sector_buf)) continue;
+            if (!Disk::read_sector(sector + s, local_sector_buf)) continue;
 
             pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
-            FAT32_DirEntry* entries = (FAT32_DirEntry*)fat32_sector_buf;
+            FAT32_DirEntry* entries = (FAT32_DirEntry*)local_sector_buf;
 
             for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
                 pt::uint8_t first = entries[e].filename[0];
@@ -386,6 +388,12 @@ pt::uint32_t FAT32::read_file(File* file, void* buffer,
     if (bytes_to_read > remaining) bytes_to_read = remaining;
     if (bytes_to_read == 0) return 0;
 
+    // Stack-local sector buffer so that this function is reentrant.
+    // The global fat32_sector_buf is NOT safe when read_file is called
+    // from the kernel (interrupts enabled) while a user task's SYS_READ
+    // could preempt and overwrite it with a different sector.
+    pt::uint8_t local_sector_buf[512] __attribute__((aligned(4)));
+
     pt::uint8_t* out = (pt::uint8_t*)buffer;
     pt::uint32_t bytes_read      = 0;
     pt::uint32_t bytes_per_cluster =
@@ -422,7 +430,7 @@ pt::uint32_t FAT32::read_file(File* file, void* buffer,
         for (pt::uint32_t s = sec_offset;
              s < bpb.sectors_per_cluster && bytes_read < bytes_to_read;
              s++) {
-            if (!Disk::read_sector(sector + s, fat32_sector_buf)) {
+            if (!Disk::read_sector(sector + s, local_sector_buf)) {
                 file->current_position += bytes_read;
                 state->current_cluster  = current_cluster;
                 return bytes_read;
@@ -432,7 +440,7 @@ pt::uint32_t FAT32::read_file(File* file, void* buffer,
             if (from_sector > bytes_to_read - bytes_read)
                 from_sector = bytes_to_read - bytes_read;
 
-            memcpy(out + bytes_read, fat32_sector_buf + sec_byte, from_sector);
+            memcpy(out + bytes_read, local_sector_buf + sec_byte, from_sector);
             bytes_read += from_sector;
             sec_byte = 0;
         }

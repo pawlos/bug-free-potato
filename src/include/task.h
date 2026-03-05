@@ -83,6 +83,10 @@ struct Task {
     // 0 means the task is not sleeping (default).
     pt::uint64_t sleep_deadline;
 
+    // Scheduling priority: 0 = highest (kernel), 1 = normal, 2 = low.
+    // Higher-priority READY tasks are always chosen before lower ones.
+    pt::uint8_t priority;
+
     // Window ID for this task; INVALID_WID (0xFFFFFFFF) = no window.
     pt::uint32_t window_id;
     bool owns_window;
@@ -128,8 +132,8 @@ public:
     static constexpr pt::size_t TASK_STACK_SIZE = 16384;  // 16KB kernel interrupt stack
     static constexpr pt::size_t USER_STACK_SIZE  = 2097152; // 2MB user execution stack
     // How many timer ticks between forced preemptions.
-    // At 50 Hz this gives ~200 ms time slices.
-    static constexpr pt::size_t SCHEDULER_QUANTUM = 10;
+    // At 50 Hz this gives ~60 ms time slices.
+    static constexpr pt::size_t SCHEDULER_QUANTUM = 3;
 
     // User-space virtual address layout constants.
     static constexpr pt::uintptr_t USER_CODE_BASE    = 0x0000000000400000ULL; // ELF load base

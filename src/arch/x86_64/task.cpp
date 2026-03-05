@@ -154,6 +154,7 @@ void TaskScheduler::initialize()
     tasks[0].state = TASK_RUNNING;
     tasks[0].cr3 = kernel_cr3;
     tasks[0].user_mode = false;
+    tasks[0].priority = 0;  // kernel shell = highest priority
 
     task_count = 1;
     current_task_id = 0;
@@ -214,6 +215,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->owns_window    = false;
     new_task->vterm_id       = INVALID_VT;
     new_task->name[0]        = '\0';
+    new_task->priority       = 1;  // normal priority by default
 
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -339,28 +341,56 @@ Task* TaskScheduler::get_task(pt::uint32_t id)
 pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
 {
     pt::uint32_t old_id  = current_task_id;
-    pt::uint32_t next_id = current_task_id;
-    for (pt::uint32_t i = 0; i < MAX_TASKS; i++)
-    {
-        next_id = (next_id + 1) % MAX_TASKS;
-        if (tasks[next_id].state == TASK_READY ||
-            tasks[next_id].state == TASK_RUNNING)
-            break;
+
+    // Pass 1: find the best (lowest) priority among runnable tasks OTHER
+    // than the current one.  The whole point of switching is to give
+    // someone else a turn; including ourselves would let a high-priority
+    // task that just yielded immediately win back the CPU.
+    pt::uint8_t best_prio = 255;
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        if (i == current_task_id) continue;
+        if ((tasks[i].state == TASK_READY || tasks[i].state == TASK_RUNNING) &&
+            tasks[i].priority < best_prio)
+            best_prio = tasks[i].priority;
     }
 
-    if (next_id == current_task_id)
-    {
-        // No other runnable task — keep running current
+    if (best_prio == 255) {
+        // No other runnable task at all — keep running current.
         if (tasks[current_task_id].state == TASK_READY)
             tasks[current_task_id].state = TASK_RUNNING;
         return current_rsp;
     }
 
-    if (tasks[next_id].state == TASK_DEAD)
-    {
-        klog("[SCHEDULER] ERROR: next task %d is dead\n", next_id);
+    // Pass 2: round-robin among runnable tasks at that priority level.
+    // Each priority level has its own cursor so that a high-priority task
+    // (e.g. the shell) bouncing in and out doesn't reset the round-robin
+    // position for lower-priority tasks.
+    static constexpr pt::size_t NUM_PRIOS = 3;
+    static pt::uint32_t rr_next[NUM_PRIOS] = {0, 0, 0};
+    pt::uint8_t prio_idx = best_prio < NUM_PRIOS ? best_prio : NUM_PRIOS - 1;
+    pt::uint32_t next_id = 0;
+    bool found = false;
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        pt::uint32_t candidate = (rr_next[prio_idx] + i) % MAX_TASKS;
+        if (candidate == current_task_id) continue;
+        if ((tasks[candidate].state == TASK_READY ||
+             tasks[candidate].state == TASK_RUNNING) &&
+            tasks[candidate].priority == best_prio) {
+            next_id = candidate;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        // Pass 1 guaranteed something exists, but be safe.
+        if (tasks[current_task_id].state == TASK_READY)
+            tasks[current_task_id].state = TASK_RUNNING;
         return current_rsp;
     }
+
+    // Advance the cursor past the task we just picked.
+    rr_next[prio_idx] = (next_id + 1) % MAX_TASKS;
 
 #ifdef SCHEDULER_DEBUG
     klog("[SCHEDULER] Switching from task %d to task %d\n", current_task_id, next_id);

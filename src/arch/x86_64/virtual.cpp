@@ -389,6 +389,16 @@ pt::uintptr_t VMM::allocate_frame()
         kernel_panic("Frame allocator initialization failed", NotAbleToAllocateMemory);
     }
 
+    // Disable interrupts for the bitmap scan-and-set.  Without this,
+    // the timer can preempt between testing a bit and setting it;
+    // another task's SYS_MMAP → allocate_frame() would then see the
+    // same bit as free and return the same physical frame — causing
+    // two tasks to silently share a page and corrupt each other's data.
+    // pushfq/popfq preserves the previous IF state so this is safe to
+    // call from both syscall context (IF=0) and kernel context (IF=1).
+    pt::uint64_t saved_flags;
+    asm volatile("pushfq; pop %0; cli" : "=r"(saved_flags) :: "memory");
+
     // Find first free frame
     for (pt::size_t byte_idx = 0; byte_idx < frame_bitmap_size; byte_idx++)
     {
@@ -402,12 +412,14 @@ pt::uintptr_t VMM::allocate_frame()
                     // Mark frame as used
                     frame_bitmap[byte_idx] |= (1 << bit_idx);
                     pt::size_t frame_num = byte_idx * 8 + bit_idx;
+                    asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
                     return frame_num * 4096;
                 }
             }
         }
     }
 
+    asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
     kernel_panic("No free physical frames", NotAbleToAllocateMemory);
     return 0;
 }
@@ -422,6 +434,9 @@ void VMM::free_frame(pt::uintptr_t frame)
 
     if (byte_idx < frame_bitmap_size)
     {
+        pt::uint64_t saved_flags;
+        asm volatile("pushfq; pop %0; cli" : "=r"(saved_flags) :: "memory");
         frame_bitmap[byte_idx] &= ~(1 << bit_idx);
+        asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
     }
 }

@@ -117,8 +117,11 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     LineReader reader;
     while (true) {
         VTerm* active = vterm_active();
+        bool got_input = false;
         if (active)
-            reader.process(active->pop_input());
+            got_input = reader.process(active->pop_input());
+        if (!got_input)
+            TaskScheduler::task_yield();
         if (reader.has_line()) {
             const char* line = reader.get_line();
             if (line[0] != '\0') {
