@@ -46,6 +46,10 @@ constexpr char ping_cmd[]     = "ping ";
 constexpr char dhcp_cmd[]     = "dhcp";
 constexpr char nslookup_cmd[] = "nslookup";
 constexpr char wget_cmd[]     = "wget";
+constexpr char ps_cmd[]       = "ps";
+constexpr char kill_cmd[]     = "kill ";
+constexpr char uptime_cmd[]   = "uptime";
+constexpr char neofetch_cmd[] = "neofetch";
 
 void print_help() {
     vterm_printf("Available commands:\n");
@@ -76,6 +80,10 @@ void print_help() {
     vterm_printf("  dhcp             - Run DHCP to acquire IP address\n");
     vterm_printf("  nslookup <host>  - Resolve hostname via DNS\n");
     vterm_printf("  wget <host> [path] - HTTP/1.0 GET request via TCP\n");
+    vterm_printf("  ps               - List running tasks\n");
+    vterm_printf("  kill <pid>       - Kill a user task by PID\n");
+    vterm_printf("  uptime           - Show time since boot\n");
+    vterm_printf("  neofetch         - Display system info\n");
     vterm_printf("  help             - Show this help\n");
     vterm_printf("  quit             - Exit kernel\n");
 }
@@ -679,6 +687,105 @@ void Shell::execute_wget(const char* cmd) {
     tcp_close(sock);
 }
 
+void Shell::execute_ps(const char* cmd) {
+    (void)cmd;
+    const char* state_names[] = { "ready", "run  ", "block", "dead " };
+    vterm_printf("PID  NAME             STATE  MODE   TICKS\n");
+    Task* current = TaskScheduler::get_current_task();
+    Task* base = current - current->id;
+    for (pt::uint32_t i = 0; i < TaskScheduler::MAX_TASKS; i++) {
+        Task* t = &base[i];
+        if (t->state == TASK_DEAD)
+            continue;
+        const char* name = t->name[0] ? t->name : "(kernel)";
+        const char* state = (t->state <= 3) ? state_names[t->state] : "?????";
+        const char* mode = t->user_mode ? "user" : "kern";
+        // Manual padding: PID right-aligned in 3 chars
+        if (i < 10) vterm_printf("  ");
+        else if (i < 100) vterm_printf(" ");
+        vterm_printf("%d  ", (int)i);
+        // Name left-padded to 16 chars
+        vterm_printf("%s", name);
+        int nlen = 0;
+        while (name[nlen]) nlen++;
+        for (int p = nlen; p < 16; p++) vterm_printf(" ");
+        vterm_printf(" %s  %s  %l\n", state, mode, t->ticks_alive);
+    }
+}
+
+void Shell::execute_kill(const char* cmd) {
+    const char* arg = cmd + 5;  // skip "kill "
+    while (*arg == ' ') arg++;
+    if (*arg == '\0') {
+        vterm_printf("Usage: kill <pid>\n");
+        return;
+    }
+    pt::uint32_t pid = (pt::uint32_t)parse_decimal(arg);
+    if (pid == 0) {
+        vterm_printf("kill: cannot kill kernel task\n");
+        return;
+    }
+    if (TaskScheduler::kill_task(pid)) {
+        vterm_printf("Killed task %d\n", pid);
+    } else {
+        vterm_printf("kill: no such user task %d\n", pid);
+    }
+}
+
+void Shell::execute_uptime(const char* cmd) {
+    (void)cmd;
+    pt::uint64_t ticks = get_ticks();
+    pt::uint64_t total_sec = ticks / 50;
+    pt::uint64_t hours = total_sec / 3600;
+    pt::uint64_t min = (total_sec % 3600) / 60;
+    pt::uint64_t sec = total_sec % 60;
+    vterm_printf("up %dh %dm %ds (%l ticks)\n", (int)hours, (int)min, (int)sec, ticks);
+}
+
+void Shell::execute_neofetch(const char* cmd) {
+    (void)cmd;
+
+    // Count active tasks
+    Task* current = TaskScheduler::get_current_task();
+    Task* base = current - current->id;
+    int active = 0;
+    for (pt::uint32_t i = 0; i < TaskScheduler::MAX_TASKS; i++) {
+        if (base[i].state != TASK_DEAD)
+            active++;
+    }
+
+    // Uptime
+    pt::uint64_t ticks = get_ticks();
+    pt::uint64_t total_sec = ticks / 50;
+    int hours = (int)(total_sec / 3600);
+    int min   = (int)((total_sec % 3600) / 60);
+    int sec   = (int)(total_sec % 60);
+
+    // Display
+    auto* fb = Framebuffer::get_instance();
+    int w = fb->get_width();
+    int h = fb->get_height();
+
+    // Memory
+    pt::uint64_t mem_free = vmm.memsize();
+
+    vterm_printf("    @@@@@@       potat OS\n");
+    vterm_printf("  @@      @@     Uptime: %dh %dm %ds\n", hours, min, sec);
+    vterm_printf(" @@   ..   @@    Tasks: %d / %d\n", active, (int)TaskScheduler::MAX_TASKS);
+    vterm_printf(" @@   ..   @@    Memory: %l free\n", mem_free);
+    vterm_printf("  @@      @@     Display: %dx%d\n", w, h);
+
+    if (RTL8139::is_present()) {
+        vterm_printf("    @@@@@@       Network: ");
+        print_ip(g_my_ip);
+        vterm_printf("\n");
+    } else {
+        vterm_printf("    @@@@@@       Network: not connected\n");
+    }
+
+    vterm_printf("                 Shell: potatOS sh\n");
+}
+
 void Shell::execute_clear(const char* cmd) {
     // Clear command - clear the screen to black
     Framebuffer::get_instance()->Clear(0, 0, 0);
@@ -793,6 +900,18 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, wget_cmd, 4) && (cmd[4] == ' ' || cmd[4] == '\0')) {
         execute_wget(cmd);
+    }
+    else if (!memcmp(cmd, ps_cmd, 2) && (cmd[2] == '\0' || cmd[2] == ' ')) {
+        execute_ps(cmd);
+    }
+    else if (!memcmp(cmd, kill_cmd, 5)) {
+        execute_kill(cmd);
+    }
+    else if (!memcmp(cmd, uptime_cmd, 6) && (cmd[6] == '\0' || cmd[6] == ' ')) {
+        execute_uptime(cmd);
+    }
+    else if (!memcmp(cmd, neofetch_cmd, 8) && (cmd[8] == '\0' || cmd[8] == ' ')) {
+        execute_neofetch(cmd);
     }
     else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {

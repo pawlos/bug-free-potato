@@ -44,6 +44,10 @@ private:
     void execute_dhcp(const char* cmd);
     void execute_nslookup(const char* cmd);
     void execute_wget(const char* cmd);
+    void execute_ps(const char* cmd);
+    void execute_kill(const char* cmd);
+    void execute_uptime(const char* cmd);
+    void execute_neofetch(const char* cmd);
 };
 
 extern Shell shell;

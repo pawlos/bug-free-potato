@@ -503,6 +503,58 @@ void TaskScheduler::kill_user_tasks()
     }
 }
 
+bool TaskScheduler::kill_task(pt::uint32_t pid)
+{
+    if (pid == 0 || pid >= MAX_TASKS)
+        return false;
+
+    Task* t = &tasks[pid];
+    if (t->state == TASK_DEAD || !t->user_mode)
+        return false;
+
+    klog("[SCHEDULER] kill_task: killing task %d\n", pid);
+
+    // Close any open file descriptors.
+    for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
+        close_fd(&t->fd_table[fd]);
+
+    // Destroy window if task owns one.
+    if (t->window_id != INVALID_WID && t->owns_window) {
+        WindowManager::destroy_window(t->window_id);
+    }
+    t->window_id = INVALID_WID;
+    t->owns_window = false;
+
+    // Free kernel interrupt stack.
+    if (t->kernel_stack_base != 0) {
+        vmm.kfree(reinterpret_cast<void*>(t->kernel_stack_base));
+        t->kernel_stack_base = 0;
+    }
+
+    // Free per-task PML4 frame.
+    if (t->cr3 != 0 && t->cr3 != kernel_cr3) {
+        vmm.free_frame(t->cr3);
+        t->cr3 = 0;
+    }
+
+    // Free all user page tables and mapped frames.
+    free_user_pagetables(t);
+
+    // Wake any parent blocked in waitpid.
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        if (tasks[i].state == TASK_BLOCKED &&
+            tasks[i].waiting_for == pid) {
+            tasks[i].waiting_for = 0xFFFFFFFF;
+            tasks[i].state = TASK_READY;
+        }
+    }
+
+    t->exit_code = -1;
+    t->state = TASK_DEAD;
+    task_count--;
+    return true;
+}
+
 // Virtual address of the ELF staging area in the kernel's high half.
 // ElfLoader writes ELF segments here; create_elf_task reads from here.
 // Using the high-half VA (via PML4[256]) instead of the identity-mapped
@@ -611,6 +663,9 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     user_pdpt[USER_PDPT_IDX] = user_pd_frame | 0x07;
 
     // 6. Create the task (allocates kernel stack, clones boot PML4).
+    //    The task is set TASK_READY by create_task, but its PML4[0] still
+    //    points to the boot PDPT.  Immediately block it so the scheduler
+    //    cannot run it before we wire user_pdpt into PML4[0] below.
     klog("[ELF_TASK] code frames allocated; calling create_task\n");
     pt::uint32_t task_id = create_task(reinterpret_cast<void(*)()>(entry),
                                        TASK_STACK_SIZE, true);
@@ -634,7 +689,10 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     }
 
     // 7. Wire new user address space into the task's PML4.
+    //    Block the task while we modify its PML4 to prevent the scheduler
+    //    from running it with the boot identity mapping at PML4[0].
     Task* task = &tasks[task_id];
+    task->state = TASK_BLOCKED;
     pt::uint64_t* task_pml4 = reinterpret_cast<pt::uint64_t*>(task->cr3);
     // PML4[0] → user_pdpt (P|W|U): user code, heap, stack.
     task_pml4[USER_PML4_IDX] = user_pdpt_frame | 0x07;
@@ -735,6 +793,9 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
 
     klog("[ELF_TASK] Task %d: '%s' entry=%lx %d code pages\n",
          task_id, filename, entry, (int)num_code_frames);
+
+    // All page tables and stack are fully wired; safe to schedule now.
+    task->state = TASK_READY;
 
     return task_id;
 }

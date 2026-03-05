@@ -179,6 +179,10 @@ public:
     // Resources are freed immediately; the caller must not be a user task.
     static void kill_user_tasks();
 
+    // Kill a single user-mode task by PID.
+    // Returns true if killed, false if invalid (dead, kernel, or out of range).
+    static bool kill_task(pt::uint32_t pid);
+
     // fork_task: clone the current task into a new slot.
     // syscall_frame_rsp points to the PUSHALL+iretq frame on the kernel stack.
     // Returns child task ID to parent; child frame gets rax=0.
