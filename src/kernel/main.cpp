@@ -132,6 +132,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
         }
     }
 
+    // Clean shutdown: kill all user tasks, disable interrupts, then halt.
+    TaskScheduler::kill_user_tasks();
+    disable_interrupts();
     Framebuffer::get_instance()->Free();
     halt();
 }
