@@ -155,6 +155,7 @@ void TaskScheduler::initialize()
     tasks[0].cr3 = kernel_cr3;
     tasks[0].user_mode = false;
     tasks[0].priority = 0;  // kernel shell = highest priority
+    tasks[0].remaining_ticks = SCHEDULER_QUANTUM;
 
     task_count = 1;
     current_task_id = 0;
@@ -216,6 +217,7 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->vterm_id       = INVALID_VT;
     new_task->name[0]        = '\0';
     new_task->priority       = 1;  // normal priority by default
+    new_task->remaining_ticks = SCHEDULER_QUANTUM;
 
     // Reset per-task file descriptor table for this slot.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
@@ -401,6 +403,7 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
     tasks[next_id].state = TASK_RUNNING;
     current_task_id = next_id;
     tasks[next_id].ticks_alive++;
+    tasks[next_id].remaining_ticks = SCHEDULER_QUANTUM;
 
     // For user-mode tasks, update TSS.RSP0 to this task's kernel stack top.
     // The CPU reads RSP0 on every ring-3 → ring-0 privilege switch and uses
@@ -448,8 +451,16 @@ pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
         }
     }
 
-    if (!woke_any && scheduler_ticks % SCHEDULER_QUANTUM != 0)
-        return rsp;  // quantum not expired, nothing woken — stay with current task
+    // Decrement the current task's per-task quantum counter.
+    // Only preempt when it reaches 0 (or a sleeper woke up and needs the CPU).
+    if (!woke_any) {
+        if (tasks[current_task_id].remaining_ticks > 1) {
+            tasks[current_task_id].remaining_ticks--;
+            return rsp;  // quantum not expired — stay with current task
+        }
+        // Quantum expired — reset for when this task is next switched in.
+        tasks[current_task_id].remaining_ticks = 0;
+    }
 
     return do_switch_to_next(rsp);
 }

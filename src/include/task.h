@@ -87,6 +87,10 @@ struct Task {
     // Higher-priority READY tasks are always chosen before lower ones.
     pt::uint8_t priority;
 
+    // Per-task quantum: ticks remaining before forced preemption.
+    // Reset to SCHEDULER_QUANTUM when the task is switched in.
+    pt::size_t remaining_ticks;
+
     // Window ID for this task; INVALID_WID (0xFFFFFFFF) = no window.
     pt::uint32_t window_id;
     bool owns_window;
