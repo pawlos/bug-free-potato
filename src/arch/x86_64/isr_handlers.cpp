@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "virtual.h"
+#include "task.h"
 
 ASMCALL void isr0_handler()
 {
@@ -129,7 +130,21 @@ ASMCALL void isr14_handler(pt::uintptr_t frame)
 	pt::uint64_t user_rbx = *reinterpret_cast<pt::uint64_t*>(frame + 104);
 	klog("[PAGE FAULT] cr2=%lx errcode=%lx RIP=%lx RSP=%lx\n", cr2, err_code, user_rip, user_rsp);
 	klog("[PAGE FAULT] rbp=%lx rbx=%lx\n", user_rbp, user_rbx);
+	pt::uint64_t user_r12 = *reinterpret_cast<pt::uint64_t*>(frame + 24);
+	pt::uint64_t user_r8  = *reinterpret_cast<pt::uint64_t*>(frame + 56);
+	pt::uint64_t user_r9  = *reinterpret_cast<pt::uint64_t*>(frame + 48);
 	klog("[PAGE FAULT] rdi=%lx rsi=%lx rdx=%lx rcx=%lx\n", user_rdi, user_rsi, user_rdx, user_rcx);
+	klog("[PAGE FAULT] r8=%lx r9=%lx r12=%lx\n", user_r8, user_r9, user_r12);
+
+	// If the fault came from user mode (CS & 3), kill the task instead of
+	// panicking the whole kernel.
+	// Dump Q2 BSS state on any user-mode page fault with cr2 < 0x1000.
+	pt::uint64_t user_cs = *reinterpret_cast<pt::uint64_t*>(frame + 128);
+	if (user_cs & 3) {
+		klog("[PAGE FAULT] User-mode fault — killing task\n");
+		TaskScheduler::task_exit(139);  // 128 + SIGSEGV(11)
+		return;
+	}
 
 	kernel_panic("Page fault", 14);
 }

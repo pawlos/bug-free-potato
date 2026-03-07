@@ -35,7 +35,7 @@ struct TaskContext {
 
 // Task control block
 struct Task {
-    static constexpr pt::size_t MAX_FDS = 8;
+    static constexpr pt::size_t MAX_FDS = 16;
 
     pt::uint32_t id;
     TaskState state;

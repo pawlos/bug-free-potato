@@ -28,11 +28,11 @@ x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
 $(kernel_object_files): build/kernel/%.o : src/kernel/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/include -I src/arch/x86_64 -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/kernel/%.cpp, $@) -o $@
+	$(CPP) -c -I src/include -I src/arch/x86_64 -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -mgeneral-regs-only -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/kernel/%.cpp, $@) -o $@
 
 $(x86_64_cpp_object_files): build/x86_64/%.o : src/arch/x86_64/%.cpp
 	mkdir -p $(dir $@) && \
-	$(CPP) -c -I src/include -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/arch/x86_64/%.cpp, $@) -o $@
+	$(CPP) -c -I src/include -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -mgeneral-regs-only -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/arch/x86_64/%.cpp, $@) -o $@
 
 
 $(x86_64_asm_object_files): build/x86_64/%.o : src/arch/x86_64/%.asm

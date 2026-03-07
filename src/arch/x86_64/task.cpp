@@ -451,18 +451,14 @@ pt::uintptr_t TaskScheduler::preempt(pt::uintptr_t rsp)
         }
     }
 
-    // Decrement the current task's per-task quantum counter.
-    // Only preempt when it reaches 0 (or a sleeper woke up and needs the CPU).
-    if (!woke_any) {
-        if (tasks[current_task_id].remaining_ticks > 1) {
-            tasks[current_task_id].remaining_ticks--;
-            return rsp;  // quantum not expired — stay with current task
-        }
-        // Quantum expired — reset for when this task is next switched in.
-        tasks[current_task_id].remaining_ticks = 0;
+    // Time-slice preemption: switch when quantum expired or a woken task
+    // needs the CPU.
+    if (woke_any || --tasks[current_task_id].remaining_ticks <= 0) {
+        tasks[current_task_id].remaining_ticks = SCHEDULER_QUANTUM;
+        return do_switch_to_next(rsp);
     }
 
-    return do_switch_to_next(rsp);
+    return rsp;
 }
 
 // Block the current task for at least ms milliseconds.
