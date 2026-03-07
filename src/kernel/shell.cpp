@@ -50,6 +50,7 @@ constexpr char ps_cmd[]       = "ps";
 constexpr char kill_cmd[]     = "kill ";
 constexpr char uptime_cmd[]   = "uptime";
 constexpr char neofetch_cmd[] = "neofetch";
+constexpr char cd_cmd[]       = "cd";
 
 void print_help() {
     vterm_printf("Available commands:\n");
@@ -58,7 +59,8 @@ void print_help() {
     vterm_printf("  ticks            - Display system ticks\n");
     vterm_printf("  alloc [size]     - Allocate and free memory (default 256 bytes)\n");
     vterm_printf("  disk             - Show disk info\n");
-    vterm_printf("  ls               - List files on disk\n");
+    vterm_printf("  ls [dir]         - List files/dirs (cwd if no arg)\n");
+    vterm_printf("  cd [dir]         - Change directory (/ = root, .. = parent)\n");
     vterm_printf("  cat <filename>   - Read and display file\n");
     vterm_printf("  play <filename>  - Play audio file (AC97)\n");
     vterm_printf("  map [test]       - Show page table or test dynamic mapping (test)\n");
@@ -92,6 +94,31 @@ Shell::Shell() : history_count(0), history_index(0) {
     for (int i = 0; i < MAX_HISTORY; i++) {
         history[i][0] = '\0';
     }
+    cwd[0] = '\0';
+}
+
+// Build full path by prepending cwd to a relative name.
+// Returns pointer to buf (or name itself if already absolute or cwd is empty).
+const char* Shell::make_path(const char* name, char* buf, int buf_sz) {
+    if (!name || !*name) return name;
+    // Absolute path — strip leading / and return
+    if (name[0] == '/') {
+        int i = 0;
+        name++;
+        while (*name && i < buf_sz - 1) buf[i++] = *name++;
+        buf[i] = '\0';
+        return buf;
+    }
+    // No cwd — return as-is
+    if (cwd[0] == '\0') return name;
+    // Prepend cwd/
+    int i = 0;
+    const char* p = cwd;
+    while (*p && i < buf_sz - 2) buf[i++] = *p++;
+    buf[i++] = '/';
+    while (*name && i < buf_sz - 1) buf[i++] = *name++;
+    buf[i] = '\0';
+    return buf;
 }
 
 void Shell::add_to_history(const char* cmd) {
@@ -270,8 +297,79 @@ void Shell::execute_history(const char* cmd) {
     print_history();
 }
 
+static void str_to_upper(char* s) {
+    for (; *s; s++)
+        if (*s >= 'a' && *s <= 'z') *s = (char)(*s - 'a' + 'A');
+}
+
+void Shell::execute_cd(const char* cmd) {
+    const char* arg = cmd + 2;  // skip "cd"
+    while (*arg == ' ') arg++;
+
+    if (*arg == '\0' || (arg[0] == '/' && arg[1] == '\0')) {
+        cwd[0] = '\0';
+        return;
+    }
+
+    if (arg[0] == '.' && arg[1] == '.' && (arg[2] == '\0' || arg[2] == '/')) {
+        // Strip last component
+        int len = 0;
+        while (cwd[len]) len++;
+        if (len == 0) return;
+        int last_slash = -1;
+        for (int i = 0; i < len; i++)
+            if (cwd[i] == '/') last_slash = i;
+        if (last_slash < 0)
+            cwd[0] = '\0';
+        else
+            cwd[last_slash] = '\0';
+        return;
+    }
+
+    char target[128];
+    if (arg[0] == '/') {
+        // Absolute
+        int i = 0;
+        const char* p = arg + 1;
+        while (*p && i < 126) target[i++] = *p++;
+        target[i] = '\0';
+        while (i > 0 && target[i-1] == '/') target[--i] = '\0';
+    } else {
+        // Relative — append to cwd
+        int i = 0;
+        if (cwd[0]) {
+            const char* p = cwd;
+            while (*p && i < 120) target[i++] = *p++;
+            target[i++] = '/';
+        }
+        while (*arg && i < 126) target[i++] = *arg++;
+        target[i] = '\0';
+        while (i > 0 && target[i-1] == '/') target[--i] = '\0';
+    }
+
+    str_to_upper(target);
+
+    // Validate: try to find at least one entry (or accept empty dir)
+    // We'll trust the user — just set cwd
+    int i = 0;
+    while (target[i] && i < 127) { cwd[i] = target[i]; i++; }
+    cwd[i] = '\0';
+}
+
 void Shell::execute_ls(const char* cmd) {
-    VFS::list_root_directory();
+    const char* args = cmd + 2;  // skip "ls"
+    while (*args == ' ') args++;
+
+    // Determine directory path: explicit arg, or cwd, or root
+    const char* dir_path = "";
+    char path_buf[256];
+    if (*args != '\0') {
+        dir_path = make_path(args, path_buf, sizeof(path_buf));
+    } else if (cwd[0]) {
+        dir_path = cwd;
+    }
+
+    VFS::list_directory(dir_path);
 }
 
 void Shell::execute_disk(const char* cmd) {
@@ -291,8 +389,10 @@ void Shell::execute_play(const char* cmd) {
     } else if (!AC97::is_present()) {
         vterm_printf("AC97 audio not available\n");
     } else {
+        char path_buf[256];
+        const char* path = make_path(filename, path_buf, sizeof(path_buf));
         File file;
-        if (VFS::open_file(filename, &file)) {
+        if (VFS::open_file(path, &file)) {
             vterm_printf("Playing: %s (%d bytes)\n", file.filename, file.file_size);
             pt::uint8_t* buf = (pt::uint8_t*)vmm.kmalloc(file.file_size);
             if (buf) {
@@ -315,8 +415,10 @@ void Shell::execute_cat(const char* cmd) {
     if (filename[0] == '\0') {
         vterm_printf("Usage: cat <filename>\n");
     } else {
+        char path_buf[256];
+        const char* path = make_path(filename, path_buf, sizeof(path_buf));
         File file;
-        if (VFS::open_file(filename, &file)) {
+        if (VFS::open_file(path, &file)) {
             vterm_printf("File: %s (%d bytes)\n", file.filename, file.file_size);
             char* buffer = (char*)vmm.kmalloc(file.file_size + 1);
             if (buffer) {
@@ -455,7 +557,9 @@ void Shell::execute_exec(const char* cmd) {
         vterm_printf("Usage: exec <filename>\n");
         return;
     }
-    pt::uint32_t task_id = TaskScheduler::create_elf_task(filename);
+    char path_buf[256];
+    const char* path = make_path(filename, path_buf, sizeof(path_buf));
+    pt::uint32_t task_id = TaskScheduler::create_elf_task(path);
     if (task_id == 0xFFFFFFFF)
         vterm_printf("exec: failed to start '%s'\n", filename);
     else
@@ -841,7 +945,10 @@ bool Shell::execute(const char* cmd) {
     else if (!memcmp(cmd, history_cmd, sizeof(history_cmd))) {
         execute_history(cmd);
     }
-    else if (!memcmp(cmd, ls_cmd, sizeof(ls_cmd))) {
+    else if (!memcmp(cmd, cd_cmd, 2) && (cmd[2] == '\0' || cmd[2] == ' ')) {
+        execute_cd(cmd);
+    }
+    else if (!memcmp(cmd, ls_cmd, 2) && (cmd[2] == '\0' || cmd[2] == ' ')) {
         execute_ls(cmd);
     }
     else if (!memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {

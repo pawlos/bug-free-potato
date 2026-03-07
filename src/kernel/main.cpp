@@ -94,8 +94,8 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     if (fbterm.is_ready())
         vterm_init(fbterm.get_cols(), fbterm.get_rows());
     WindowManager::initialize();
-    if (TaskScheduler::create_elf_task("BLINK.ELF") == 0xFFFFFFFF)
-        klog("[MAIN] BLINK.ELF not found or failed to start\n");
+    if (TaskScheduler::create_elf_task("BIN/BLINK.ELF") == 0xFFFFFFFF)
+        klog("[MAIN] BIN/BLINK.ELF not found or failed to start\n");
 
     // Initial UI
     TerminalPrinter terminal;
@@ -115,6 +115,14 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     // Shell loop
     terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
     LineReader reader;
+    auto print_prompt = [&]() {
+        const char* cwd = shell.get_cwd();
+        if (cwd[0])
+            vterm_printf("potatOS:/%s> ", cwd);
+        else
+            vterm_printf("potatOS:/> ");
+    };
+    print_prompt();
     while (true) {
         VTerm* active = vterm_active();
         bool got_input = false;
@@ -125,10 +133,13 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
         if (reader.has_line()) {
             const char* line = reader.get_line();
             if (line[0] != '\0') {
-                if (!shell.execute(line))
+                if (!shell.execute(line)) {
+                    reader.clear();
                     break;
+                }
             }
             reader.clear();
+            print_prompt();
         }
     }
 

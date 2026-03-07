@@ -7,15 +7,21 @@ public:
     bool execute(const char* cmd);
     void add_to_history(const char* cmd);
     void print_history();
-    
+    const char* get_cwd() const { return cwd; }
+
 private:
     static constexpr int MAX_HISTORY = 10;
     static constexpr int CMD_BUFFER_SIZE = 128;
     char history[MAX_HISTORY][CMD_BUFFER_SIZE];
     int history_count;
     int history_index;
+    char cwd[128];  // current working directory ("" = root)
+
+    // Build full path: prepend cwd to relative name
+    const char* make_path(const char* name, char* buf, int buf_sz);
 
     // Command handlers
+    void execute_cd(const char* cmd);
     void execute_mem(const char* cmd);
     void execute_ticks(const char* cmd);
     void execute_alloc(const char* cmd);

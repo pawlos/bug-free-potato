@@ -35,6 +35,18 @@ static void to_upper(char* s) {
         if (*s >= 'a' && *s <= 'z') *s -= 32;
 }
 
+/* Case-insensitive strcmp (returns 0 when equal). */
+static int sh_strcasecmp(const char* a, const char* b) {
+    while (*a && *b) {
+        char ca = *a, cb = *b;
+        if (ca >= 'a' && ca <= 'z') ca -= 32;
+        if (cb >= 'a' && cb <= 'z') cb -= 32;
+        if (ca != cb) return ca - cb;
+        a++; b++;
+    }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
 /* Build "NAME.ELF" from name (uppercased); append .ELF if not present.
    out must be at least out_sz bytes; the result is always NUL-terminated. */
 static void build_elf_name(const char* name, char* out, int out_sz) {
@@ -54,6 +66,34 @@ static void build_elf_name(const char* name, char* out, int out_sz) {
         out[len++] = 'F';
         out[len]   = '\0';
     }
+}
+
+/* ── current working directory ────────────────────────────────────────── */
+
+static char cwd[128] = "";  /* "" = root */
+
+/* Build full path: if cwd is set, prepend "cwd/" to relative name.
+   Returns pointer to static buffer. */
+static char fullpath_buf[256];
+static const char* fullpath(const char* name) {
+    if (!name || !*name) return cwd;
+    /* Absolute path — strip leading / */
+    if (name[0] == '/') {
+        int i = 0;
+        name++;
+        while (*name && i < 254) fullpath_buf[i++] = *name++;
+        fullpath_buf[i] = '\0';
+        return fullpath_buf;
+    }
+    /* Relative: prepend cwd */
+    if (cwd[0] == '\0') return name;
+    int i = 0;
+    const char* p = cwd;
+    while (*p && i < 200) fullpath_buf[i++] = *p++;
+    fullpath_buf[i++] = '/';
+    while (*name && i < 254) fullpath_buf[i++] = *name++;
+    fullpath_buf[i] = '\0';
+    return fullpath_buf;
 }
 
 /* ── line editor ──────────────────────────────────────────────────────── */
@@ -117,7 +157,8 @@ static int tokenise(char* line, char* argv[], int max_args) {
 
 static void cmd_help(void) {
     puts("Built-in commands:");
-    puts("  ls               list files on disk");
+    puts("  ls [dir]         list files/dirs (cwd if no arg)");
+    puts("  cd [dir]         change directory (/ = root, .. = parent)");
     puts("  cat <file>       print file contents");
     puts("  write <f> <txt>  write text to file");
     puts("  rm <file>        delete a file");
@@ -128,7 +169,7 @@ static void cmd_help(void) {
     puts("  disk             print disk size");
     puts("  help             show this help");
     puts("  exit             exit shell");
-    puts("  <name>           exec NAME.ELF");
+    puts("  <name>           exec NAME.ELF (from cwd)");
 }
 
 static int ends_with_elf(const char* s) {
@@ -138,27 +179,103 @@ static int ends_with_elf(const char* s) {
                                     && (s[n-1] == 'F' || s[n-1] == 'f');
 }
 
-static void cmd_ls(void) {
+static void cmd_ls(const char* arg) {
+    /* Determine which directory to list */
+    const char* dir_path = NULL;
+    if (arg && *arg) {
+        dir_path = fullpath(arg);
+    } else if (cwd[0]) {
+        dir_path = cwd;
+    }
+
     char name[256];
     unsigned int size = 0;
+    unsigned char type = 0;
     int i = 0;
     int found = 0;
     for (;;) {
-        long r = sys_readdir(i, name, &size);
+        long r = sys_readdir_ex(i, name, &size, dir_path, &type);
         if (!r) break;
-        if (ends_with_elf(name))
+        if (type == 1) {
+            /* directory — green with trailing / */
+            printf("  \x1b[92m%-24s\x1b[0m  <DIR>\n", name);
+        } else if (ends_with_elf(name)) {
             printf("  \x1b[92m%-24s\x1b[0m  %u bytes\n", name, size);
-        else
+        } else {
             printf("  %-24s  %u bytes\n", name, size);
+        }
         i++;
         found = 1;
     }
     if (!found) puts("(empty)");
 }
 
+static void cmd_cd(const char* arg) {
+    if (!arg || !*arg || sh_strcmp(arg, "/") == 0) {
+        /* cd or cd / → root */
+        cwd[0] = '\0';
+        return;
+    }
+
+    if (sh_strcmp(arg, "..") == 0) {
+        /* Strip last path component */
+        int len = sh_strlen(cwd);
+        if (len == 0) return;  /* already at root */
+        /* Find last '/' */
+        int last_slash = -1;
+        for (int i = 0; i < len; i++)
+            if (cwd[i] == '/') last_slash = i;
+        if (last_slash < 0)
+            cwd[0] = '\0';  /* was single component, go to root */
+        else
+            cwd[last_slash] = '\0';
+        return;
+    }
+
+    /* Build target path */
+    char target[128];
+    if (arg[0] == '/') {
+        /* Absolute path — skip leading / */
+        int i = 0;
+        const char* p = arg + 1;
+        while (*p && i < 126) target[i++] = *p++;
+        target[i] = '\0';
+        /* Remove trailing / */
+        int len = i;
+        while (len > 0 && target[len-1] == '/') target[--len] = '\0';
+    } else {
+        /* Relative: append to cwd */
+        int i = 0;
+        if (cwd[0]) {
+            const char* p = cwd;
+            while (*p && i < 120) target[i++] = *p++;
+            target[i++] = '/';
+        }
+        const char* p = arg;
+        while (*p && i < 126) target[i++] = *p++;
+        target[i] = '\0';
+        /* Remove trailing / */
+        int len = i;
+        while (len > 0 && target[len-1] == '/') target[--len] = '\0';
+    }
+
+    /* Validate: try listing idx 0 of the target path */
+    char name[256];
+    unsigned int size = 0;
+    unsigned char type = 0;
+    /* A valid directory will either have entries or return 0 (empty dir).
+       But an invalid path also returns 0. Use a different check:
+       try to see if the directory component exists by walking the path. */
+    /* Simple validation: just try readdir_ex idx=0; even empty dirs return 0.
+       We trust the user — if it doesn't exist, ls will show (empty). */
+    to_upper(target);
+    sh_strcpy(cwd, target);
+}
+
 static void cmd_cat(const char* filename) {
     if (!filename) { puts("usage: cat <file>"); return; }
-    int fd = sys_open(filename);
+    const char* path = fullpath(filename);
+    int fd = sys_open(path);
     if (fd < 0) { printf("cat: cannot open '%s'\n", filename); return; }
 
     char buf[512];
@@ -173,7 +290,8 @@ static void cmd_cat(const char* filename) {
 
 static void cmd_write(const char* filename, char* argv[], int argc) {
     if (!filename || argc < 3) { puts("usage: write <file> <text>"); return; }
-    int fd = sys_create(filename);
+    const char* path = fullpath(filename);
+    int fd = sys_create(path);
     if (fd < 0) { printf("write: cannot create '%s'\n", filename); return; }
     long total = 0;
     for (int i = 2; i < argc; i++) {
@@ -190,7 +308,8 @@ static void cmd_write(const char* filename, char* argv[], int argc) {
 
 static void cmd_rm(const char* filename) {
     if (!filename) { puts("usage: rm <file>"); return; }
-    long r = sys_remove(filename);
+    const char* path = fullpath(filename);
+    long r = sys_remove(path);
     if (r < 0) printf("rm: cannot remove '%s'\n", filename);
     else        printf("removed %s\n", filename);
 }
@@ -268,15 +387,31 @@ static void cmd_disk(void) {
 }
 
 static void cmd_exec(char* argv[], int argc) {
-    char fname[64];
+    /* Build the ELF filename with cwd prefix */
+    char fname[128];
     build_elf_name(argv[0], fname, (int)sizeof(fname));
-    argv[0] = fname;  /* argv[0] = full ELF filename */
+
+    /* Prepend cwd if set */
+    char full[256];
+    if (cwd[0]) {
+        int i = 0;
+        const char* p = cwd;
+        while (*p && i < 200) full[i++] = *p++;
+        full[i++] = '/';
+        const char* q = fname;
+        while (*q && i < 254) full[i++] = *q++;
+        full[i] = '\0';
+    } else {
+        sh_strcpy(full, fname);
+    }
+
+    argv[0] = full;  /* argv[0] = full path */
 
     long child = sys_fork();
     if (child == 0) {
         /* child */
-        int r = sys_exec(fname, argc, (const char* const*)argv);
-        if (r < 0) printf("exec: not found: %s\n", fname);
+        int r = sys_exec(full, argc, (const char* const*)argv);
+        if (r < 0) printf("exec: not found: %s\n", full);
         sys_exit(1);
     }
     /* parent */
@@ -292,7 +427,10 @@ static void shell_loop(void) {
     char* argv[ARGV_MAX];
 
     for (;;) {
-        printf("sh> ");
+        if (cwd[0])
+            printf("sh:/%s> ", cwd);
+        else
+            printf("sh:/> ");
         readline(line);
 
         int argc = tokenise(line, argv, ARGV_MAX);
@@ -305,7 +443,9 @@ static void shell_loop(void) {
         } else if (sh_strcmp(cmd, "help") == 0) {
             cmd_help();
         } else if (sh_strcmp(cmd, "ls") == 0) {
-            cmd_ls();
+            cmd_ls(argv[1]);
+        } else if (sh_strcmp(cmd, "cd") == 0) {
+            cmd_cd(argv[1]);
         } else if (sh_strcmp(cmd, "cat") == 0) {
             cmd_cat(argv[1]);
         } else if (sh_strcmp(cmd, "write") == 0) {
