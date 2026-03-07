@@ -45,6 +45,13 @@
 #define SYS_BIND_VTERM       38  /* rdi=vterm_id (0-3); bind task to a VTerm; returns 0 or -1 */
 #define SYS_GETPID           39  /* () → current task ID                                    */
 #define SYS_STAT             40  /* rdi=filename, rsi=stat_buf ptr; returns 0 or -1         */
+#define SYS_MPROTECT         41  /* rdi=addr, rsi=len, rdx=prot(1=X,2=W,4=R); returns 0/-1 */
+
+/* POSIX-like mprotect prot flags */
+#define PROT_NONE  0
+#define PROT_EXEC  1
+#define PROT_WRITE 2
+#define PROT_READ  4
 
 typedef unsigned long size_t;
 typedef long          ssize_t;
@@ -258,3 +265,7 @@ static inline long sys_getpid(void)
 /* Stat a file: fills stat_buf with size + timestamps.  Returns 0 or -1. */
 static inline long sys_stat(const char *filename, void *buf)
     { return __sc2(SYS_STAT, (long)filename, (long)buf); }
+
+/* Change page permissions.  prot: PROT_EXEC|PROT_WRITE|PROT_READ. */
+static inline long sys_mprotect(void *addr, size_t len, int prot)
+    { return __sc3(SYS_MPROTECT, (long)addr, (long)len, (long)prot); }

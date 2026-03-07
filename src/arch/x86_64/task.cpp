@@ -4,9 +4,15 @@
 #include "tss.h"
 #include "fs/vfs.h"
 #include "pipe.h"
+#include "elf.h"
 #include "elf_loader.h"
 #include "device/timer.h"
 #include "window.h"
+
+// Mask to extract the physical frame address from a leaf PTE.
+// Clears the low 12 flag bits AND the high bits (including NX bit 63),
+// leaving only the 52-bit physical frame address.
+static constexpr pt::uintptr_t PTE_ADDR_MASK = 0x000FFFFFFFFFF000ULL;
 
 // Close a single file descriptor, dispatching on its type.
 // Handles FILE (VFS), PIPE_RD and PIPE_WR (ref-count, kfree on last close).
@@ -45,7 +51,7 @@ static void free_user_pagetables(Task* t)
             KERNEL_OFFSET + t->priv_pt[k]);
         for (int j = 0; j < 512; j++) {
             if (cpt[j] & 0x01)
-                vmm.free_frame(cpt[j] & ~(pt::uintptr_t)0xFFF);
+                vmm.free_frame(cpt[j] & PTE_ADDR_MASK);
         }
         vmm.free_frame(t->priv_pt[k]);
         t->priv_pt[k] = 0;
@@ -58,7 +64,7 @@ static void free_user_pagetables(Task* t)
             KERNEL_OFFSET + t->stack_pt);
         for (int j = 0; j < 512; j++) {
             if (spt[j] & 0x01)
-                vmm.free_frame(spt[j] & ~(pt::uintptr_t)0xFFF);
+                vmm.free_frame(spt[j] & PTE_ADDR_MASK);
         }
         vmm.free_frame(t->stack_pt);
         t->stack_pt = 0;
@@ -73,12 +79,12 @@ static void free_user_pagetables(Task* t)
             if (!(upd[i] & 0x01)) continue;
             if (upd[i] & 0x80) continue;  // 2MB huge page (boot identity entry) — not a PT
             pt::uint64_t* hpt = reinterpret_cast<pt::uint64_t*>(
-                KERNEL_OFFSET + (upd[i] & ~(pt::uintptr_t)0xFFF));
+                KERNEL_OFFSET + (upd[i] & PTE_ADDR_MASK));
             for (int j = 0; j < 512; j++) {
                 if (hpt[j] & 0x01)
-                    vmm.free_frame(hpt[j] & ~(pt::uintptr_t)0xFFF);
+                    vmm.free_frame(hpt[j] & PTE_ADDR_MASK);
             }
-            vmm.free_frame(upd[i] & ~(pt::uintptr_t)0xFFF);
+            vmm.free_frame(upd[i] & PTE_ADDR_MASK);
         }
         vmm.free_frame(t->user_pd);
         t->user_pd = 0;
@@ -161,7 +167,18 @@ void TaskScheduler::initialize()
     current_task_id = 0;
     scheduler_ticks = 0;
 
-    // Capture the post-fninit FPU state as the clean template for new tasks.
+    // Reset x87 and SSE to known-good defaults right before capturing the
+    // template.  fninit only touches x87 (FCW=0x037F, round-to-nearest,
+    // 80-bit precision, all exceptions masked).  MXCSR must be set
+    // separately for SSE (0x1F80 = all exceptions masked, round-to-nearest,
+    // no DAZ/FTZ).  Doing this HERE instead of relying on the boot-time
+    // fninit guarantees the template is pristine even if kernel init code
+    // between boot and scheduler init accidentally touched FPU state.
+    asm volatile("fninit" ::: "memory");
+    {
+        pt::uint32_t default_mxcsr = 0x1F80;
+        asm volatile("ldmxcsr %0" : : "m"(default_mxcsr) : "memory");
+    }
     asm volatile("fxsave %0" : "=m"(default_fxsave) :: "memory");
 
     klog("[SCHEDULER] Scheduler ready (kernel as task 0)\n");
@@ -676,8 +693,16 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         memcpy(reinterpret_cast<void*>(frame),
                reinterpret_cast<void*>(ELF_STAGING_VA + i * 4096),
                4096);
+        // Build PTE flags from ELF segment permissions.
+        // Base: Present(0x01) | User(0x04) = 0x05.
+        // Add Writable(0x02) if PF_W set.
+        // Add NX (bit 63) if PF_X not set.
+        pt::uint8_t pflags = ElfLoader::page_flags[i];
+        pt::uint64_t pte = frame | 0x05;  // Present + User
+        if (pflags & PF_W) pte |= 0x02;   // Writable
+        if (!(pflags & PF_X)) pte |= PTE_NX;  // No-Execute
         pt::uint64_t* cpt = reinterpret_cast<pt::uint64_t*>(code_pt_frames[i / 512]);
-        cpt[i % 512] = frame | 0x07;  // Present | Writable | User
+        cpt[i % 512] = pte;
     }
 
     // Wire code PTs into user_pd at USER_CODE_PD_IDX.
@@ -692,7 +717,7 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     for (pt::size_t i = 0; i < USER_STACK_PAGES; i++) {
         pt::uintptr_t frame = vmm.allocate_frame();
         memset(reinterpret_cast<void*>(frame), 0, 4096);
-        stack_pt[i] = frame | 0x07;
+        stack_pt[i] = frame | 0x07 | PTE_NX;  // RW + User + No-Execute
     }
     user_pd[USER_STACK_PD_IDX] = stack_pt_frame | 0x07;
 
@@ -712,12 +737,12 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
             if (!code_pt_frames[k]) continue;
             pt::uint64_t* cpt = reinterpret_cast<pt::uint64_t*>(code_pt_frames[k]);
             for (int i = 0; i < 512; i++) {
-                if (cpt[i] & 0x01) vmm.free_frame(cpt[i] & ~(pt::uintptr_t)0xFFF);
+                if (cpt[i] & 0x01) vmm.free_frame(cpt[i] & PTE_ADDR_MASK);
             }
             vmm.free_frame(code_pt_frames[k]);
         }
         for (int i = 0; i < 512; i++) {
-            if (stack_pt[i] & 0x01) vmm.free_frame(stack_pt[i] & ~(pt::uintptr_t)0xFFF);
+            if (stack_pt[i] & 0x01) vmm.free_frame(stack_pt[i] & PTE_ADDR_MASK);
         }
         vmm.free_frame(stack_pt_frame);
         vmm.free_frame(user_pd_frame);
@@ -767,12 +792,12 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
     {
         auto elf_write_byte = [&](pt::uint64_t va, pt::uint8_t b) {
             pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
-            pt::uintptr_t pa = (stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+            pt::uintptr_t pa = (stack_pt[pt_idx] & PTE_ADDR_MASK) + (va & 0xFFF);
             *reinterpret_cast<pt::uint8_t*>(pa) = b;
         };
         auto elf_write_qword = [&](pt::uint64_t va, pt::uint64_t val) {
             pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
-            pt::uintptr_t pa = (stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+            pt::uintptr_t pa = (stack_pt[pt_idx] & PTE_ADDR_MASK) + (va & 0xFFF);
             *reinterpret_cast<pt::uint64_t*>(pa) = val;
         };
 
@@ -991,11 +1016,12 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
             KERNEL_OFFSET + new_pt_frames[k]);
         for (int i = 0; i < 512; i++) {
             if (parent_pt[i] & 0x01) {
-                pt::uintptr_t src_frame = parent_pt[i] & ~(pt::uintptr_t)0xFFF;
+                pt::uintptr_t src_frame = parent_pt[i] & PTE_ADDR_MASK;
+                pt::uint64_t  pte_flags = parent_pt[i] & 0x8000000000000FFFULL; // preserve NX + low flags
                 pt::uintptr_t dst_frame = vmm.allocate_frame();
                 memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + dst_frame),
                        reinterpret_cast<void*>(KERNEL_OFFSET + src_frame), 4096);
-                new_pt[i] = dst_frame | 0x07;
+                new_pt[i] = dst_frame | pte_flags;
             } else {
                 new_pt[i] = 0;
             }
@@ -1011,11 +1037,12 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
         KERNEL_OFFSET + parent->stack_pt);
     for (int i = 0; i < 512; i++) {
         if (parent_spt[i] & 0x01) {
-            pt::uintptr_t src = parent_spt[i] & ~(pt::uintptr_t)0xFFF;
+            pt::uintptr_t src = parent_spt[i] & PTE_ADDR_MASK;
+            pt::uint64_t  pte_flags = parent_spt[i] & 0x8000000000000FFFULL;
             pt::uintptr_t dst = vmm.allocate_frame();
             memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + dst),
                    reinterpret_cast<void*>(KERNEL_OFFSET + src), 4096);
-            child_spt[i] = dst | 0x07;
+            child_spt[i] = dst | pte_flags;
         } else {
             child_spt[i] = 0;
         }
@@ -1032,16 +1059,17 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
             if (parent_upd[i] & 0x80) continue;  // boot 2MB huge page, already in child_upd
             pt::uintptr_t child_hpt_frame = vmm.allocate_frame();
             pt::uint64_t* par_hpt = reinterpret_cast<pt::uint64_t*>(
-                KERNEL_OFFSET + (parent_upd[i] & ~(pt::uintptr_t)0xFFF));
+                KERNEL_OFFSET + (parent_upd[i] & PTE_ADDR_MASK));
             pt::uint64_t* child_hpt = reinterpret_cast<pt::uint64_t*>(
                 KERNEL_OFFSET + child_hpt_frame);
             for (int j = 0; j < 512; j++) {
                 if (par_hpt[j] & 0x01) {
-                    pt::uintptr_t src = par_hpt[j] & ~(pt::uintptr_t)0xFFF;
+                    pt::uintptr_t src = par_hpt[j] & PTE_ADDR_MASK;
+                    pt::uint64_t  pte_flags = par_hpt[j] & 0x8000000000000FFFULL;
                     pt::uintptr_t dst = vmm.allocate_frame();
                     memcpy(reinterpret_cast<void*>(KERNEL_OFFSET + dst),
                            reinterpret_cast<void*>(KERNEL_OFFSET + src), 4096);
-                    child_hpt[j] = dst | 0x07;
+                    child_hpt[j] = dst | pte_flags;
                 } else {
                     child_hpt[j] = 0;
                 }
@@ -1230,14 +1258,18 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
         memset(reinterpret_cast<void*>(new_pt_frames[k]), 0, 4096);
     }
 
-    // 3. Copy ELF frames from staging; populate code PTs.
+    // 3. Copy ELF frames from staging; populate code PTs with W^X permissions.
     for (pt::size_t i = 0; i < num_frames; i++) {
         pt::uintptr_t frame = vmm.allocate_frame();
         memcpy(reinterpret_cast<void*>(frame),
                reinterpret_cast<void*>(ELF_STAGING_VA + i * 4096),
                4096);
+        pt::uint8_t pflags = ElfLoader::page_flags[i];
+        pt::uint64_t pte = frame | 0x05;  // Present + User
+        if (pflags & PF_W) pte |= 0x02;
+        if (!(pflags & PF_X)) pte |= PTE_NX;
         pt::uint64_t* new_pt = reinterpret_cast<pt::uint64_t*>(new_pt_frames[i / 512]);
-        new_pt[i % 512] = frame | 0x07;
+        new_pt[i % 512] = pte;
     }
     for (pt::size_t k = 0; k < num_pts; k++)
         new_user_pd[USER_CODE_PD_IDX + k] = new_pt_frames[k] | 0x07;
@@ -1249,7 +1281,7 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     for (pt::size_t i = 0; i < USER_STACK_PAGES; i++) {
         pt::uintptr_t frame = vmm.allocate_frame();
         memset(reinterpret_cast<void*>(frame), 0, 4096);
-        new_stack_pt[i] = frame | 0x07;
+        new_stack_pt[i] = frame | 0x07 | PTE_NX;  // RW + User + No-Execute
     }
     new_user_pd[USER_STACK_PD_IDX] = new_stack_pt_frame | 0x07;
 
@@ -1291,12 +1323,12 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     // Helper lambda: write a byte at user VA via physical address.
     auto write_byte = [&](pt::uint64_t va, pt::uint8_t b) {
         pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
-        pt::uintptr_t pa = (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+        pt::uintptr_t pa = (new_stack_pt[pt_idx] & PTE_ADDR_MASK) + (va & 0xFFF);
         *reinterpret_cast<pt::uint8_t*>(pa) = b;
     };
     auto write_qword = [&](pt::uint64_t va, pt::uint64_t val) {
         pt::size_t pt_idx = (va - USER_STACK_BOT) >> 12;
-        pt::uintptr_t pa = (new_stack_pt[pt_idx] & ~(pt::uintptr_t)0xFFF) + (va & 0xFFF);
+        pt::uintptr_t pa = (new_stack_pt[pt_idx] & PTE_ADDR_MASK) + (va & 0xFFF);
         *reinterpret_cast<pt::uint64_t*>(pa) = val;
     };
 
@@ -1384,12 +1416,16 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
         }
     }
 
-    // 9. Patch the live iretq frame in-place.
+    // 9. Reset FPU/SSE state for the new program (clean slate, not inherited
+    //    from the pre-exec image which may have changed rounding mode etc.).
+    memcpy(current->fxsave_area, default_fxsave, 512);
+
+    // 10. Patch the live iretq frame in-place.
     pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(syscall_frame_rsp);
     frame[15] = entry;        // [+120] = new RIP
     frame[18] = new_user_rsp; // [+144] = new user RSP
 
-    // 10. Switch back to task CR3 (now wired to new user address space) and flush TLB.
+    // 11. Switch back to task CR3 (now wired to new user address space) and flush TLB.
     // Update task name to the new binary.
     {
         pt::size_t i = 0;
@@ -1482,13 +1518,13 @@ void TaskScheduler::map_user_pages(Task* t, pt::uintptr_t va, pt::size_t size)
             upd[pd_idx] = pt_frame | 0x07;
         }
 
-        pt::uintptr_t pt_pa = upd[pd_idx] & ~(pt::uintptr_t)0xFFF;
+        pt::uintptr_t pt_pa = upd[pd_idx] & PTE_ADDR_MASK;
         pt::uint64_t* hpt = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + pt_pa);
         if (!(hpt[pt_idx] & 0x01)) {
             pt::uintptr_t frame = vmm.allocate_frame();
             pt::uint64_t* fp = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + frame);
             memset(fp, 0, 4096);
-            hpt[pt_idx] = frame | 0x07;
+            hpt[pt_idx] = frame | 0x07 | PTE_NX;  // RW + User + No-Execute
             asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
         }
     }
@@ -1546,7 +1582,7 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
         }
 
         // 4KB PT — count present entries.
-        pt::uintptr_t pt_pa = upd[pd_i] & ~(pt::uintptr_t)0xFFF;
+        pt::uintptr_t pt_pa = upd[pd_i] & PTE_ADDR_MASK;
         pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + pt_pa);
         int count = 0;
         for (int j = 0; j < 512; j++) {
@@ -1590,4 +1626,43 @@ void TaskScheduler::dump_task_map(pt::uint32_t task_id)
              region_start + (pt::uintptr_t)region_pages * 4096,
              region_pages * 4, region_label);
     }
+}
+
+// ─── mprotect_pages ───────────────────────────────────────────────────────────
+//
+// Change page permissions for [va, va+size) in the current task.
+// prot bits: 0=exec, 1=write, 2=read (matches PROT_EXEC/PROT_WRITE/PROT_READ).
+// Called with the task's CR3 active — accesses PTs via KERNEL_OFFSET + PA.
+//
+int TaskScheduler::mprotect_pages(pt::uintptr_t va, pt::size_t size, int prot)
+{
+    Task* t = get_current_task();
+    if (!t || !t->user_pd) return -1;
+
+    pt::uint64_t* upd = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + t->user_pd);
+
+    for (pt::uintptr_t addr = va & ~(pt::uintptr_t)0xFFF;
+         addr < va + size; addr += 4096) {
+        pt::size_t pd_idx = (addr >> 21) & 0x1FF;
+        pt::size_t pt_idx = (addr >> 12) & 0x1FF;
+
+        if (!(upd[pd_idx] & 0x01) || (upd[pd_idx] & 0x80))
+            continue;  // not mapped or boot huge page
+
+        pt::uintptr_t pt_pa = upd[pd_idx] & PTE_ADDR_MASK;
+        pt::uint64_t* pt = reinterpret_cast<pt::uint64_t*>(KERNEL_OFFSET + pt_pa);
+
+        if (!(pt[pt_idx] & 0x01))
+            continue;  // page not present
+
+        // Preserve the physical frame address; rebuild permission flags.
+        pt::uintptr_t frame = pt[pt_idx] & PTE_ADDR_MASK;
+        pt::uint64_t new_pte = frame | 0x05;  // Present + User
+        if (prot & 2) new_pte |= 0x02;        // Writable
+        if (!(prot & 1)) new_pte |= PTE_NX;   // No-Execute
+
+        pt[pt_idx] = new_pte;
+        asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
+    }
+    return 0;
 }

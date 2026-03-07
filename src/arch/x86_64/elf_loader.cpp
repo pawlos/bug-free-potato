@@ -4,6 +4,9 @@
 #include "virtual.h"
 #include "kernel.h"
 
+// Storage for per-page permission flags (populated by load, consumed by create_elf_task).
+pt::uint8_t ElfLoader::page_flags[MAX_ELF_PAGES];
+
 pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
     File file;
     if (!VFS::open_file(filename, &file)) {
@@ -53,6 +56,16 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
     klog("[ELF] Loading '%s', entry=%x, %d program headers\n",
          filename, ehdr->e_entry, (int)ehdr->e_phnum);
 
+    // Constants for staging area.
+    static constexpr pt::uintptr_t ELF_STAGING_VA   = 0xFFFF800018000000ULL;
+    static constexpr pt::uintptr_t USER_CODE_BASE_  = 0x400000ULL;
+    static constexpr pt::size_t    MAX_STAGING_BYTES = 8ULL * 512 * 4096; // 16 MB
+
+    // Zero the entire staging area and page_flags before loading so that
+    // gaps between PT_LOAD segments don't carry stale data.
+    memset(reinterpret_cast<void*>(ELF_STAGING_VA), 0, MAX_STAGING_BYTES);
+    memset(page_flags, 0, sizeof(page_flags));
+
     // Walk program headers and load PT_LOAD segments.
     // Track VA span for out_code_size.
     const pt::uint8_t* phdr_base = buf + ehdr->e_phoff;
@@ -67,8 +80,9 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
             continue;
         }
 
-        klog("[ELF] PT_LOAD: vaddr=%x filesz=%d memsz=%d\n",
-             phdr->p_vaddr, (int)phdr->p_filesz, (int)phdr->p_memsz);
+        klog("[ELF] PT_LOAD: vaddr=%x filesz=%d memsz=%d flags=%x\n",
+             phdr->p_vaddr, (int)phdr->p_filesz, (int)phdr->p_memsz,
+             (unsigned)phdr->p_flags);
 
         if (phdr->p_vaddr < va_min) va_min = phdr->p_vaddr;
         pt::uintptr_t seg_end = phdr->p_vaddr + phdr->p_memsz;
@@ -77,8 +91,6 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
         // ELF has p_vaddr = USER_CODE_BASE + offset.  Write to the shared staging
         // area at ELF_STAGING_VA using the offset from USER_CODE_BASE so that
         // create_elf_task can later copy frames from ELF_STAGING_VA + i*4096.
-        static constexpr pt::uintptr_t ELF_STAGING_VA  = 0xFFFF800018000000ULL;
-        static constexpr pt::uintptr_t USER_CODE_BASE_  = 0x400000ULL;
         pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(
             ELF_STAGING_VA + (phdr->p_vaddr - USER_CODE_BASE_));
         const pt::uint8_t* src = buf + phdr->p_offset;
@@ -89,6 +101,15 @@ pt::uintptr_t ElfLoader::load(const char* filename, pt::size_t* out_code_size) {
         // Zero BSS (p_memsz - p_filesz bytes)
         for (pt::uint64_t b = phdr->p_filesz; b < phdr->p_memsz; b++) {
             dst[b] = 0;
+        }
+
+        // Record per-page permission flags.  A page touched by multiple
+        // segments gets the union of their flags (conservative).
+        pt::uintptr_t seg_page_start = (phdr->p_vaddr - USER_CODE_BASE_) / 4096;
+        pt::uintptr_t seg_page_end   = (seg_end - USER_CODE_BASE_ + 4095) / 4096;
+        pt::uint8_t flags = (pt::uint8_t)(phdr->p_flags & 0x07); // PF_X|PF_W|PF_R
+        for (pt::uintptr_t pg = seg_page_start; pg < seg_page_end && pg < MAX_ELF_PAGES; pg++) {
+            page_flags[pg] |= flags;
         }
     }
 

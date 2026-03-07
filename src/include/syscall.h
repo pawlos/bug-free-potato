@@ -44,3 +44,4 @@ constexpr pt::uint64_t SYS_SET_WINDOW_TITLE = 37; // rdi=wid, rsi=title_ptr; set
 constexpr pt::uint64_t SYS_BIND_VTERM       = 38; // rdi=vterm_id (0-3); bind calling task to a VTerm; returns 0 or -1
 constexpr pt::uint64_t SYS_GETPID           = 39; // () → current task ID
 constexpr pt::uint64_t SYS_STAT             = 40; // rdi=filename, rsi=stat_buf ptr; returns 0 or -1
+constexpr pt::uint64_t SYS_MPROTECT         = 41; // rdi=addr, rsi=len, rdx=prot; returns 0 or -1

@@ -207,9 +207,10 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				pt::size_t pd_idx = (addr >> 21) & 0x1FF;
 				pt::size_t pt_idx = (addr >> 12) & 0x1FF;
 				if (!(upd[pd_idx] & 0x01) || (upd[pd_idx] & 0x80)) continue;
-				pt::uint64_t* pt = (pt::uint64_t*)(KERNEL_OFFSET + (upd[pd_idx] & ~(pt::uintptr_t)0xFFF));
+				static constexpr pt::uintptr_t PTE_ADDR_MASK = 0x000FFFFFFFFFF000ULL;
+				pt::uint64_t* pt = (pt::uint64_t*)(KERNEL_OFFSET + (upd[pd_idx] & PTE_ADDR_MASK));
 				if (pt[pt_idx] & 0x01) {
-					vmm.free_frame(pt[pt_idx] & ~(pt::uintptr_t)0xFFF);
+					vmm.free_frame(pt[pt_idx] & PTE_ADDR_MASK);
 					pt[pt_idx] = 0;
 					asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
 				}
@@ -584,6 +585,14 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			StatResult* buf = reinterpret_cast<StatResult*>(arg2);
 			if (!filename || !buf) return (pt::uint64_t)-1;
 			return VFS::stat_file(filename, buf) ? 0 : (pt::uint64_t)-1;
+		}
+
+		case SYS_MPROTECT: {
+			pt::uintptr_t addr = (pt::uintptr_t)arg1;
+			pt::size_t len     = (pt::size_t)arg2;
+			int prot           = (int)arg3;
+			return TaskScheduler::mprotect_pages(addr, len, prot) == 0
+			       ? 0 : (pt::uint64_t)-1;
 		}
 
 		default:

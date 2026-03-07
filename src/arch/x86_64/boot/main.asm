@@ -126,7 +126,7 @@ enable_paging:
 
     mov ecx, 0xc0000080
     rdmsr
-    or eax, 1 << 8      ;set the LM-bit
+    or eax, (1 << 8) | (1 << 11)  ;set LM-bit | NXE (No-Execute Enable)
     wrmsr
 
     mov eax, cr0

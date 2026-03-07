@@ -222,6 +222,11 @@ public:
     // Walks user_pd entries and prints contiguous mapped regions.
     static void dump_task_map(pt::uint32_t task_id);
 
+    // Change page permissions for [va, va+size) in the current task.
+    // prot: bit 0 = exec, bit 1 = write, bit 2 = read (matches PROT_*).
+    // Returns 0 on success, -1 on error.
+    static int mprotect_pages(pt::uintptr_t va, pt::size_t size, int prot);
+
 private:
     static Task tasks[MAX_TASKS];
     static pt::uint32_t task_count;

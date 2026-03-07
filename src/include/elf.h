@@ -71,5 +71,13 @@ constexpr pt::uint16_t EM_X86_64  = 62;
 // p_type
 constexpr pt::uint32_t PT_LOAD    = 1;
 
+// p_flags
+constexpr pt::uint32_t PF_X       = 1;   // Execute
+constexpr pt::uint32_t PF_W       = 2;   // Write
+constexpr pt::uint32_t PF_R       = 4;   // Read
+
+// x86_64 page table NX (No-Execute) bit — bit 63 of a PTE/PDE.
+constexpr pt::uint64_t PTE_NX     = (1ULL << 63);
+
 // Page size constant (4 KiB)
 constexpr pt::uint64_t ELF_PAGE_SIZE = 4096;
