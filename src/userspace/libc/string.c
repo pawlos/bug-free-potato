@@ -109,16 +109,27 @@ void *memchr(const void *s, int c, size_t n)
 
 void *memcpy(void *dst, const void *src, size_t n)
 {
-    char *d = dst;
-    const char *s = src;
+    unsigned char *d = (unsigned char *)dst;
+    const unsigned char *s = (const unsigned char *)src;
+    /* 8-byte copy when both pointers are aligned */
+    while (n >= 8 && ((unsigned long)d & 7) == 0 && ((unsigned long)s & 7) == 0) {
+        *(unsigned long *)d = *(const unsigned long *)s;
+        d += 8; s += 8; n -= 8;
+    }
     while (n--) *d++ = *s++;
     return dst;
 }
 
 void *memset(void *dst, int c, size_t n)
 {
-    char *d = dst;
-    while (n--) *d++ = (char)c;
+    unsigned char *d = (unsigned char *)dst;
+    unsigned char v = (unsigned char)c;
+    if (n >= 8 && ((unsigned long)d & 7) == 0) {
+        unsigned long w = v;
+        w |= w << 8; w |= w << 16; w |= w << 32;
+        while (n >= 8) { *(unsigned long *)d = w; d += 8; n -= 8; }
+    }
+    while (n--) *d++ = v;
     return dst;
 }
 

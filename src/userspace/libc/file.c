@@ -18,7 +18,7 @@ FILE *stderr = &_stderr_impl;
 /* ── file pool ───────────────────────────────────────────────────────────── */
 /* Max open FILE* (beyond the 3 predefined streams).
    Keep this low — the kernel allows MAX_FDS=8 per task. */
-#define FOPEN_MAX_USER 5
+#define FOPEN_MAX_USER 12
 
 static FILE  _file_pool[FOPEN_MAX_USER];
 static int   _file_used[FOPEN_MAX_USER];  /* 0 = free */
@@ -109,16 +109,17 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *f)
         f->unget_char = -1;
     }
 
-    if (done < total) {
+    /* Loop until we fill the buffer or hit true EOF.
+       sys_read may return partial results at FAT32 cluster boundaries. */
+    while (done < total) {
         long n = sys_read(f->fd, dst + done, total - done);
         if (n <= 0) {
             f->flags |= _FILE_EOF;
-        } else {
-            done += (size_t)n;
+            break;
         }
+        done += (size_t)n;
     }
 
-    if (done < total) f->flags |= _FILE_EOF;
     return done / size;
 }
 

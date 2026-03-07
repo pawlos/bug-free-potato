@@ -25,7 +25,7 @@ typedef struct block_hdr {
 static block_hdr *heap_list = (block_hdr *)0;
 
 /* Track raw slab pointers and sizes so exit() can return them to the kernel. */
-#define MAX_SLABS 32
+#define MAX_SLABS 512
 static void  *slab_ptrs[MAX_SLABS];
 static size_t slab_sizes[MAX_SLABS];
 static int    slab_count = 0;
@@ -289,6 +289,21 @@ int gettimeofday(struct timeval *tv, struct timezone *tz)
     return 0;
 }
 
+/* Minimal localtime stub -- returns a static struct with crude fields. */
+struct tm *localtime(const time_t *timep)
+{
+    static struct tm result;
+    memset(&result, 0, sizeof(result));
+    if (timep) {
+        time_t t = *timep;
+        result.tm_sec  = (int)(t % 60);
+        result.tm_min  = (int)((t / 60) % 60);
+        result.tm_hour = (int)((t / 3600) % 24);
+        result.tm_mday = 1;
+    }
+    return &result;
+}
+
 double strtod(const char *s, char **endptr)
 {
     const char *p = s;
@@ -335,6 +350,12 @@ double atof(const char *s)
 
 /* Doom uses system() only for zenity error dialogs — not available. */
 int system(const char *cmd) { (void)cmd; return -1; }
+
+int putenv(char *s) { (void)s; return -1; }
+
+/* Non-inline versions for code that doesn't include ctype.h */
+int toupper(int c) { return (c >= 'a' && c <= 'z') ? c - 32 : c; }
+int tolower(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
 
 /* Doom uses mkdir to create save-game directories. Our VFS is read-only. */
 int mkdir(const char *path, unsigned int mode) { (void)path; (void)mode; return -1; }
