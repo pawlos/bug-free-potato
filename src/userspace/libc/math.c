@@ -139,11 +139,25 @@ double exp(double x) {
 double pow(double x, double y) {
     if (y == 0.0) return 1.0;
     if (x == 0.0) return 0.0;
+    /* Integer exponent fast-path: repeated multiplication avoids log2
+       rounding that makes e.g. pow(3,3) return 26.999… instead of 27. */
+    if (y == (double)(long long)y && y >= 1.0 && y <= 63.0) {
+        long long n = (long long)y;
+        int neg = 0;
+        if (x < 0.0) { neg = n & 1; x = -x; }
+        double r = 1.0;
+        double base = x;
+        while (n) {
+            if (n & 1) r *= base;
+            base *= base;
+            n >>= 1;
+        }
+        return neg ? -r : r;
+    }
     if (x < 0.0) {
-        /* Negative base only valid for integer exponents */
         long long n = (long long)y;
         if ((double)n != y) return 0.0;    /* would be NaN */
-        double r = exp(y * log(-x));
+        double r = exp(-y * log(-x));
         return (n & 1) ? -r : r;
     }
     /* x^y = 2^(y * log2(x)) */
