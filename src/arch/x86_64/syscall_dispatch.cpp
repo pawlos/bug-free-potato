@@ -482,7 +482,9 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			int idx          = (int)arg1;
 			char* name       = reinterpret_cast<char*>(arg2);
 			pt::uint32_t* sz = reinterpret_cast<pt::uint32_t*>(arg3);
-			return VFS::readdir(idx, name, sz) ? 1 : 0;
+			const char* path = reinterpret_cast<const char*>(arg4);
+			pt::uint8_t* tp  = reinterpret_cast<pt::uint8_t*>(arg5);
+			return (pt::uint64_t)VFS::readdir_ex(path, idx, name, sz, tp);
 		}
 
 		case SYS_MEM_FREE:

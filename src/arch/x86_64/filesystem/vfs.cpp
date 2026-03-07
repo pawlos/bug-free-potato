@@ -76,14 +76,17 @@ bool VFS::mount() {
 
 bool VFS::open_file(const char* filename, File* file) {
     if (!active_fs) return false;
-    // Strip leading directory components so "id1/pak0.pak" → "pak0.pak".
-    // Quake constructs paths like "<basedir>/id1/pak0.pak"; the FAT filesystem
-    // only indexes the root directory, so we always search by basename.
+    // Try full path first (supports subdirectories)
+    if (active_fs->open_file(filename, file))
+        return true;
+    // Fall back to basename-only for backward compat (e.g. Quake's
+    // "//id1/pak0.pak" → "pak0.pak" searched in root)
     const char* base = filename;
     for (const char* p = filename; *p; p++)
         if (*p == '/') base = p + 1;
-    if (!*base) base = filename;   // guard: trailing slash or empty
-    return active_fs->open_file(base, file);
+    if (base != filename && *base)
+        return active_fs->open_file(base, file);
+    return false;
 }
 
 pt::uint32_t VFS::read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) {
@@ -113,11 +116,14 @@ void VFS::close_file(File* file) {
 
 bool VFS::file_exists(const char* filename) {
     if (!active_fs) return false;
+    if (active_fs->file_exists(filename))
+        return true;
     const char* base = filename;
     for (const char* p = filename; *p; p++)
         if (*p == '/') base = p + 1;
-    if (!*base) base = filename;
-    return active_fs->file_exists(base);
+    if (base != filename && *base)
+        return active_fs->file_exists(base);
+    return false;
 }
 
 void VFS::list_root_directory() {
@@ -140,13 +146,27 @@ bool VFS::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
     return active_fs->readdir(idx, name_out, size_out);
 }
 
+int VFS::readdir_ex(const char* path, int idx, char* name_out,
+                    pt::uint32_t* size_out, pt::uint8_t* type_out) {
+    if (!active_fs) return 0;
+    return active_fs->readdir_ex(path, idx, name_out, size_out, type_out);
+}
+
 bool VFS::stat_file(const char* filename, StatResult* out) {
     if (!active_fs) return false;
+    if (active_fs->stat_file(filename, out))
+        return true;
     const char* base = filename;
     for (const char* p = filename; *p; p++)
         if (*p == '/') base = p + 1;
-    if (!*base) base = filename;
-    return active_fs->stat_file(base, out);
+    if (base != filename && *base)
+        return active_fs->stat_file(base, out);
+    return false;
+}
+
+void VFS::list_directory(const char* path) {
+    if (!active_fs) return;
+    active_fs->list_directory(path);
 }
 
 pt::uint32_t VFS::get_bytes_per_cluster() {

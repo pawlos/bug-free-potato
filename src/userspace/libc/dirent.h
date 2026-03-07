@@ -17,8 +17,9 @@ struct dirent {
 
 /* ── DIR handle ─────────────────────────────────────────────────────────── */
 typedef struct {
-    int            index;   /* next sys_readdir index to fetch */
-    struct dirent  ent;     /* storage for the last entry read */
+    int            index;    /* next sys_readdir index to fetch */
+    struct dirent  ent;      /* storage for the last entry read */
+    char           path[128]; /* directory path for readdir_ex   */
 } DIR;
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

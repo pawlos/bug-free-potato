@@ -195,7 +195,14 @@ static inline long sys_get_window_event(long wid)
     { return __sc1(SYS_GET_WINDOW_EVENT, wid); }
 
 static inline long sys_readdir(int idx, char* name, unsigned int* size)
-    { return __sc3(SYS_READDIR, (long)idx, (long)name, (long)size); }
+    { return __sc5(SYS_READDIR, (long)idx, (long)name, (long)size, 0, 0); }
+
+/* Extended readdir: path selects directory (NULL/"" = root),
+   type_out receives 0=file, 1=dir.  Returns 1=found, 0=end. */
+static inline long sys_readdir_ex(int idx, char* name, unsigned int* size,
+                                  const char* path, unsigned char* type_out)
+    { return __sc5(SYS_READDIR, (long)idx, (long)name, (long)size,
+                   (long)path, (long)type_out); }
 
 static inline long sys_mem_free(void)
     { return __sc0(SYS_MEM_FREE); }

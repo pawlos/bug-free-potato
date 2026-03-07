@@ -70,6 +70,8 @@ clean:
 	-rm -f  $(DOOM_ELF)
 	-rm -rf $(QUAKE_BUILD)
 	-rm -f  $(QUAKE_ELF)
+	-rm -rf $(Q2_BUILD)
+	-rm -f  $(Q2_ELF)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -292,6 +294,72 @@ $(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0)
 
 quake: $(QUAKE_ELF)
 
+# ── Quake 2 ────────────────────────────────────────────────────────────────
+Q2_DIR       = src/userspace/quake2
+Q2_SRC_DIR   = $(Q2_DIR)/quake2-src
+Q2_BUILD     = build/userspace/quake2
+Q2_ELF       = dist/userspace/quake2.elf
+
+CFLAGS_Q2 = -ffreestanding -fno-stack-protector -fno-builtin \
+            -fno-asynchronous-unwind-tables \
+            -m64 -nostdlib -O2 -w \
+            -I src/userspace/libc \
+            -I src/userspace \
+            -I $(Q2_SRC_DIR)
+
+# Clone Q2 GPL source on demand
+$(Q2_SRC_DIR)/qcommon/qcommon.h:
+	git clone --depth=1 https://github.com/id-Software/Quake-2.git $(Q2_SRC_DIR)
+
+# Q2 engine sources (explicit lists to avoid platform-specific files)
+Q2_QCOMMON_SRCS := $(addprefix $(Q2_SRC_DIR)/qcommon/, \
+    cmd.c cmodel.c common.c crc.c cvar.c files.c md4.c net_chan.c pmove.c)
+
+Q2_CLIENT_SRCS := $(addprefix $(Q2_SRC_DIR)/client/, \
+    cl_cin.c cl_ents.c cl_fx.c cl_input.c cl_inv.c cl_main.c \
+    cl_newfx.c cl_parse.c cl_pred.c cl_scrn.c cl_tent.c cl_view.c \
+    console.c keys.c menu.c qmenu.c snd_dma.c snd_mem.c snd_mix.c)
+
+Q2_SERVER_SRCS := $(addprefix $(Q2_SRC_DIR)/server/, \
+    sv_ccmds.c sv_ents.c sv_game.c sv_init.c sv_main.c sv_send.c \
+    sv_user.c sv_world.c)
+
+Q2_GAME_SRCS := $(filter-out $(Q2_SRC_DIR)/game/q_shared.c, \
+    $(wildcard $(Q2_SRC_DIR)/game/*.c))
+
+Q2_REFSOFT_SRCS := $(addprefix $(Q2_SRC_DIR)/ref_soft/, \
+    r_aclip.c r_alias.c r_bsp.c r_draw.c r_edge.c r_image.c r_light.c \
+    r_main.c r_misc.c r_model.c r_part.c r_poly.c r_polyse.c \
+    r_rast.c r_scan.c r_sprite.c r_surf.c)
+
+Q2_SHARED_SRCS := $(Q2_SRC_DIR)/game/q_shared.c $(Q2_SRC_DIR)/linux/glob.c
+
+Q2_ENGINE_SRCS := $(Q2_QCOMMON_SRCS) $(Q2_CLIENT_SRCS) $(Q2_SERVER_SRCS) \
+                  $(Q2_GAME_SRCS) $(Q2_REFSOFT_SRCS) $(Q2_SHARED_SRCS)
+
+Q2_ENGINE_OBJS := $(patsubst $(Q2_SRC_DIR)/%.c, $(Q2_BUILD)/%.o, $(Q2_ENGINE_SRCS))
+
+Q2_POTATO_SRCS := $(Q2_DIR)/q2_potato.c
+Q2_POTATO_OBJS := $(patsubst $(Q2_DIR)/%.c, $(Q2_BUILD)/%.o, $(Q2_POTATO_SRCS))
+
+# Compile Q2 engine sources
+$(Q2_BUILD)/%.o: $(Q2_SRC_DIR)/%.c $(Q2_SRC_DIR)/qcommon/qcommon.h
+	mkdir -p $(dir $@)
+	$(CC) -c $(CFLAGS_Q2) -o $@ $<
+
+# Compile potato platform layer
+$(Q2_BUILD)/q2_potato.o: $(Q2_DIR)/q2_potato.c $(Q2_SRC_DIR)/qcommon/qcommon.h
+	mkdir -p $(Q2_BUILD)
+	$(CC) -c $(CFLAGS_Q2) -o $@ $<
+
+$(Q2_ELF): $(Q2_ENGINE_OBJS) $(Q2_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	mkdir -p dist/userspace
+	$(LD) --no-relax --allow-multiple-definition \
+	      -T src/userspace/libc/libc.ld -o $@ \
+	      $(LIBC_CRT0) $(Q2_POTATO_OBJS) $(Q2_ENGINE_OBJS) $(LIBC_A)
+
+quake2: $(Q2_ELF)
+
 # Path to Quake PAK0.PAK (user-supplied; copyrighted — cannot auto-download).
 # Copy PAK0.PAK into assets/ before running make disk.img.
 # Override: make disk.img QUAKE_PAK=/path/to/pak0.pak
@@ -303,10 +371,15 @@ ASSET_FILES = assets/font.psf \
               assets/potato.txt \
               assets/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF)
+Q2_PAK0 ?= assets/quake2/pak0.pak
+Q2_PAK1 ?= assets/quake2/pak1.pak
+Q2_PAK2 ?= assets/quake2/pak2.pak
+
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF)
 	@echo "Creating FAT32 disk image..."
-	dd if=/dev/zero of=disk.img bs=1M count=128 2>/dev/null
+	dd if=/dev/zero of=disk.img bs=1M count=256 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
+	mmd -i disk.img ::SYS ::BIN ::GAMES ::GAMES/DOOM ::GAMES/QUAKE ::GAMES/QUAKE/ID1 ::GAMES/SNAKE ::GAMES/QUAKE2 ::GAMES/QUAKE2/BASEQ2
 	@copy_file() { \
 	  src="$$1"; dst="$$2"; \
 	  [ -f "$$src" ] || return 0; \
@@ -314,32 +387,36 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	  printf "  %-30s %6s  ->  %s\n" "$$(basename $$src)" "$$size" "$$dst"; \
 	  mcopy -i disk.img "$$src" "::$$dst"; \
 	}; \
-	copy_file assets/font.psf   FONT.PSF; \
-	copy_file assets/potato.raw POTATO.RAW; \
-	copy_file assets/potato.txt POTATO.TXT; \
-	copy_file assets/boot.raw   BOOT.RAW; \
-	copy_file $(TEST_ELF_BIN)   TEST.ELF; \
-	copy_file $(BLINK_ELF_BIN)  BLINK.ELF; \
-	copy_file dist/userspace/hello.elf       HELLO.ELF; \
-	copy_file dist/userspace/fork_test.elf   FORK_TEST.ELF; \
-	copy_file dist/userspace/pipe_test.elf   PIPE_TEST.ELF; \
-	copy_file dist/userspace/mathtest.elf    MATHTEST.ELF; \
-	copy_file dist/userspace/keytest.elf     KEYTEST.ELF; \
-	copy_file dist/userspace/fswrite_test.elf FSWRITE.ELF; \
-	copy_file dist/userspace/sleep_test.elf  SLEEP_TEST.ELF; \
-	copy_file dist/userspace/wm_test.elf     WM_TEST.ELF; \
-	copy_file dist/userspace/sh.elf          SH.ELF; \
-	copy_file dist/userspace/snake.elf       SNAKE.ELF; \
-	copy_file dist/userspace/paktest.elf     PAKTEST.ELF; \
-	copy_file dist/userspace/pidtest.elf     PIDTEST.ELF; \
-	copy_file dist/userspace/stattest.elf    STATTEST.ELF; \
-	copy_file dist/userspace/envtest.elf     ENVTEST.ELF; \
-	copy_file dist/userspace/xxd.elf         XXD.ELF; \
-	copy_file $(DOOM_ELF)       DOOM.ELF; \
-	copy_file $(DOOM_WAD)       DOOM1.WAD; \
-	copy_file $(QUAKE_ELF)      QUAKE.ELF; \
-	copy_file $(QUAKE_PAK)      PAK0.PAK
-	@echo "Disk image created with files:"
+	copy_file assets/font.psf   SYS/FONT.PSF; \
+	copy_file assets/potato.raw SYS/POTATO.RAW; \
+	copy_file assets/potato.txt SYS/POTATO.TXT; \
+	copy_file assets/boot.raw   SYS/BOOT.RAW; \
+	copy_file $(TEST_ELF_BIN)           BIN/TEST.ELF; \
+	copy_file $(BLINK_ELF_BIN)          BIN/BLINK.ELF; \
+	copy_file dist/userspace/hello.elf       BIN/HELLO.ELF; \
+	copy_file dist/userspace/fork_test.elf   BIN/FORK_TEST.ELF; \
+	copy_file dist/userspace/pipe_test.elf   BIN/PIPE_TEST.ELF; \
+	copy_file dist/userspace/mathtest.elf    BIN/MATHTEST.ELF; \
+	copy_file dist/userspace/keytest.elf     BIN/KEYTEST.ELF; \
+	copy_file dist/userspace/fswrite_test.elf BIN/FSWRITE.ELF; \
+	copy_file dist/userspace/sleep_test.elf  BIN/SLEEP_TEST.ELF; \
+	copy_file dist/userspace/wm_test.elf     BIN/WM_TEST.ELF; \
+	copy_file dist/userspace/sh.elf          BIN/SH.ELF; \
+	copy_file dist/userspace/paktest.elf     BIN/PAKTEST.ELF; \
+	copy_file dist/userspace/pidtest.elf     BIN/PIDTEST.ELF; \
+	copy_file dist/userspace/stattest.elf    BIN/STATTEST.ELF; \
+	copy_file dist/userspace/envtest.elf     BIN/ENVTEST.ELF; \
+	copy_file dist/userspace/xxd.elf         BIN/XXD.ELF; \
+	copy_file $(DOOM_ELF)                    GAMES/DOOM/DOOM.ELF; \
+	copy_file $(DOOM_WAD)                    GAMES/DOOM/DOOM1.WAD; \
+	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \
+	copy_file $(QUAKE_ELF)                   GAMES/QUAKE/QUAKE.ELF; \
+	copy_file $(QUAKE_PAK)                   GAMES/QUAKE/ID1/PAK0.PAK; \
+	copy_file $(Q2_ELF)                      GAMES/QUAKE2/QUAKE2.ELF; \
+	copy_file $(Q2_PAK0)                     GAMES/QUAKE2/BASEQ2/PAK0.PAK; \
+	copy_file $(Q2_PAK1)                     GAMES/QUAKE2/BASEQ2/PAK1.PAK; \
+	copy_file $(Q2_PAK2)                     GAMES/QUAKE2/BASEQ2/PAK2.PAK
+	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
 
 run: all disk.img

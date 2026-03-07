@@ -101,7 +101,10 @@ public:
     bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) override;
     bool delete_file(const char* filename) override;
     bool readdir(int idx, char* name_out, pt::uint32_t* size_out) override;
+    int  readdir_ex(const char* path, int idx, char* name_out,
+                    pt::uint32_t* size_out, pt::uint8_t* type_out) override;
     bool stat_file(const char* filename, StatResult* out) override;
+    void list_directory(const char* path) override;
     pt::uint32_t get_bytes_per_cluster() override;
     pt::uint32_t get_free_space() override;
     pt::uint32_t get_total_space() override;
@@ -119,6 +122,15 @@ private:
     bool scan_directory(pt::uint32_t start_cluster,
                         const char*  filename,
                         File*        out);
+
+    // Find a subdirectory entry by name inside a directory cluster chain.
+    // Returns the first cluster of the subdirectory, or 0 on failure.
+    pt::uint32_t find_directory_cluster(pt::uint32_t start_cluster, const char* dirname);
+
+    // Split a path like "GAMES/DOOM/DOOM.ELF" into directory cluster + basename.
+    // On success, *out_cluster is the directory's cluster and *out_basename points
+    // into the original path string at the final component.
+    bool resolve_path(const char* path, pt::uint32_t* out_cluster, const char** out_basename);
 
     pt::uint32_t allocate_cluster();
     bool write_fat_entry(pt::uint32_t cluster, pt::uint32_t value);

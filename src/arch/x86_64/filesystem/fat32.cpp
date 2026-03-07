@@ -238,7 +238,24 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
                 }
 
                 if (entries[e].attributes & FAT32_ATTR_DIRECTORY) {
-                    // Subdirectory — skip (no recursive open yet)
+                    if (!searching) {
+                        // List mode: show directory entries (skip . and ..)
+                        if (entries[e].filename[0] == '.' &&
+                            (entries[e].filename[1] == ' ' ||
+                             (entries[e].filename[1] == '.' && entries[e].filename[2] == ' '))) {
+                            lfn_buf[0] = '\0';
+                            continue;
+                        }
+                        if (lfn_buf[0] != '\0') {
+                            vterm_printf("  <DIR>  %s\n", lfn_buf);
+                        } else {
+                            char name[13]; int k = 0;
+                            for (int i = 0; i < 8 && entries[e].filename[i] != ' '; i++)
+                                name[k++] = entries[e].filename[i];
+                            name[k] = '\0';
+                            vterm_printf("  <DIR>  %s\n", name);
+                        }
+                    }
                     lfn_buf[0] = '\0';
                     continue;
                 }
@@ -301,23 +318,188 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
     return false;
 }
 
+// ── Path resolution ───────────────────────────────────────────────────────
+
+// Scan a directory cluster chain for a subdirectory entry matching dirname.
+// Returns the first cluster of that subdirectory, or 0 on failure.
+pt::uint32_t FAT32::find_directory_cluster(pt::uint32_t start_cluster,
+                                            const char* dirname) {
+    pt::uint8_t local_sector_buf[512] __attribute__((aligned(4)));
+    char lfn_buf[261];
+    for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+
+    pt::uint32_t cluster = start_cluster;
+    while (cluster >= 2 && !is_eoc(cluster)) {
+        pt::uint32_t sector = cluster_to_sector(cluster);
+
+        for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            if (!Disk::read_sector(sector + s, local_sector_buf)) continue;
+
+            pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+            FAT32_DirEntry* entries = (FAT32_DirEntry*)local_sector_buf;
+
+            for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+                pt::uint8_t first = entries[e].filename[0];
+                if (first == 0x00) return 0;   // end of directory
+                if (first == 0xE5) { lfn_buf[0] = '\0'; continue; }
+
+                if (entries[e].attributes == FAT32_ATTR_LFN) {
+                    const FAT32_LFN_Entry* lfn =
+                        (const FAT32_LFN_Entry*)&entries[e];
+                    if (lfn->seq_num & 0x40) {
+                        for (int i = 0; i < (int)sizeof(lfn_buf); i++)
+                            lfn_buf[i] = '\0';
+                    }
+                    lfn_store_entry(lfn, lfn_buf, sizeof(lfn_buf));
+                    continue;
+                }
+
+                if (entries[e].attributes & FAT32_ATTR_VOLUME_ID) {
+                    lfn_buf[0] = '\0';
+                    continue;
+                }
+
+                if (!(entries[e].attributes & FAT32_ATTR_DIRECTORY)) {
+                    lfn_buf[0] = '\0';
+                    continue;   // skip regular files
+                }
+
+                // Skip . and .. entries
+                if (entries[e].filename[0] == '.' &&
+                    (entries[e].filename[1] == ' ' ||
+                     (entries[e].filename[1] == '.' && entries[e].filename[2] == ' '))) {
+                    lfn_buf[0] = '\0';
+                    continue;
+                }
+
+                // Directory entry — check if name matches
+                if (compare_filename(&entries[e], lfn_buf, dirname)) {
+                    return ((pt::uint32_t)entries[e].first_cluster_high << 16) |
+                           entries[e].first_cluster_low;
+                }
+
+                lfn_buf[0] = '\0';
+            }
+        }
+        cluster = get_next_cluster(cluster);
+    }
+    return 0;
+}
+
+// Split a path like "GAMES/DOOM/DOOM.ELF" into directory cluster + basename.
+// Walks each component via find_directory_cluster.
+bool FAT32::resolve_path(const char* path,
+                          pt::uint32_t* out_cluster,
+                          const char** out_basename) {
+    if (!path || !out_cluster || !out_basename) return false;
+
+    // Skip leading slash if present
+    while (*path == '/') path++;
+    if (*path == '\0') return false;
+
+    pt::uint32_t dir_cluster = root_cluster;
+
+    // Walk each slash-separated component except the last (basename)
+    const char* p = path;
+    while (true) {
+        // Find next slash
+        const char* slash = p;
+        while (*slash && *slash != '/') slash++;
+
+        if (*slash == '\0') {
+            // No more slashes — p is the basename
+            *out_cluster = dir_cluster;
+            *out_basename = p;
+            return true;
+        }
+
+        // Extract directory component
+        char component[128];
+        int len = (int)(slash - p);
+        if (len == 0 || len >= (int)sizeof(component)) return false;
+        for (int i = 0; i < len; i++) component[i] = p[i];
+        component[len] = '\0';
+
+        dir_cluster = find_directory_cluster(dir_cluster, component);
+        if (dir_cluster == 0) return false;
+
+        p = slash + 1;
+        // Skip multiple slashes
+        while (*p == '/') p++;
+        if (*p == '\0') return false;   // trailing slash, no basename
+    }
+}
+
 // ── Public Filesystem API ─────────────────────────────────────────────────
 
 bool FAT32::open_file(const char* filename, File* file) {
     if (!mounted) return false;
+    pt::uint32_t dir_cluster;
+    const char* basename;
+    if (resolve_path(filename, &dir_cluster, &basename))
+        return scan_directory(dir_cluster, basename, file);
+    // resolve_path returns false when a directory component doesn't exist
+    // OR when there are no slashes.  Only fall back to root for the latter.
+    for (const char* p = filename; *p; p++)
+        if (*p == '/') return false;
     return scan_directory(root_cluster, filename, file);
 }
 
 bool FAT32::file_exists(const char* filename) {
     if (!mounted) return false;
     File dummy;
+    pt::uint32_t dir_cluster;
+    const char* basename;
+    if (resolve_path(filename, &dir_cluster, &basename))
+        return scan_directory(dir_cluster, basename, &dummy);
+    for (const char* p = filename; *p; p++)
+        if (*p == '/') return false;
     return scan_directory(root_cluster, filename, &dummy);
 }
 
 void FAT32::list_root_directory() {
     if (!mounted) { vterm_printf("[FAT32] Not mounted\n"); return; }
-    vterm_printf("[FAT32] Root directory:\n");
     scan_directory(root_cluster, nullptr, nullptr);
+}
+
+void FAT32::list_directory(const char* path) {
+    if (!mounted) { vterm_printf("[FAT32] Not mounted\n"); return; }
+    if (!path || *path == '\0') {
+        scan_directory(root_cluster, nullptr, nullptr);
+        return;
+    }
+
+    // Walk each slash-separated component to find the target directory
+    pt::uint32_t dir_cluster = root_cluster;
+    const char* p = path;
+    while (*p == '/') p++;
+    if (*p == '\0') {
+        scan_directory(root_cluster, nullptr, nullptr);
+        return;
+    }
+
+    while (*p) {
+        const char* slash = p;
+        while (*slash && *slash != '/') slash++;
+
+        char component[128];
+        int len = (int)(slash - p);
+        if (len == 0 || len >= (int)sizeof(component)) break;
+        for (int i = 0; i < len; i++) component[i] = p[i];
+        component[len] = '\0';
+
+        pt::uint32_t next = find_directory_cluster(dir_cluster, component);
+        if (next == 0) {
+            vterm_printf("Directory not found: %s\n", component);
+            return;
+        }
+        dir_cluster = next;
+
+        p = slash;
+        while (*p == '/') p++;
+    }
+
+    scan_directory(dir_cluster, nullptr, nullptr);
 }
 
 // Walk root directory and return the idx-th regular file entry.
@@ -378,6 +560,99 @@ bool FAT32::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
         cluster = get_next_cluster(cluster);
     }
     return false;
+}
+
+// readdir_ex: like readdir but supports a path and includes directories.
+// Returns 1 if found, 0 if idx >= entry count.
+int FAT32::readdir_ex(const char* path, int idx, char* name_out,
+                      pt::uint32_t* size_out, pt::uint8_t* type_out) {
+    if (!mounted) return 0;
+
+    // Resolve path to a directory cluster
+    pt::uint32_t dir_cluster = root_cluster;
+    if (path && *path) {
+        const char* p = path;
+        while (*p == '/') p++;
+        while (*p) {
+            const char* slash = p;
+            while (*slash && *slash != '/') slash++;
+            char component[128];
+            int len = (int)(slash - p);
+            if (len == 0 || len >= (int)sizeof(component)) break;
+            for (int i = 0; i < len; i++) component[i] = p[i];
+            component[len] = '\0';
+            pt::uint32_t next = find_directory_cluster(dir_cluster, component);
+            if (next == 0) return 0;  // path not found
+            dir_cluster = next;
+            p = slash;
+            while (*p == '/') p++;
+        }
+    }
+
+    int count = 0;
+    char lfn_buf[261];
+    for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+
+    pt::uint32_t cluster = dir_cluster;
+    while (cluster >= 2 && !is_eoc(cluster)) {
+        pt::uint32_t sector = cluster_to_sector(cluster);
+        for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            if (!Disk::read_sector(sector + s, fat32_sector_buf)) continue;
+            pt::uint32_t entries_per_sector = bpb.bytes_per_sector / 32;
+            FAT32_DirEntry* entries = (FAT32_DirEntry*)fat32_sector_buf;
+
+            for (pt::uint32_t e = 0; e < entries_per_sector; e++) {
+                pt::uint8_t first = entries[e].filename[0];
+                if (first == 0x00) return 0;
+                if (first == 0xE5) { lfn_buf[0] = '\0'; continue; }
+
+                if (entries[e].attributes == FAT32_ATTR_LFN) {
+                    const FAT32_LFN_Entry* lfn = (const FAT32_LFN_Entry*)&entries[e];
+                    if (lfn->seq_num & 0x40) {
+                        for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
+                    }
+                    lfn_store_entry(lfn, lfn_buf, sizeof(lfn_buf));
+                    continue;
+                }
+                if (entries[e].attributes & FAT32_ATTR_VOLUME_ID) { lfn_buf[0] = '\0'; continue; }
+
+                bool is_dir = (entries[e].attributes & FAT32_ATTR_DIRECTORY) != 0;
+
+                // Skip . and .. directory entries
+                if (is_dir && entries[e].filename[0] == '.' &&
+                    (entries[e].filename[1] == ' ' ||
+                     (entries[e].filename[1] == '.' && entries[e].filename[2] == ' '))) {
+                    lfn_buf[0] = '\0';
+                    continue;
+                }
+
+                if (count == idx) {
+                    if (lfn_buf[0] != '\0') {
+                        int k = 0;
+                        while (lfn_buf[k] && k < 255) { name_out[k] = lfn_buf[k]; k++; }
+                        name_out[k] = '\0';
+                    } else {
+                        int k = 0;
+                        for (int i = 0; i < 8 && entries[e].filename[i] != ' '; i++)
+                            name_out[k++] = entries[e].filename[i];
+                        if (!is_dir && entries[e].extension[0] != ' ') {
+                            name_out[k++] = '.';
+                            for (int i = 0; i < 3 && entries[e].extension[i] != ' '; i++)
+                                name_out[k++] = entries[e].extension[i];
+                        }
+                        name_out[k] = '\0';
+                    }
+                    if (size_out) *size_out = entries[e].file_size;
+                    if (type_out) *type_out = is_dir ? 1 : 0;
+                    return 1;
+                }
+                count++;
+                lfn_buf[0] = '\0';
+            }
+        }
+        cluster = get_next_cluster(cluster);
+    }
+    return 0;
 }
 
 pt::uint32_t FAT32::read_file(File* file, void* buffer,
@@ -783,10 +1058,20 @@ bool FAT32::delete_file(const char* filename) {
 bool FAT32::stat_file(const char* filename, StatResult* out) {
     if (!mounted || !filename || !out) return false;
 
+    // Resolve path to directory cluster + basename
+    pt::uint32_t dir_cluster = root_cluster;
+    const char* basename = filename;
+    pt::uint32_t resolved_cluster;
+    const char* resolved_basename;
+    if (resolve_path(filename, &resolved_cluster, &resolved_basename)) {
+        dir_cluster = resolved_cluster;
+        basename = resolved_basename;
+    }
+
     char lfn_buf[261];
     for (int i = 0; i < (int)sizeof(lfn_buf); i++) lfn_buf[i] = '\0';
 
-    pt::uint32_t cluster = root_cluster;
+    pt::uint32_t cluster = dir_cluster;
     while (cluster >= 2 && !is_eoc(cluster)) {
         pt::uint32_t sector = cluster_to_sector(cluster);
         for (pt::uint8_t s = 0; s < bpb.sectors_per_cluster; s++) {
@@ -810,7 +1095,7 @@ bool FAT32::stat_file(const char* filename, StatResult* out) {
                 if (entries[e].attributes & FAT32_ATTR_VOLUME_ID) { lfn_buf[0] = '\0'; continue; }
                 if (entries[e].attributes & FAT32_ATTR_DIRECTORY) { lfn_buf[0] = '\0'; continue; }
 
-                if (compare_filename(&entries[e], lfn_buf, filename)) {
+                if (compare_filename(&entries[e], lfn_buf, basename)) {
                     out->file_size   = entries[e].file_size;
                     out->create_time = entries[e].create_time;
                     out->create_date = entries[e].create_date;

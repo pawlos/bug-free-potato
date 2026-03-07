@@ -15,7 +15,7 @@ extern VMM vmm;
 void load_assets() {
     File file;
 
-    if (VFS::open_file("potato.txt", &file)) {
+    if (VFS::open_file("SYS/POTATO.TXT", &file)) {
         char* buf = (char*)vmm.kmalloc(file.file_size + 1);
         if (buf) {
             pt::uint32_t n = VFS::read_file(&file, buf, file.file_size);
@@ -28,7 +28,7 @@ void load_assets() {
         klog("[ASSETS] Warning: potato.txt not found\n");
     }
 
-    if (VFS::open_file("potato.raw", &file)) {
+    if (VFS::open_file("SYS/POTATO.RAW", &file)) {
         unsigned char* buf = (unsigned char*)vmm.kmalloc(file.file_size);
         if (buf) {
             pt::uint32_t n = VFS::read_file(&file, buf, file.file_size);
@@ -40,7 +40,7 @@ void load_assets() {
         klog("[ASSETS] Warning: potato.raw not found\n");
     }
 
-    if (VFS::open_file("font.psf", &file)) {
+    if (VFS::open_file("SYS/FONT.PSF", &file)) {
         FontData = (pt::uint8_t*)vmm.kmalloc(file.file_size);
         if (FontData) {
             FontDataSize = VFS::read_file(&file, FontData, file.file_size);
@@ -51,7 +51,7 @@ void load_assets() {
         klog("[ASSETS] Warning: font.psf not found\n");
     }
 
-    if (VFS::open_file("boot.raw", &file)) {
+    if (VFS::open_file("SYS/BOOT.RAW", &file)) {
         BootSound = (pt::uint8_t*)vmm.kmalloc(file.file_size);
         if (BootSound) {
             BootSoundSize = VFS::read_file(&file, BootSound, file.file_size);

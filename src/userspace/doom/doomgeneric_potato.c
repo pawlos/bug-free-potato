@@ -1,7 +1,7 @@
 /* doomgeneric_potato.c — potatOS platform layer for doomgeneric
  *
  * Implements the six DG_* callbacks that doomgeneric requires plus main().
- * The WAD is read from the FAT32 disk as DOOM1.WAD (uppercase).
+ * The WAD is read from the FAT32 disk as GAMES/DOOM/DOOM1.WAD.
  */
 
 #include "doomgeneric.h"
@@ -161,8 +161,8 @@ int main(void)
     create_doom_window();
 
     /* Hardcode the IWAD path so Doom finds it on our FAT32 disk.
-       The Makefile copies doom1.wad as DOOM1.WAD (uppercase). */
-    char *argv[] = { "doom", "-iwad", "DOOM1.WAD", NULL };
+       The Makefile copies doom1.wad into GAMES/DOOM/ on the disk. */
+    char *argv[] = { "doom", "-iwad", "GAMES/DOOM/DOOM1.WAD", NULL };
     doomgeneric_Create(3, argv);
     for (;;)
         doomgeneric_Tick();

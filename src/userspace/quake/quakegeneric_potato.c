@@ -10,9 +10,9 @@
  * Timing: main loop measures real elapsed microseconds via sys_get_micros()
  *         and passes a precise dt to QG_Tick() each frame.
  *
- * Assets: Pass "-basedir /" so Quake constructs "//id1/pak0.pak".
- *         VFS strips path to basename "pak0.pak" searched in the root dir.
- *         Place PAK0.PAK (uppercase) on the FAT32 disk before booting.
+ * Assets: Pass "-basedir GAMES/QUAKE" so Quake constructs
+ *         "GAMES/QUAKE/id1/pak0.pak".  FAT32 resolve_path walks
+ *         GAMES → QUAKE → ID1 to find PAK0.PAK (case-insensitive).
  */
 
 #include "quakegeneric.h"
@@ -321,10 +321,9 @@ int main(void)
     /* Create window BEFORE QG_Create so early startup drawing is clipped */
     create_quake_window();
 
-    /* "-basedir /" → Quake looks for "//id1/pak0.pak".
-       VFS strips path to basename "pak0.pak" in the FAT32 root directory.
-       Copy PAK0.PAK to the disk root before booting. */
-    char *argv[] = { "quake", "-basedir", "/", NULL };
+    /* "-basedir GAMES/QUAKE" → Quake looks for "GAMES/QUAKE/id1/pak0.pak".
+       FAT32 resolve_path walks GAMES → QUAKE → ID1 → PAK0.PAK. */
+    char *argv[] = { "quake", "-basedir", "GAMES/QUAKE", NULL };
     QG_Create(3, argv);
 
     /* Main loop: measure real elapsed time in microseconds.

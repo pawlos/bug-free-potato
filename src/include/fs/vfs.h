@@ -47,7 +47,12 @@ public:
     // readdir: fill name_out and *size_out for the idx-th regular file (0-based).
     // Returns true if found, false if idx >= file count.
     virtual bool readdir(int /*idx*/, char* /*name_out*/, pt::uint32_t* /*size_out*/) { return false; }
+    // readdir_ex: enumerate files AND directories under 'path' (NULL/"" = root).
+    // Returns 1=found, 0=end.  type_out: 0=file, 1=dir.
+    virtual int readdir_ex(const char* /*path*/, int /*idx*/, char* /*name_out*/,
+                           pt::uint32_t* /*size_out*/, pt::uint8_t* /*type_out*/) { return 0; }
     virtual bool stat_file(const char* /*filename*/, StatResult* /*out*/) { return false; }
+    virtual void list_directory(const char* /*path*/) {}
     virtual pt::uint32_t get_bytes_per_cluster() = 0;
     virtual pt::uint32_t get_free_space() = 0;
     virtual pt::uint32_t get_total_space() = 0;
@@ -68,7 +73,10 @@ public:
     static bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size);
     static bool delete_file(const char* filename);
     static bool readdir(int idx, char* name_out, pt::uint32_t* size_out);
+    static int  readdir_ex(const char* path, int idx, char* name_out,
+                           pt::uint32_t* size_out, pt::uint8_t* type_out);
     static bool stat_file(const char* filename, StatResult* out);
+    static void list_directory(const char* path);
     static pt::uint32_t get_bytes_per_cluster();
     static pt::uint32_t get_free_space();
     static pt::uint32_t get_total_space();
