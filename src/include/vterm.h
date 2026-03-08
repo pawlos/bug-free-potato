@@ -22,6 +22,8 @@ public:
     char pop_input();           // returns -1 if empty
     void redraw();
     void clear();
+    void begin_batch();
+    void end_batch();
 
     pt::uint32_t id() const { return m_id; }
 
@@ -44,6 +46,7 @@ private:
     AnsiParser   m_ansi;
     pt::uint32_t m_saved_col = 0;
     pt::uint32_t m_saved_row = 0;
+    bool         m_batch     = false;
 
     char         m_input[VTERM_INPUT_SZ];
     pt::uint32_t m_input_read  = 0;

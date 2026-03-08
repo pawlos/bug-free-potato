@@ -179,15 +179,17 @@ void FbTerm::put_char(char c)
     bool complete   = m_ansi.feed(c, final_byte);
 
     if (complete) {
-        handle_fbterm_csi(this, final_byte,
-                          m_ansi.params, m_ansi.n_params,
-                          m_cols, m_rows,
-                          PSF1_GLYPH_WIDTH, m_glyph_h,
-                          m_term_w, m_fb->get_height(),
-                          m_cur_col, m_cur_row,
-                          m_saved_col, m_saved_row,
-                          m_fg, m_bg,
-                          m_fb);
+        if (!m_ansi.private_mode)
+            handle_fbterm_csi(this, final_byte,
+                              m_ansi.params, m_ansi.n_params,
+                              m_cols, m_rows,
+                              PSF1_GLYPH_WIDTH, m_glyph_h,
+                              m_term_w, m_fb->get_height(),
+                              m_cur_col, m_cur_row,
+                              m_saved_col, m_saved_row,
+                              m_fg, m_bg,
+                              m_fb);
+        m_ansi.private_mode = false;
         return;
     }
     if (m_ansi.state != AnsiParser::NORMAL) return;

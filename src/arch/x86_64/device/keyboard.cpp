@@ -70,6 +70,10 @@ bool get_key_event(KeyEvent* out) {
     return true;
 }
 
+void flush_key_events() {
+    event_read = event_write;
+}
+
 void keyboard_log(const char *str, ...) {
 #ifdef KEYBOARD_LOG
 	va_list arg_ptr;

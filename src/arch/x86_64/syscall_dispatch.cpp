@@ -39,16 +39,19 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				Task* wt = TaskScheduler::get_current_task();
 				bool has_window = wt && wt->window_id != INVALID_WID;
 				bool has_vterm  = wt && wt->vterm_id  != INVALID_VT;
+				VTerm* vt = nullptr;
+				if (!has_window) {
+					vt = has_vterm ? vterm_get(wt->vterm_id) : vterm_active();
+					if (vt) vt->begin_batch();
+				}
 				for (pt::uint32_t i = 0; i < n; i++) {
 					if (has_window) {
 						WindowManager::put_char(wt->window_id, buf[i]);
-					} else if (has_vterm) {
-						vterm_get(wt->vterm_id)->put_char(buf[i]);
-					} else {
-						// Unbound tasks → active VTerm (visible console)
-						vterm_active()->put_char(buf[i]);
+					} else if (vt) {
+						vt->put_char(buf[i]);
 					}
 				}
+				if (vt) vt->end_batch();
 				return (pt::uint64_t)n;
 			}
 			Task* t = TaskScheduler::get_current_task();
@@ -289,6 +292,11 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return 0;
 		}
 		case SYS_FB_WIDTH: {
+			Task* ct = TaskScheduler::get_current_task();
+			if (ct && ct->window_id != INVALID_WID) {
+				Window* cw = WindowManager::get_window(ct->window_id);
+				if (cw) return (pt::uint64_t)cw->client_w;
+			}
 			Framebuffer* fb = Framebuffer::get_instance();
 			pt::uint64_t w = fb ? (pt::uint64_t)fb->get_width() : 0;
 			return w;
@@ -379,6 +387,11 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		}
 
 		case SYS_FB_HEIGHT: {
+			Task* ct = TaskScheduler::get_current_task();
+			if (ct && ct->window_id != INVALID_WID) {
+				Window* cw = WindowManager::get_window(ct->window_id);
+				if (cw) return (pt::uint64_t)cw->client_h;
+			}
 			Framebuffer* fb = Framebuffer::get_instance();
 			return fb ? (pt::uint64_t)fb->get_height() : 0;
 		}
@@ -419,10 +432,16 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		}
 
 		case SYS_GET_KEY_EVENT: {
+			// For windowed tasks, read from the window event queue
+			// (same encoding: bit 8 = pressed, bits 7:0 = scancode).
+			Task* kt = TaskScheduler::get_current_task();
+			if (kt && kt->window_id != INVALID_WID) {
+				pt::uint64_t wev = WindowManager::poll_event(kt->window_id);
+				return wev ? wev : (pt::uint64_t)-1;
+			}
 			KeyEvent ev;
 			if (!get_key_event(&ev))
 				return (pt::uint64_t)-1;
-			// Encoding: bit 8 = pressed, bits 7:0 = PS/2 scancode.
 			return (pt::uint64_t)ev.scancode | (ev.pressed ? 0x100u : 0u);
 		}
 

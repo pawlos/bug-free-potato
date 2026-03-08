@@ -8,6 +8,9 @@
 VTerm        g_vterms[VTERM_COUNT];
 pt::uint32_t g_active_vt = INVALID_VT;
 
+// Shared shadow buffer for batch diff rendering (only one VTerm batches at a time)
+static VTermCell g_batch_shadow[VTERM_MAX_ROWS * VTERM_MAX_COLS];
+
 // ── helpers ────────────────────────────────────────────────────────────
 
 static bool is_active(pt::uint32_t id) {
@@ -45,7 +48,7 @@ void VTerm::clear() {
 }
 
 void VTerm::render_cell(pt::uint32_t col, pt::uint32_t row) {
-    if (!is_active(m_id) || !fbterm.is_ready()) return;
+    if (m_batch || !is_active(m_id) || !fbterm.is_ready()) return;
     const VTermCell& c = m_cells[row * m_cols + col];
     pt::uint32_t px = col * fbterm.glyph_w();
     pt::uint32_t py = row * fbterm.glyph_h();
@@ -65,7 +68,7 @@ void VTerm::scroll() {
     }
     m_cur_row = m_rows - 1;
 
-    if (is_active(m_id) && fbterm.is_ready()) {
+    if (!m_batch && is_active(m_id) && fbterm.is_ready()) {
         pt::uint32_t gw = fbterm.glyph_w();
         pt::uint32_t gh = fbterm.glyph_h();
         pt::uint32_t tw = m_cols * gw;
@@ -119,7 +122,7 @@ void VTerm::handle_csi(char cmd) {
             for (pt::uint32_t i = 0; i < m_rows * m_cols; i++)
                 m_cells[i] = { ' ', m_fg, m_bg };
             m_cur_col = m_cur_row = 0;
-            if (is_active(m_id)) redraw();
+            if (!m_batch && is_active(m_id)) redraw();
         } else if (mode == 0) {
             // Clear from cursor to end
             for (pt::uint32_t c = m_cur_col; c < m_cols; c++)
@@ -127,7 +130,7 @@ void VTerm::handle_csi(char cmd) {
             for (pt::uint32_t r = m_cur_row + 1; r < m_rows; r++)
                 for (pt::uint32_t c = 0; c < m_cols; c++)
                     m_cells[r * m_cols + c] = { ' ', m_fg, m_bg };
-            if (is_active(m_id)) redraw();
+            if (!m_batch && is_active(m_id)) redraw();
         }
         break;
     }
@@ -174,7 +177,9 @@ void VTerm::put_char(char c) {
     bool complete   = m_ansi.feed(c, final_byte);
 
     if (complete) {
-        handle_csi(final_byte);
+        if (!m_ansi.private_mode)
+            handle_csi(final_byte);
+        m_ansi.private_mode = false;
         return;
     }
     if (m_ansi.state != AnsiParser::NORMAL) return;
@@ -243,6 +248,31 @@ void VTerm::redraw() {
             const VTermCell& cell = m_cells[r * m_cols + c];
             fbterm.put_char_at(cell.ch, c * gw, r * gh, cell.fg, cell.bg);
         }
+}
+
+void VTerm::begin_batch() {
+    pt::uint32_t total = m_rows * m_cols;
+    for (pt::uint32_t i = 0; i < total; i++)
+        g_batch_shadow[i] = m_cells[i];
+    m_batch = true;
+}
+
+void VTerm::end_batch() {
+    m_batch = false;
+    if (!is_active(m_id) || !fbterm.is_ready()) return;
+
+    pt::uint32_t gw = fbterm.glyph_w();
+    pt::uint32_t gh = fbterm.glyph_h();
+    pt::uint32_t total = m_rows * m_cols;
+    for (pt::uint32_t i = 0; i < total; i++) {
+        const VTermCell& cur = m_cells[i];
+        const VTermCell& old = g_batch_shadow[i];
+        if (cur.ch != old.ch || cur.fg != old.fg || cur.bg != old.bg) {
+            pt::uint32_t col = i % m_cols;
+            pt::uint32_t row = i / m_cols;
+            fbterm.put_char_at(cur.ch, col * gw, row * gh, cur.fg, cur.bg);
+        }
+    }
 }
 
 // ── global functions ───────────────────────────────────────────────────

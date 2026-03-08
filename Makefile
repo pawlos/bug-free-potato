@@ -109,7 +109,7 @@ $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 # ── Simple C userspace programs (pattern rules) ──────────────────────────
 SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest \
-               pidtest stattest envtest xxd
+               pidtest stattest envtest xxd kilo
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
 SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
@@ -310,6 +310,7 @@ CFLAGS_Q2 = -ffreestanding -fno-stack-protector -fno-builtin \
 # Clone Q2 GPL source on demand
 $(Q2_SRC_DIR)/qcommon/qcommon.h:
 	git clone --depth=1 https://github.com/id-Software/Quake-2.git $(Q2_SRC_DIR)
+	sed -i 's/sizeof (pv)/sizeof (*pv)/' $(Q2_SRC_DIR)/ref_soft/r_poly.c
 
 # Q2 engine sources (explicit lists to avoid platform-specific files)
 Q2_QCOMMON_SRCS := $(addprefix $(Q2_SRC_DIR)/qcommon/, \
@@ -407,6 +408,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file dist/userspace/stattest.elf    BIN/STATTEST.ELF; \
 	copy_file dist/userspace/envtest.elf     BIN/ENVTEST.ELF; \
 	copy_file dist/userspace/xxd.elf         BIN/XXD.ELF; \
+	copy_file dist/userspace/kilo.elf        BIN/KILO.ELF; \
 	copy_file $(DOOM_ELF)                    GAMES/DOOM/DOOM.ELF; \
 	copy_file $(DOOM_WAD)                    GAMES/DOOM/DOOM1.WAD; \
 	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \

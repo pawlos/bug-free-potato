@@ -26,6 +26,7 @@ void WindowManager::initialize()
         windows[i].ev_write      = 0;
         windows[i].text_col         = 0;
         windows[i].text_row         = 0;
+        windows[i].wrap_pending     = false;
         windows[i].fg               = 0xFFFFFF;
         windows[i].bg               = 0x000000;
         windows[i].saved_col        = 0;
@@ -101,6 +102,7 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->ev_write           = 0;
     win->text_col           = 0;
     win->text_row           = 0;
+    win->wrap_pending       = false;
     win->fg                 = 0xFFFFFF;
     win->bg                 = 0x000000;
     win->saved_col          = 0;
@@ -284,6 +286,9 @@ static void handle_csi(Window* win, char cmd,
         return (i < np && p[i] != 0) ? p[i] : def;
     };
 
+    // Any CSI command cancels deferred wrap state.
+    win->wrap_pending = false;
+
     Framebuffer* fb = Framebuffer::get_instance();
 
     switch (cmd) {
@@ -406,9 +411,11 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     bool complete   = win->ansi.feed(c, final_byte);
 
     if (complete) {
-        handle_csi(win, final_byte,
-                   win->ansi.params, win->ansi.n_params,
-                   cols, rows, gw, gh, visible);
+        if (!win->ansi.private_mode)
+            handle_csi(win, final_byte,
+                       win->ansi.params, win->ansi.n_params,
+                       cols, rows, gw, gh, visible);
+        win->ansi.private_mode = false;
         return;
     }
     // Char was consumed by parser if state is not (and was not) NORMAL
@@ -424,16 +431,26 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
         }
         win->text_col = 0;
         win->text_row = 0;
+        win->wrap_pending = false;
         return;
     }
     if (c == '\r') {
         win->text_col = 0;
+        win->wrap_pending = false;
         return;
     }
     if (c == '\b') {
         if (win->text_col > 0)
             win->text_col--;
+        win->wrap_pending = false;
         return;
+    }
+    // Deferred wrap: if the previous character landed on the last column,
+    // wrap now before processing \n, \t, or the next printable character.
+    if (win->wrap_pending) {
+        win->wrap_pending = false;
+        win->text_col = 0;
+        win->text_row++;
     }
     if (c == '\n') {
         win->text_col = 0;
@@ -453,8 +470,9 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
         }
         win->text_col++;
         if (win->text_col >= cols) {
-            win->text_col = 0;
-            win->text_row++;
+            // Don't wrap yet — defer until next character arrives.
+            win->text_col = cols - 1;
+            win->wrap_pending = true;
         }
     }
 

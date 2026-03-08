@@ -372,6 +372,26 @@ void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
         }
     }
 
+    // Reserve the ELF staging area (16MB at PA 0x18000000) so that
+    // allocate_frame() never returns frames from this region.
+    // create_elf_task copies code pages FROM the staging area while
+    // simultaneously calling allocate_frame() for destination frames;
+    // without this reservation, allocated frames can land in the staging
+    // range and corrupt the source data mid-copy.
+    constexpr pt::uintptr_t ELF_STAGING_PHYS = 0x18000000;
+    constexpr pt::size_t    ELF_STAGING_SIZE  = 16 * 1024 * 1024;
+    pt::size_t staging_start = ELF_STAGING_PHYS / 4096;
+    pt::size_t staging_end   = (ELF_STAGING_PHYS + ELF_STAGING_SIZE) / 4096;
+    for (pt::size_t i = staging_start; i < staging_end; i++)
+    {
+        pt::size_t byte_idx = i / 8;
+        pt::uint8_t bit_idx = i % 8;
+        if (byte_idx < frame_bitmap_size)
+        {
+            frame_bitmap[byte_idx] |= (1 << bit_idx);
+        }
+    }
+
     frame_allocator_ready = true;
     klog("[VMM] Frame allocator ready: %d frames, %d bytes bitmap\n", num_frames, frame_bitmap_size);
 }

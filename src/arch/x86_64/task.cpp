@@ -7,6 +7,7 @@
 #include "elf.h"
 #include "elf_loader.h"
 #include "device/timer.h"
+#include "device/keyboard.h"
 #include "window.h"
 
 // Mask to extract the physical frame address from a leaf PTE.
@@ -1433,6 +1434,9 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
             current->name[i] = fname_buf[i];
         current->name[i] = '\0';
     }
+
+    // 12. Flush stale keyboard events so the new program starts clean.
+    flush_key_events();
 
     klog("[EXEC] Task %d: iretq -> %lx rsp=%lx\n", current->id, entry, new_user_rsp);
     asm volatile("mov cr3, %0" : : "r"(current->cr3) : "memory");

@@ -44,7 +44,6 @@ struct AnsiParser {
             }
             // Final byte
             state = NORMAL;
-            if (private_mode) return false;  // ignore private sequences
             final_out = c;
             return true;
         }

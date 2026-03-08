@@ -43,6 +43,7 @@ struct Window {
 
     // Text cursor for stdout rendering inside the client area (in character units)
     pt::uint32_t text_col, text_row;
+    bool         wrap_pending;      // deferred wrap: wrote to last column, wrap on next printable
 
     // ANSI parser state
     AnsiParser   ansi;
