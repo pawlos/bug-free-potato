@@ -2,11 +2,13 @@
 src/userspace/doom/doomgeneric/
 src/userspace/quake/quakegeneric/
 src/userspace/quake2/quake2-src/
+src/userspace/duke3d/chocolate_duke3D/
 
 # Game data (user-supplied, not redistributable)
 assets/doom1.wad
 assets/PAK0.PAK
 assets/quake2/
+assets/duke3d.grp
 
 # Build artifacts
 build/

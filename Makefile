@@ -72,6 +72,8 @@ clean:
 	-rm -f  $(QUAKE_ELF)
 	-rm -rf $(Q2_BUILD)
 	-rm -f  $(Q2_ELF)
+	-rm -rf $(DUKE_BUILD)
+	-rm -f  $(DUKE_ELF)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -361,6 +363,119 @@ $(Q2_ELF): $(Q2_ENGINE_OBJS) $(Q2_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/usersp
 
 quake2: $(Q2_ELF)
 
+# ── Duke Nukem 3D (Chocolate Duke3D) ────────────────────────────────────
+DUKE_DIR     = src/userspace/duke3d
+DUKE_SRC_DIR = $(DUKE_DIR)/chocolate_duke3D
+DUKE_BUILD   = build/userspace/duke3d
+DUKE_ELF     = dist/userspace/duke3d.elf
+
+CFLAGS_DUKE = -ffreestanding -fno-stack-protector -fno-builtin \
+              -fno-asynchronous-unwind-tables \
+              -m64 -nostdlib -O2 -w \
+              -DPLATFORM_POTATO \
+              -DUSER_DUMMY_NETWORK=1 \
+              -include $(DUKE_DIR)/potato_compat.h \
+              -I src/userspace/libc \
+              -I src/userspace \
+              -I $(DUKE_DIR) \
+              -I $(DUKE_SRC_DIR)/Engine/src \
+              -I $(DUKE_SRC_DIR)/Game/src
+
+# Clone Chocolate Duke3D source on demand + apply 64-bit patches
+$(DUKE_SRC_DIR)/Engine/src/engine.c:
+	git clone --depth=1 https://github.com/fabiensanglard/chocolate_duke3D.git $(DUKE_SRC_DIR)
+	@echo "Applying potatOS / 64-bit patches to Chocolate Duke3D..."
+	# Fix FP_OFF truncation: remove (int32_t) casts before FP_OFF in engine.c
+	sed -i 's/(int32_t)FP_OFF/(intptr_t)FP_OFF/g;s/(int32_t) FP_OFF/(intptr_t) FP_OFF/g' $(DUKE_SRC_DIR)/Engine/src/engine.c
+	# Fix globalpalwritten: should be intptr_t, not int32_t
+	sed -i 's/int32_t globalpalwritten/intptr_t globalpalwritten/' $(DUKE_SRC_DIR)/Engine/src/engine.c
+	sed -i 's/(int32_t)globalpalwritten/(intptr_t)globalpalwritten/' $(DUKE_SRC_DIR)/Engine/src/engine.c
+	# Fix suckcache parameter type (intptr_t* on 64-bit)
+	sed -i 's/suckcache((int32_t \*)screen)/suckcache((intptr_t *)screen)/' $(DUKE_SRC_DIR)/Engine/src/engine.c
+	# Fix platform.h to include potato_compat.h
+	sed -i 's/#error Define your platform!/#include "potato_compat.h"/' $(DUKE_SRC_DIR)/Engine/src/platform.h
+	# Fix premap.c -O0 issue: ensure it includes via platform.h
+	# Fix sounds.c: uses open()/read()/close() for RTS files
+	sed -i 's|<fcntl.h>|"libc/file.h"|;s|<unistd.h>|"libc/stdlib.h"|' $(DUKE_SRC_DIR)/Game/src/sounds.c || true
+	# Fix config.c: uses getenv, open, etc.
+	sed -i 's|<fcntl.h>|"libc/file.h"|;s|<unistd.h>|"libc/stdlib.h"|' $(DUKE_SRC_DIR)/Game/src/config.c || true
+	# Fix game.c: uses signal, time, etc.
+	sed -i 's|<signal.h>|"libc/signal.h"|;s|<sys/stat.h>|"libc/sys/stat.h"|' $(DUKE_SRC_DIR)/Game/src/game.c || true
+	# Fix itoa conflict with libc (rename to duke_itoa)
+	sed -i 's/uint8_t  \*itoa(int value, uint8_t  \*string, int radix)/uint8_t *duke_itoa(int value, uint8_t *string, int radix)/' $(DUKE_SRC_DIR)/Game/src/global.c || true
+	# Patch load_duke3d_groupfile to use hardcoded GRP path (bypass findGRPToUse/FixFilePath inlining)
+	sed -i '/findGRPToUse(groupfilefullpath)/c\\tsprintf(groupfilefullpath, "%s/DUKE3D.GRP", getGameDir()[0] ? getGameDir() : "GAMES/DUKE3D");' $(DUKE_SRC_DIR)/Game/src/game.c || true
+	sed -i '/FixFilePath(groupfilefullpath)/d' $(DUKE_SRC_DIR)/Game/src/game.c || true
+	# Replace backslash path separators with forward slash (potatOS VFS uses /)
+	sed -i 's|%s\\\\%s|%s/%s|g' $(DUKE_SRC_DIR)/Engine/src/filesystem.c $(DUKE_SRC_DIR)/Game/src/config.c $(DUKE_SRC_DIR)/Game/src/game.c $(DUKE_SRC_DIR)/Game/src/menues.c $(DUKE_SRC_DIR)/Game/src/premap.c || true
+	sed -i 's|%s/%s\\\\%s|%s/%s/%s|g' $(DUKE_SRC_DIR)/Game/src/game.c || true
+
+# Engine sources (replacing display.c with our display_potato.c)
+DUKE_ENGINE_SRCS := $(addprefix $(DUKE_SRC_DIR)/Engine/src/, \
+    cache.c draw.c dummy_multi.c engine.c filesystem.c \
+    fixedPoint_math.c network.c tiles.c)
+
+# Game sources
+DUKE_GAME_SRCS := $(addprefix $(DUKE_SRC_DIR)/Game/src/, \
+    actors.c animlib.c config.c console.c control.c \
+    cvar_defs.c cvars.c game.c gamedef.c global.c \
+    keyboard.c menues.c player.c premap.c rts.c \
+    scriplib.c sector.c sounds.c)
+
+# Audiolib sources (replacing dsl.c with our dsl_potato.c)
+DUKE_AUDIO_SRCS := $(addprefix $(DUKE_SRC_DIR)/Game/src/audiolib/, \
+    fx_man.c ll_man.c multivoc.c mv_mix.c mvreverb.c \
+    nodpmi.c pitch.c user.c usrhooks.c)
+
+# Our platform files
+DUKE_POTATO_SRCS := $(DUKE_DIR)/display_potato.c \
+                    $(DUKE_DIR)/dsl_potato.c \
+                    $(DUKE_DIR)/music_potato.c
+
+DUKE_ENGINE_OBJS := $(patsubst $(DUKE_SRC_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_ENGINE_SRCS))
+DUKE_GAME_OBJS   := $(patsubst $(DUKE_SRC_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_GAME_SRCS))
+DUKE_AUDIO_OBJS  := $(patsubst $(DUKE_SRC_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_AUDIO_SRCS))
+DUKE_POTATO_OBJS := $(patsubst $(DUKE_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_POTATO_SRCS))
+
+DUKE_ALL_OBJS := $(DUKE_ENGINE_OBJS) $(DUKE_GAME_OBJS) $(DUKE_AUDIO_OBJS) $(DUKE_POTATO_OBJS)
+
+# Ensure clone happens before any Duke3D compilation
+$(DUKE_ALL_OBJS): | $(DUKE_SRC_DIR)/Engine/src/engine.c
+
+# Compile engine sources
+$(DUKE_BUILD)/Engine/src/%.o: $(DUKE_SRC_DIR)/Engine/src/%.c
+	mkdir -p $(dir $@)
+	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
+
+# Compile game sources (premap.c at -O0 to avoid crash)
+$(DUKE_BUILD)/Game/src/premap.o: $(DUKE_SRC_DIR)/Game/src/premap.c
+	mkdir -p $(dir $@)
+	$(CC) -c $(CFLAGS_DUKE) -O0 -o $@ $<
+
+$(DUKE_BUILD)/Game/src/%.o: $(DUKE_SRC_DIR)/Game/src/%.c
+	mkdir -p $(dir $@)
+	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
+
+# Compile audiolib sources
+$(DUKE_BUILD)/Game/src/audiolib/%.o: $(DUKE_SRC_DIR)/Game/src/audiolib/%.c
+	mkdir -p $(dir $@)
+	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
+
+# Compile potato platform sources
+$(DUKE_BUILD)/%.o: $(DUKE_DIR)/%.c
+	mkdir -p $(dir $@)
+	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
+
+$(DUKE_ELF): $(DUKE_ALL_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	mkdir -p dist/userspace
+	$(LD) --no-relax --allow-multiple-definition \
+	      -T src/userspace/libc/libc.ld -o $@ \
+	      $(LIBC_CRT0) $(DUKE_POTATO_OBJS) $(DUKE_ENGINE_OBJS) $(DUKE_GAME_OBJS) $(DUKE_AUDIO_OBJS) $(LIBC_A)
+
+duke3d: $(DUKE_ELF)
+
+DUKE_GRP ?= assets/duke3d.grp
+
 # Path to Quake PAK0.PAK (user-supplied; copyrighted — cannot auto-download).
 # Copy PAK0.PAK into assets/ before running make disk.img.
 # Override: make disk.img QUAKE_PAK=/path/to/pak0.pak
@@ -376,11 +491,11 @@ Q2_PAK0 ?= assets/quake2/pak0.pak
 Q2_PAK1 ?= assets/quake2/pak1.pak
 Q2_PAK2 ?= assets/quake2/pak2.pak
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF)
 	@echo "Creating FAT32 disk image..."
-	dd if=/dev/zero of=disk.img bs=1M count=256 2>/dev/null
+	dd if=/dev/zero of=disk.img bs=1M count=512 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
-	mmd -i disk.img ::SYS ::BIN ::GAMES ::GAMES/DOOM ::GAMES/QUAKE ::GAMES/QUAKE/ID1 ::GAMES/SNAKE ::GAMES/QUAKE2 ::GAMES/QUAKE2/BASEQ2
+	mmd -i disk.img ::SYS ::BIN ::GAMES ::GAMES/DOOM ::GAMES/QUAKE ::GAMES/QUAKE/ID1 ::GAMES/SNAKE ::GAMES/QUAKE2 ::GAMES/QUAKE2/BASEQ2 ::GAMES/DUKE3D
 	@copy_file() { \
 	  src="$$1"; dst="$$2"; \
 	  [ -f "$$src" ] || return 0; \
@@ -417,7 +532,9 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file $(Q2_ELF)                      GAMES/QUAKE2/QUAKE2.ELF; \
 	copy_file $(Q2_PAK0)                     GAMES/QUAKE2/BASEQ2/PAK0.PAK; \
 	copy_file $(Q2_PAK1)                     GAMES/QUAKE2/BASEQ2/PAK1.PAK; \
-	copy_file $(Q2_PAK2)                     GAMES/QUAKE2/BASEQ2/PAK2.PAK
+	copy_file $(Q2_PAK2)                     GAMES/QUAKE2/BASEQ2/PAK2.PAK; \
+	copy_file $(DUKE_ELF)                    GAMES/DUKE3D/DUKE3D.ELF; \
+	copy_file $(DUKE_GRP)                    GAMES/DUKE3D/DUKE3D.GRP
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
 
