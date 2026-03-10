@@ -63,6 +63,7 @@ clean:
 	-rm -f disk.img
 	-rm -f $(TEST_ELF_OBJ) $(TEST_ELF_BIN)
 	-rm -f $(BLINK_ELF_OBJ) $(BLINK_ELF_BIN)
+	-rm -f build/userspace/taskbar.o dist/userspace/taskbar.elf
 	-rm -rf build/userspace/libc
 	-rm -f $(LIBC_CRT0) $(LIBC_A)
 	-rm -f $(SIMPLE_OBJS) $(SIMPLE_BINS)
@@ -111,7 +112,7 @@ $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 # ── Simple C userspace programs (pattern rules) ──────────────────────────
 SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest \
-               pidtest stattest envtest xxd kilo
+               pidtest stattest envtest xxd kilo taskbar
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
 SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
@@ -509,6 +510,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file assets/boot.raw   SYS/BOOT.RAW; \
 	copy_file $(TEST_ELF_BIN)           BIN/TEST.ELF; \
 	copy_file $(BLINK_ELF_BIN)          BIN/BLINK.ELF; \
+	copy_file dist/userspace/taskbar.elf BIN/TASKBAR.ELF; \
 	copy_file dist/userspace/hello.elf       BIN/HELLO.ELF; \
 	copy_file dist/userspace/fork_test.elf   BIN/FORK_TEST.ELF; \
 	copy_file dist/userspace/pipe_test.elf   BIN/PIPE_TEST.ELF; \

@@ -614,6 +614,13 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			       ? 0 : (pt::uint64_t)-1;
 		}
 
+		case SYS_LIST_WINDOWS: {
+			auto* buf = reinterpret_cast<WindowManager::WinListEntry*>(arg1);
+			pt::uint32_t max_entries = (pt::uint32_t)arg2;
+			if (!buf || max_entries == 0) return 0;
+			return WindowManager::list_windows(buf, max_entries);
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

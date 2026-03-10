@@ -46,6 +46,7 @@
 #define SYS_GETPID           39  /* () → current task ID                                    */
 #define SYS_STAT             40  /* rdi=filename, rsi=stat_buf ptr; returns 0 or -1         */
 #define SYS_MPROTECT         41  /* rdi=addr, rsi=len, rdx=prot(1=X,2=W,4=R); returns 0/-1 */
+#define SYS_LIST_WINDOWS     42  /* rdi=buf, rsi=max_entries; returns count                */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -269,3 +270,27 @@ static inline long sys_stat(const char *filename, void *buf)
 /* Change page permissions.  prot: PROT_EXEC|PROT_WRITE|PROT_READ. */
 static inline long sys_mprotect(void *addr, size_t len, int prot)
     { return __sc3(SYS_MPROTECT, (long)addr, (long)len, (long)prot); }
+
+/* Create a chromeless window (no border/title bar, background z-order). */
+static inline long sys_create_window_chromeless(long cx, long cy, long cw, long ch)
+{
+    register long _ch    __asm__("rcx") = ch;
+    register long _flags __asm__("r8")  = 1;   /* WF_CHROMELESS */
+    long ret;
+    __asm__ volatile("int $0x80"
+        : "=a"(ret)
+        : "a"((long)SYS_CREATE_WINDOW), "D"(cx), "S"(cy), "d"(cw), "r"(_ch), "r"(_flags)
+        : "memory");
+    return ret;
+}
+
+/* Each entry returned by SYS_LIST_WINDOWS (32 bytes). */
+struct WinListEntry {
+    unsigned char wid;
+    unsigned char flags;   /* bit 0 = focused */
+    char title[30];
+};
+
+/* Fill buf with up to max_entries window entries. Returns count. */
+static inline long sys_list_windows(struct WinListEntry *buf, long max_entries)
+    { return __sc2(SYS_LIST_WINDOWS, (long)buf, max_entries); }

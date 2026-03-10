@@ -101,8 +101,8 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     if (fbterm.is_ready())
         vterm_init(fbterm.get_cols(), fbterm.get_rows());
     WindowManager::initialize();
-    if (TaskScheduler::create_elf_task("BIN/BLINK.ELF") == 0xFFFFFFFF)
-        klog("[MAIN] BIN/BLINK.ELF not found or failed to start\n");
+    if (TaskScheduler::create_elf_task("BIN/TASKBAR.ELF") == 0xFFFFFFFF)
+        klog("[MAIN] BIN/TASKBAR.ELF not found or failed to start\n");
 
     // Initial UI
     TerminalPrinter terminal;
