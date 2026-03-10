@@ -3,6 +3,8 @@
 #include "ansi.h"
 #include "vterm.h"
 
+class Framebuffer;
+
 constexpr pt::uint32_t MAX_WINDOWS  = 8;
 constexpr pt::uint32_t TITLE_BAR_H  = 16;  // px; matches PSF1 glyph height
 constexpr pt::uint32_t BORDER_W     = 1;   // px; 1-px border on all sides
@@ -37,6 +39,10 @@ struct Window {
     pt::uint32_t client_ox, client_oy;
     pt::uint32_t client_w,  client_h;
 
+    // Per-window pixel buffer (client_w × client_h, ARGB32).
+    // All window rendering goes here; compositor blits to back buffer.
+    pt::uint32_t* pixel_buf;
+
     // Per-window event ring (ev_read == ev_write → empty)
     pt::uint64_t events[EVENT_CAP];
     pt::uint32_t ev_read, ev_write;
@@ -65,18 +71,21 @@ public:
                                       pt::uint32_t flags = 0);
     static void       destroy_window(pt::uint32_t wid);
 
-    // Translate window-relative rect → screen-absolute, clip to client area.
-    // Returns false if entirely outside (caller should skip the draw call).
-    static bool translate_rect(pt::uint32_t wid,
-                               pt::uint32_t rx,  pt::uint32_t ry,
-                               pt::uint32_t rw,  pt::uint32_t rh,
-                               pt::uint32_t& sx, pt::uint32_t& sy,
-                               pt::uint32_t& sw, pt::uint32_t& sh);
+    // ── Compositor: blit all visible windows to back buffer ──
+    static void composite(Framebuffer* fb);
 
-    // Translate a single point (for DRAW_TEXT / DRAW_PIXELS origin).
-    static bool translate_point(pt::uint32_t wid,
-                                pt::uint32_t rx, pt::uint32_t ry,
-                                pt::uint32_t& sx, pt::uint32_t& sy);
+    // ── Per-window drawing (writes to pixel_buf, not framebuffer) ──
+    static void win_fill_rect(pt::uint32_t wid, pt::uint32_t x, pt::uint32_t y,
+                              pt::uint32_t w, pt::uint32_t h, pt::uint32_t color);
+    static void win_draw_pixels(pt::uint32_t wid, const pt::uint8_t* data,
+                                pt::uint32_t x, pt::uint32_t y,
+                                pt::uint32_t w, pt::uint32_t h);
+    static void win_draw_text(pt::uint32_t wid, pt::uint32_t x, pt::uint32_t y,
+                              const char* str, pt::uint32_t fg, pt::uint32_t bg);
+    static void win_put_glyph(pt::uint32_t wid, char c,
+                              pt::uint32_t px, pt::uint32_t py,
+                              pt::uint32_t fg, pt::uint32_t bg);
+    static void win_scroll_up(pt::uint32_t wid, pt::uint32_t pixels);
 
     static void        push_key_event(pt::uint64_t ev);  // routes to focused window
     static pt::uint64_t poll_event(pt::uint32_t wid);    // returns 0 if empty

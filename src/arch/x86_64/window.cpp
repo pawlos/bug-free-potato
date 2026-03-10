@@ -1,6 +1,7 @@
 #include "window.h"
 #include "device/fbterm.h"
 #include "framebuffer.h"
+#include "virtual.h"
 #include "vterm.h"
 
 Window       WindowManager::windows[MAX_WINDOWS];
@@ -24,6 +25,7 @@ void WindowManager::initialize()
         windows[i].client_oy     = 0;
         windows[i].client_w      = 0;
         windows[i].client_h      = 0;
+        windows[i].pixel_buf     = nullptr;
         windows[i].ev_read       = 0;
         windows[i].ev_write      = 0;
         windows[i].text_col         = 0;
@@ -92,9 +94,9 @@ void WindowManager::on_vt_switch()
         (focused_id >= MAX_WINDOWS || !windows[focused_id].active ||
          windows[focused_id].vt_id != g_active_vt))
         focused_id = INVALID_WID;
-    // Redraw chrome for windows on the new VT
-    redraw_all_chrome();
 }
+
+// ── Window lifecycle ────────────────────────────────────────────────────
 
 pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
                                            pt::uint32_t w, pt::uint32_t h,
@@ -118,13 +120,11 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->chromeless    = (flags & WF_CHROMELESS) != 0;
 
     if (win->chromeless) {
-        // No border or title bar: the specified rect IS the client area.
         win->screen_x  = x;
         win->screen_y  = y;
         win->total_w   = w;
         win->total_h   = h;
     } else {
-        // x, y are the client area screen-absolute origin; chrome surrounds it.
         win->screen_x  = x - BORDER_W;
         win->screen_y  = y - BORDER_W - TITLE_BAR_H;
         win->total_w   = BORDER_W + w + BORDER_W;
@@ -134,6 +134,11 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->client_oy = y;
     win->client_w  = w;
     win->client_h  = h;
+
+    // Allocate per-window pixel buffer
+    pt::size_t buf_size = (pt::size_t)w * h * sizeof(pt::uint32_t);
+    win->pixel_buf = reinterpret_cast<pt::uint32_t*>(vmm.kcalloc(buf_size));
+
     win->ev_read            = 0;
     win->ev_write           = 0;
     win->text_col           = 0;
@@ -151,14 +156,11 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
 
     z_insert_top(wid);
 
-    // Chromeless windows (background widgets) never hold keyboard focus.
+    // Chromeless windows never hold keyboard focus.
     if (!win->chromeless) {
-        if (focused_id != INVALID_WID)
-            draw_chrome(focused_id, false);
         focused_id = wid;
         if (g_active_vt < VTERM_COUNT)
             focused_per_vt[g_active_vt] = wid;
-        draw_chrome(wid, true);
     }
 
     return wid;
@@ -179,6 +181,15 @@ void WindowManager::destroy_window(pt::uint32_t wid)
         if (fb)
             fb->RestoreBackground(win->screen_x, win->screen_y,
                                   win->total_w, win->total_h);
+        // Re-render VTerm to repair any text behind the window
+        VTerm* vt = vterm_active();
+        if (vt) vt->redraw();
+    }
+
+    // Free pixel buffer
+    if (win->pixel_buf) {
+        vmm.kfree(win->pixel_buf);
+        win->pixel_buf = nullptr;
     }
 
     win->active        = false;
@@ -198,12 +209,11 @@ void WindowManager::destroy_window(pt::uint32_t wid)
     }
 
     // Update global focused_id if the destroyed window was focused
-    if (focused_id == wid) {
+    if (focused_id == wid)
         focused_id = (dead_vt == g_active_vt) ? focused_per_vt[dead_vt] : INVALID_WID;
-        if (visible && focused_id != INVALID_WID)
-            draw_chrome(focused_id, true);
-    }
 }
+
+// ── Chrome drawing (writes to back buffer, called from composite) ───────
 
 void WindowManager::draw_chrome(pt::uint32_t wid, bool active)
 {
@@ -211,7 +221,6 @@ void WindowManager::draw_chrome(pt::uint32_t wid, bool active)
     Window* win = &windows[wid];
     if (!win->active) return;
     if (win->chromeless) return;
-    if (!is_on_active_vt(wid)) return;
 
     Framebuffer* fb = Framebuffer::get_instance();
     if (!fb) return;
@@ -247,36 +256,143 @@ void WindowManager::draw_chrome(pt::uint32_t wid, bool active)
     }
 }
 
-bool WindowManager::translate_rect(pt::uint32_t wid,
-                                    pt::uint32_t rx, pt::uint32_t ry,
-                                    pt::uint32_t rw, pt::uint32_t rh,
-                                    pt::uint32_t& sx, pt::uint32_t& sy,
-                                    pt::uint32_t& sw, pt::uint32_t& sh)
+// ── Compositor: blit all visible windows to back buffer ─────────────────
+
+void WindowManager::composite(Framebuffer* fb)
 {
-    Window* win = get_window(wid);
-    if (!win) return false;
-    if (rx >= win->client_w || ry >= win->client_h) return false;
+    if (!fb) return;
+    pt::uintptr_t back = fb->get_back();
+    if (!back) return;
 
-    sx = win->client_ox + rx;
-    sy = win->client_oy + ry;
-    sw = (rw > win->client_w - rx) ? (win->client_w - rx) : rw;
-    sh = (rh > win->client_h - ry) ? (win->client_h - ry) : rh;
+    pt::uint32_t fb_w      = fb->get_width();
+    pt::uint32_t fb_h      = fb->get_height();
+    pt::uint32_t fb_stride = fb->get_stride();
+    pt::uint32_t fb_bytes  = fb->get_bpp() / 8;
 
-    return sw > 0 && sh > 0;
+    // Blit windows in z-order (back to front)
+    for (pt::uint32_t zi = 0; zi < z_count; zi++) {
+        pt::uint32_t wid = z_order[zi];
+        Window* win = &windows[wid];
+        if (!win->active || !win->pixel_buf) continue;
+        if (!is_on_active_vt(wid)) continue;
+
+        // Clip to screen bounds (client_ox/oy may wrap negative via uint32)
+        pt::int32_t ox = (pt::int32_t)win->client_ox;
+        pt::int32_t oy = (pt::int32_t)win->client_oy;
+        pt::int32_t src_x = 0, src_y = 0;
+        pt::int32_t dst_x = ox, dst_y = oy;
+        if (dst_x < 0) { src_x = -dst_x; dst_x = 0; }
+        if (dst_y < 0) { src_y = -dst_y; dst_y = 0; }
+        if (src_x >= (pt::int32_t)win->client_w ||
+            src_y >= (pt::int32_t)win->client_h) continue;
+
+        pt::uint32_t blit_w = win->client_w - (pt::uint32_t)src_x;
+        pt::uint32_t blit_h = win->client_h - (pt::uint32_t)src_y;
+        if ((pt::uint32_t)dst_x + blit_w > fb_w) blit_w = fb_w - (pt::uint32_t)dst_x;
+        if ((pt::uint32_t)dst_y + blit_h > fb_h) blit_h = fb_h - (pt::uint32_t)dst_y;
+
+        // Blit pixel_buf rows to back buffer
+        for (pt::uint32_t y = 0; y < blit_h; y++) {
+            pt::uint32_t* src = &win->pixel_buf[((pt::uint32_t)src_y + y) * win->client_w
+                                                 + (pt::uint32_t)src_x];
+            pt::uint32_t* dst = reinterpret_cast<pt::uint32_t*>(
+                back + (pt::uint32_t)dst_x * fb_bytes
+                     + ((pt::uint32_t)dst_y + y) * fb_stride);
+            for (pt::uint32_t x = 0; x < blit_w; x++)
+                dst[x] = src[x];
+        }
+
+        // Draw chrome for non-chromeless windows
+        if (!win->chromeless)
+            draw_chrome(wid, focused_id == wid);
+    }
 }
 
-bool WindowManager::translate_point(pt::uint32_t wid,
-                                     pt::uint32_t rx, pt::uint32_t ry,
-                                     pt::uint32_t& sx, pt::uint32_t& sy)
+// ── Per-window drawing (writes to pixel_buf) ────────────────────────────
+
+void WindowManager::win_fill_rect(pt::uint32_t wid, pt::uint32_t x, pt::uint32_t y,
+                                   pt::uint32_t w, pt::uint32_t h, pt::uint32_t color)
 {
     Window* win = get_window(wid);
-    if (!win) return false;
-    if (rx >= win->client_w || ry >= win->client_h) return false;
-
-    sx = win->client_ox + rx;
-    sy = win->client_oy + ry;
-    return true;
+    if (!win || !win->pixel_buf) return;
+    // Clip to client area
+    if (x >= win->client_w || y >= win->client_h) return;
+    if (x + w > win->client_w) w = win->client_w - x;
+    if (y + h > win->client_h) h = win->client_h - y;
+    for (pt::uint32_t row = y; row < y + h; row++)
+        for (pt::uint32_t col = x; col < x + w; col++)
+            win->pixel_buf[row * win->client_w + col] = color;
 }
+
+void WindowManager::win_draw_pixels(pt::uint32_t wid, const pt::uint8_t* data,
+                                     pt::uint32_t x, pt::uint32_t y,
+                                     pt::uint32_t w, pt::uint32_t h)
+{
+    Window* win = get_window(wid);
+    if (!win || !win->pixel_buf || !data) return;
+    for (pt::uint32_t dy = 0; dy < h; dy++) {
+        if (y + dy >= win->client_h) break;
+        for (pt::uint32_t dx = 0; dx < w; dx++) {
+            if (x + dx >= win->client_w) break;
+            pt::uint32_t src_off = (dy * w + dx) * 3;
+            pt::uint32_t color = (pt::uint32_t)data[src_off] << 16
+                               | (pt::uint32_t)data[src_off + 1] << 8
+                               | (pt::uint32_t)data[src_off + 2];
+            win->pixel_buf[(y + dy) * win->client_w + (x + dx)] = color;
+        }
+    }
+}
+
+void WindowManager::win_draw_text(pt::uint32_t wid, pt::uint32_t x, pt::uint32_t y,
+                                   const char* str, pt::uint32_t fg, pt::uint32_t bg)
+{
+    Window* win = get_window(wid);
+    if (!win || !win->pixel_buf || !str) return;
+    if (!fbterm.is_ready()) return;
+    while (*str) {
+        fbterm.render_glyph_to_buf(*str, win->pixel_buf,
+                                    win->client_w, win->client_h,
+                                    x, y, fg, bg);
+        x += fbterm.glyph_w();
+        str++;
+    }
+}
+
+void WindowManager::win_put_glyph(pt::uint32_t wid, char c,
+                                   pt::uint32_t px, pt::uint32_t py,
+                                   pt::uint32_t fg, pt::uint32_t bg)
+{
+    Window* win = get_window(wid);
+    if (!win || !win->pixel_buf) return;
+    if (!fbterm.is_ready()) return;
+    fbterm.render_glyph_to_buf(c, win->pixel_buf,
+                                win->client_w, win->client_h,
+                                px, py, fg, bg);
+}
+
+void WindowManager::win_scroll_up(pt::uint32_t wid, pt::uint32_t pixels)
+{
+    Window* win = get_window(wid);
+    if (!win || !win->pixel_buf || pixels == 0) return;
+
+    pt::uint32_t w = win->client_w;
+    pt::uint32_t h = win->client_h;
+
+    // Shift rows up
+    for (pt::uint32_t y = pixels; y < h; y++) {
+        pt::uint32_t* src = &win->pixel_buf[y * w];
+        pt::uint32_t* dst = &win->pixel_buf[(y - pixels) * w];
+        for (pt::uint32_t x = 0; x < w; x++)
+            dst[x] = src[x];
+    }
+    // Clear vacated bottom rows
+    pt::uint32_t clear_start = (h > pixels) ? (h - pixels) : 0;
+    for (pt::uint32_t y = clear_start; y < h; y++)
+        for (pt::uint32_t x = 0; x < w; x++)
+            win->pixel_buf[y * w + x] = 0x000000;
+}
+
+// ── Event handling ──────────────────────────────────────────────────────
 
 void WindowManager::push_key_event(pt::uint64_t ev)
 {
@@ -316,11 +432,12 @@ pt::uint32_t WindowManager::get_task_window(pt::uint32_t task_id)
     return INVALID_WID;
 }
 
+// ── ANSI CSI handling (renders to pixel_buf) ────────────────────────────
+
 static void handle_csi(Window* win, char cmd,
                        const pt::uint32_t* p, pt::uint32_t np,
                        pt::uint32_t cols, pt::uint32_t rows,
-                       pt::uint32_t gw, pt::uint32_t gh,
-                       bool visible)
+                       pt::uint32_t gw, pt::uint32_t gh)
 {
     auto P = [&](pt::uint32_t i, pt::uint32_t def) -> pt::uint32_t {
         return (i < np && p[i] != 0) ? p[i] : def;
@@ -328,8 +445,6 @@ static void handle_csi(Window* win, char cmd,
 
     // Any CSI command cancels deferred wrap state.
     win->wrap_pending = false;
-
-    Framebuffer* fb = Framebuffer::get_instance();
 
     switch (cmd) {
     case 'A': {  // cursor up
@@ -365,46 +480,31 @@ static void handle_csi(Window* win, char cmd,
     case 'J': {  // erase display
         pt::uint32_t mode = p[0];
         if (mode == 2) {
-            if (fb && visible) {
-                pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
-                pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
-                pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
-                fb->FillRect(win->client_ox, win->client_oy,
-                             win->client_w,  win->client_h, bgr, bgg, bgb);
-            }
+            WindowManager::win_fill_rect(win->id, 0, 0,
+                                          win->client_w, win->client_h, win->bg);
             win->text_col = win->text_row = 0;
         } else if (mode == 0) {
-            if (fb && visible) {
-                pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
-                pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
-                pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
-                pt::uint32_t py = win->client_oy + win->text_row * gh;
-                pt::uint32_t px = win->client_ox + win->text_col * gw;
-                fb->FillRect(px, py, win->client_w - win->text_col * gw, gh,
-                             bgr, bgg, bgb);
-                if (win->text_row + 1 < rows)
-                    fb->FillRect(win->client_ox, py + gh,
-                                 win->client_w, win->client_h - (win->text_row + 1) * gh,
-                                 bgr, bgg, bgb);
-            }
+            pt::uint32_t py = win->text_row * gh;
+            pt::uint32_t px = win->text_col * gw;
+            WindowManager::win_fill_rect(win->id, px, py,
+                                          win->client_w - px, gh, win->bg);
+            if (win->text_row + 1 < rows)
+                WindowManager::win_fill_rect(win->id, 0, py + gh,
+                                              win->client_w,
+                                              win->client_h - (win->text_row + 1) * gh,
+                                              win->bg);
         }
         break;
     }
     case 'K': {  // erase line
         pt::uint32_t mode = p[0];
-        if (fb && visible) {
-            pt::uint32_t py = win->client_oy + win->text_row * gh;
-            pt::uint8_t bgr = (pt::uint8_t)((win->bg >> 16) & 0xFF);
-            pt::uint8_t bgg = (pt::uint8_t)((win->bg >>  8) & 0xFF);
-            pt::uint8_t bgb = (pt::uint8_t)( win->bg        & 0xFF);
-            if (mode == 0) {  // to end of line
-                pt::uint32_t px = win->client_ox + win->text_col * gw;
-                fb->FillRect(px, py, win->client_w - win->text_col * gw, gh,
-                             bgr, bgg, bgb);
-            } else if (mode == 2) {  // whole line
-                fb->FillRect(win->client_ox, py, win->client_w, gh,
-                             bgr, bgg, bgb);
-            }
+        pt::uint32_t py = win->text_row * gh;
+        if (mode == 0) {  // to end of line
+            pt::uint32_t px = win->text_col * gw;
+            WindowManager::win_fill_rect(win->id, px, py,
+                                          win->client_w - px, gh, win->bg);
+        } else if (mode == 2) {  // whole line
+            WindowManager::win_fill_rect(win->id, 0, py, win->client_w, gh, win->bg);
         }
         if (mode == 2) win->text_col = 0;
         break;
@@ -444,8 +544,6 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     const pt::uint32_t rows = win->client_h / gh;
     if (cols == 0 || rows == 0) return;
 
-    bool visible = is_on_active_vt(wid);
-
     // ANSI escape sequence handling
     char final_byte = 0;
     bool complete   = win->ansi.feed(c, final_byte);
@@ -454,7 +552,7 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
         if (!win->ansi.private_mode)
             handle_csi(win, final_byte,
                        win->ansi.params, win->ansi.n_params,
-                       cols, rows, gw, gh, visible);
+                       cols, rows, gw, gh);
         win->ansi.private_mode = false;
         return;
     }
@@ -464,11 +562,7 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     // Normal character handling
     if (c == '\f') {
         // Form feed: clear client area and home the cursor.
-        if (visible) {
-            Framebuffer* fb = Framebuffer::get_instance();
-            if (fb) fb->FillRect(win->client_ox, win->client_oy,
-                                 win->client_w,  win->client_h, 0, 0, 0);
-        }
+        win_fill_rect(wid, 0, 0, win->client_w, win->client_h, 0x000000);
         win->text_col = 0;
         win->text_row = 0;
         win->wrap_pending = false;
@@ -502,12 +596,10 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
             win->text_row++;
         }
     } else {
-        // Render glyph at current cursor
-        if (visible) {
-            pt::uint32_t px = win->client_ox + win->text_col * gw;
-            pt::uint32_t py = win->client_oy + win->text_row * gh;
-            fbterm.put_char_at(c, px, py, win->fg, win->bg);
-        }
+        // Render glyph into pixel_buf
+        pt::uint32_t px = win->text_col * gw;
+        pt::uint32_t py = win->text_row * gh;
+        win_put_glyph(wid, c, px, py, win->fg, win->bg);
         win->text_col++;
         if (win->text_col >= cols) {
             // Don't wrap yet — defer until next character arrives.
@@ -518,12 +610,12 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
 
     // Scroll if we've passed the last row
     if (win->text_row >= rows) {
-        if (visible)
-            fbterm.scroll_region(win->client_ox, win->client_oy,
-                                 win->client_w, win->client_h, gh);
+        win_scroll_up(wid, gh);
         win->text_row = rows - 1;
     }
 }
+
+// ── Focus & raise (compositor handles visual updates) ───────────────────
 
 void WindowManager::raise_window(pt::uint32_t wid)
 {
@@ -535,27 +627,15 @@ void WindowManager::raise_window(pt::uint32_t wid)
 
     z_remove(wid);
     z_insert_top(wid);
-
-    // Restore background behind this window's rect, then redraw all chrome in Z-order
-    Framebuffer* fb = Framebuffer::get_instance();
-    if (fb) {
-        Window* win = &windows[wid];
-        fb->RestoreBackground(win->screen_x, win->screen_y,
-                              win->total_w, win->total_h);
-    }
-    redraw_all_chrome();
 }
 
 void WindowManager::set_focus(pt::uint32_t wid)
 {
     // INVALID_WID means "unfocus all" — click on the desktop.
     if (wid == INVALID_WID) {
-        if (focused_id != INVALID_WID) {
-            draw_chrome(focused_id, false);
-            focused_id = INVALID_WID;
-            if (g_active_vt < VTERM_COUNT)
-                focused_per_vt[g_active_vt] = INVALID_WID;
-        }
+        focused_id = INVALID_WID;
+        if (g_active_vt < VTERM_COUNT)
+            focused_per_vt[g_active_vt] = INVALID_WID;
         return;
     }
     if (wid >= MAX_WINDOWS || !windows[wid].active) return;
@@ -567,13 +647,9 @@ void WindowManager::set_focus(pt::uint32_t wid)
 
     if (focused_id == wid) return;
 
-    if (focused_id != INVALID_WID)
-        draw_chrome(focused_id, false);
-
     focused_id = wid;
     if (g_active_vt < VTERM_COUNT)
         focused_per_vt[g_active_vt] = wid;
-    draw_chrome(wid, true);
 }
 
 pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
@@ -596,12 +672,7 @@ pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
 
 void WindowManager::redraw_all_chrome()
 {
-    // Iterate back-to-front so frontmost chrome draws last (on top)
-    for (pt::uint32_t zi = 0; zi < z_count; zi++) {
-        pt::uint32_t i = z_order[zi];
-        if (windows[i].active && !windows[i].chromeless && is_on_active_vt(i))
-            draw_chrome(i, focused_id == i);
-    }
+    // No-op: compositor handles chrome drawing during composite().
 }
 
 bool WindowManager::hit_title_bar(pt::uint32_t wid, pt::int16_t px, pt::int16_t py)
@@ -640,27 +711,16 @@ void WindowManager::move_window(pt::uint32_t wid, pt::int32_t new_x, pt::int32_t
     // Restore background behind old position
     fb->RestoreBackground(win->screen_x, win->screen_y,
                           win->total_w, win->total_h);
+    // Re-render VTerm to repair text behind old position
+    VTerm* vt = vterm_active();
+    if (vt) vt->redraw();
 
     // Update position (screen_x/y is the outer frame origin)
     win->screen_x = (pt::uint32_t)new_x;
     win->screen_y = (pt::uint32_t)new_y;
     win->client_ox = win->screen_x + BORDER_W;
     win->client_oy = win->screen_y + BORDER_W + TITLE_BAR_H;
-
-    // Redraw chrome at new position
-    draw_chrome(wid, is_focused(wid));
-
-    // Fill client area with bg color so it's clean for app to redraw
-    fb->FillRect(win->client_ox, win->client_oy,
-                 win->client_w, win->client_h, 0, 0, 0);
-
-    // Reset text cursor — old content is gone, start fresh
-    win->text_col = 0;
-    win->text_row = 0;
-    win->wrap_pending = false;
-
-    // Redraw all chrome in Z-order (move may have uncovered other windows)
-    redraw_all_chrome();
+    // pixel_buf content is preserved — no text cursor reset needed
 }
 
 pt::uint32_t WindowManager::list_windows(WinListEntry* buf, pt::uint32_t max_entries)

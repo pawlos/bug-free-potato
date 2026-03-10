@@ -237,64 +237,40 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			     | t.minutes;
 		}
 		case SYS_FILL_RECT: {
-			Framebuffer* fb = Framebuffer::get_instance();
-			if (!fb) return (pt::uint64_t)-1;
-			pt::uint8_t r = (pt::uint8_t)(arg5 >> 16);
-			pt::uint8_t g = (pt::uint8_t)(arg5 >> 8);
-			pt::uint8_t b = (pt::uint8_t)(arg5);
+			pt::uint32_t color = (pt::uint32_t)arg5;
 			{
 				Task* t = TaskScheduler::get_current_task();
 				if (t && t->window_id != INVALID_WID) {
-					if (!WindowManager::is_on_active_vt(t->window_id))
-						return 0;
-					pt::uint32_t sx, sy, sw, sh;
-					if (!WindowManager::translate_rect(t->window_id,
-					        (pt::uint32_t)arg1, (pt::uint32_t)arg2,
-					        (pt::uint32_t)arg3, (pt::uint32_t)arg4,
-					        sx, sy, sw, sh))
-						return 0;
-					arg1 = sx; arg2 = sy; arg3 = sw; arg4 = sh;
+					WindowManager::win_fill_rect(t->window_id,
+					    (pt::uint32_t)arg1, (pt::uint32_t)arg2,
+					    (pt::uint32_t)arg3, (pt::uint32_t)arg4, color);
+					return 0;
 				}
 			}
+			Framebuffer* fb = Framebuffer::get_instance();
+			if (!fb) return (pt::uint64_t)-1;
+			pt::uint8_t r = (pt::uint8_t)(color >> 16);
+			pt::uint8_t g = (pt::uint8_t)(color >> 8);
+			pt::uint8_t b = (pt::uint8_t)(color);
 			fb->FillRect((pt::uint32_t)arg1, (pt::uint32_t)arg2,
 			             (pt::uint32_t)arg3, (pt::uint32_t)arg4, r, g, b);
-			// Z-order: chromeless windows draw behind normal window chrome.
-			{
-				Task* ct = TaskScheduler::get_current_task();
-				if (ct && ct->window_id != INVALID_WID) {
-					Window* cw = WindowManager::get_window(ct->window_id);
-					if (cw && cw->chromeless)
-						WindowManager::redraw_all_chrome();
-				}
-			}
 			return 0;
 		}
 		case SYS_DRAW_TEXT: {
 			{
 				Task* t = TaskScheduler::get_current_task();
 				if (t && t->window_id != INVALID_WID) {
-					if (!WindowManager::is_on_active_vt(t->window_id))
-						return 0;
-					pt::uint32_t sx, sy;
-					if (!WindowManager::translate_point(t->window_id,
-					        (pt::uint32_t)arg1, (pt::uint32_t)arg2, sx, sy))
-						return 0;
-					arg1 = sx; arg2 = sy;
+					WindowManager::win_draw_text(t->window_id,
+					    (pt::uint32_t)arg1, (pt::uint32_t)arg2,
+					    reinterpret_cast<const char*>(arg3),
+					    (pt::uint32_t)arg4, (pt::uint32_t)arg5);
+					return 0;
 				}
 			}
 			if (fbterm.is_ready())
 				fbterm.draw_at((pt::uint32_t)arg1, (pt::uint32_t)arg2,
 				               reinterpret_cast<const char*>(arg3),
 				               (pt::uint32_t)arg4, (pt::uint32_t)arg5);
-			// Z-order: chromeless windows draw behind normal window chrome.
-			{
-				Task* ct = TaskScheduler::get_current_task();
-				if (ct && ct->window_id != INVALID_WID) {
-					Window* cw = WindowManager::get_window(ct->window_id);
-					if (cw && cw->chromeless)
-						WindowManager::redraw_all_chrome();
-				}
-			}
 			return 0;
 		}
 		case SYS_FB_WIDTH: {
@@ -403,35 +379,18 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		}
 
 		case SYS_DRAW_PIXELS: {
-			Framebuffer* fb = Framebuffer::get_instance();
-			if (!fb) return (pt::uint64_t)-1;
 			const pt::uint8_t* buf = reinterpret_cast<const pt::uint8_t*>(arg1);
-			// Rate-limited log: every 100 frames, log call count + first pixel
-			{
-				static pt::uint32_t dp_count = 0;
-				dp_count++;
-				if (dp_count % 100 == 1) {
-					klog("[DRAW_PIXELS] call#%d x=%d y=%d w=%d h=%d px0=[%x,%x,%x]\n",
-					     (int)dp_count, (int)arg2, (int)arg3,
-					     (int)arg4, (int)arg5,
-					     (unsigned)buf[0], (unsigned)buf[1], (unsigned)buf[2]);
-				}
-			}
 			{
 				Task* t = TaskScheduler::get_current_task();
 				if (t && t->window_id != INVALID_WID) {
-					if (!WindowManager::is_on_active_vt(t->window_id))
-						return 0;
-					pt::uint32_t sx, sy, sw, sh;
-					if (!WindowManager::translate_rect(t->window_id,
-					        (pt::uint32_t)arg2, (pt::uint32_t)arg3,
-					        (pt::uint32_t)arg4, (pt::uint32_t)arg5,
-					        sx, sy, sw, sh))
-						return 0;
-					arg2 = sx; arg3 = sy;
-					// arg4/arg5 (w/h) keep original values to preserve source stride
+					WindowManager::win_draw_pixels(t->window_id, buf,
+					    (pt::uint32_t)arg2, (pt::uint32_t)arg3,
+					    (pt::uint32_t)arg4, (pt::uint32_t)arg5);
+					return 0;
 				}
 			}
+			Framebuffer* fb = Framebuffer::get_instance();
+			if (!fb) return (pt::uint64_t)-1;
 			fb->Draw(buf, (pt::uint32_t)arg2, (pt::uint32_t)arg3,
 			         (pt::uint32_t)arg4, (pt::uint32_t)arg5);
 			return 0;
@@ -587,7 +546,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			int i = 0;
 			for (; i < 31 && src[i]; ++i) w->title[i] = src[i];
 			w->title[i] = '\0';
-			WindowManager::draw_chrome(w->id, WindowManager::is_focused(w->id));
+			// Chrome (including title) is redrawn by the compositor each frame.
 			return 0;
 		}
 

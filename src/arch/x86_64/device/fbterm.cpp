@@ -251,6 +251,26 @@ void FbTerm::scroll_region(pt::uint32_t x, pt::uint32_t y,
     m_fb->ScrollRegionUp(x, y, w, h, lines);
 }
 
+void FbTerm::render_glyph_to_buf(char c, pt::uint32_t* buf,
+                                  pt::uint32_t buf_w, pt::uint32_t buf_h,
+                                  pt::uint32_t px, pt::uint32_t py,
+                                  pt::uint32_t fg, pt::uint32_t bg)
+{
+    if (!m_ready || !buf) return;
+    pt::uint8_t ch = static_cast<pt::uint8_t>(c);
+    if (ch > 127) ch = '?';
+    const pt::uint8_t* glyph = m_glyphs + ch * m_glyph_h;
+    for (pt::uint32_t row = 0; row < m_glyph_h; row++) {
+        if (py + row >= buf_h) break;
+        pt::uint8_t bits = glyph[row];
+        for (pt::uint32_t col = 0; col < PSF1_GLYPH_WIDTH; col++) {
+            if (px + col >= buf_w) break;
+            pt::uint32_t color = (bits & (0x80 >> col)) ? fg : bg;
+            buf[(py + row) * buf_w + (px + col)] = color;
+        }
+    }
+}
+
 void fbterm_putchar(char c)
 {
     fbterm.put_char(c);

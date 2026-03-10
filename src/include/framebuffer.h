@@ -49,8 +49,11 @@ public:
 
     static void Init(const boot_framebuffer *fb);
     void InitBackBuffer();
-    pt::uint32_t get_width()  const { return m_width; }
-    pt::uint32_t get_height() const { return m_height; }
+    pt::uint32_t  get_width()  const { return m_width; }
+    pt::uint32_t  get_height() const { return m_height; }
+    pt::uintptr_t get_back()   const { return m_back; }
+    pt::uint32_t  get_stride() const { return m_stride; }
+    pt::uint32_t  get_bpp()    const { return m_bpp; }
     void Free() {
         if (m_bg) {
             vmm.kfree(reinterpret_cast<void*>(m_bg));

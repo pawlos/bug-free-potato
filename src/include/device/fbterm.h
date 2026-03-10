@@ -34,6 +34,12 @@ public:
     void put_char_at(char c, pt::uint32_t px, pt::uint32_t py,
                      pt::uint32_t fg = 0xFFFFFF, pt::uint32_t bg = 0x000000);
 
+    // Render one glyph into an arbitrary uint32 buffer (for window pixel_buf).
+    void render_glyph_to_buf(char c, pt::uint32_t* buf,
+                              pt::uint32_t buf_w, pt::uint32_t buf_h,
+                              pt::uint32_t px, pt::uint32_t py,
+                              pt::uint32_t fg, pt::uint32_t bg);
+
     // Scroll a pixel rectangle up by `lines` pixels (exposes blank strip at bottom).
     void scroll_region(pt::uint32_t x, pt::uint32_t y,
                        pt::uint32_t w, pt::uint32_t h,
