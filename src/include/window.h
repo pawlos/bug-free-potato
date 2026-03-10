@@ -106,9 +106,23 @@ public:
     static void        draw_chrome(pt::uint32_t wid, bool active);
     static void        move_window(pt::uint32_t wid, pt::int32_t new_x, pt::int32_t new_y);
     static bool        hit_title_bar(pt::uint32_t wid, pt::int16_t px, pt::int16_t py);
+    static void        raise_window(pt::uint32_t wid);
+
+    // Fill buf with info about active non-chromeless windows. Returns count written.
+    struct WinListEntry {
+        pt::uint8_t wid;
+        pt::uint8_t flags;   // bit 0 = focused
+        char title[30];
+    };
+    static pt::uint32_t list_windows(WinListEntry* buf, pt::uint32_t max_entries);
 
 private:
     static Window windows[MAX_WINDOWS];
+    static pt::uint32_t z_order[MAX_WINDOWS];  // wids, back-to-front (0=bottom)
+    static pt::uint32_t z_count;
+
+    static void z_remove(pt::uint32_t wid);
+    static void z_insert_top(pt::uint32_t wid);
 
     static constexpr pt::uint32_t COLOR_BORDER    = 0x404040;
     static constexpr pt::uint32_t COLOR_TITLE_ACT = 0x0055AA;

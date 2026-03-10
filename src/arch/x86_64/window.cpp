@@ -6,6 +6,8 @@
 Window       WindowManager::windows[MAX_WINDOWS];
 pt::uint32_t WindowManager::focused_id = INVALID_WID;
 pt::uint32_t WindowManager::focused_per_vt[VTERM_COUNT];
+pt::uint32_t WindowManager::z_order[MAX_WINDOWS];
+pt::uint32_t WindowManager::z_count = 0;
 
 void WindowManager::initialize()
 {
@@ -39,6 +41,40 @@ void WindowManager::initialize()
     focused_id = INVALID_WID;
     for (pt::uint32_t v = 0; v < VTERM_COUNT; v++)
         focused_per_vt[v] = INVALID_WID;
+    z_count = 0;
+}
+
+// ── Z-order helpers ─────────────────────────────────────────────────────
+
+void WindowManager::z_remove(pt::uint32_t wid)
+{
+    for (pt::uint32_t i = 0; i < z_count; i++) {
+        if (z_order[i] == wid) {
+            for (pt::uint32_t j = i; j + 1 < z_count; j++)
+                z_order[j] = z_order[j + 1];
+            z_count--;
+            return;
+        }
+    }
+}
+
+void WindowManager::z_insert_top(pt::uint32_t wid)
+{
+    if (z_count >= MAX_WINDOWS) return;
+    if (windows[wid].chromeless) {
+        // Insert before the first non-chromeless window
+        pt::uint32_t pos = 0;
+        while (pos < z_count && windows[z_order[pos]].chromeless)
+            pos++;
+        // Shift everything from pos up
+        for (pt::uint32_t j = z_count; j > pos; j--)
+            z_order[j] = z_order[j - 1];
+        z_order[pos] = wid;
+    } else {
+        // Normal window goes to the very top
+        z_order[z_count] = wid;
+    }
+    z_count++;
 }
 
 bool WindowManager::is_on_active_vt(pt::uint32_t wid)
@@ -113,6 +149,8 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->title[0]           = '\0';
     win->vt_id              = g_active_vt;
 
+    z_insert_top(wid);
+
     // Chromeless windows (background widgets) never hold keyboard focus.
     if (!win->chromeless) {
         if (focused_id != INVALID_WID)
@@ -145,11 +183,13 @@ void WindowManager::destroy_window(pt::uint32_t wid)
 
     win->active        = false;
     win->owner_task_id = INVALID_WID;
+    z_remove(wid);
 
-    // Update per-VT focus for the dead window's VT
+    // Update per-VT focus for the dead window's VT — pick topmost in z_order
     if (dead_vt < VTERM_COUNT && focused_per_vt[dead_vt] == wid) {
         focused_per_vt[dead_vt] = INVALID_WID;
-        for (pt::uint32_t i = MAX_WINDOWS; i-- > 0; ) {
+        for (pt::uint32_t zi = z_count; zi-- > 0; ) {
+            pt::uint32_t i = z_order[zi];
             if (windows[i].active && !windows[i].chromeless && windows[i].vt_id == dead_vt) {
                 focused_per_vt[dead_vt] = i;
                 break;
@@ -485,6 +525,27 @@ void WindowManager::put_char(pt::uint32_t wid, char c)
     }
 }
 
+void WindowManager::raise_window(pt::uint32_t wid)
+{
+    if (wid >= MAX_WINDOWS || !windows[wid].active) return;
+    if (windows[wid].chromeless) return;
+    if (!is_on_active_vt(wid)) return;
+    // Already at top?
+    if (z_count > 0 && z_order[z_count - 1] == wid) return;
+
+    z_remove(wid);
+    z_insert_top(wid);
+
+    // Restore background behind this window's rect, then redraw all chrome in Z-order
+    Framebuffer* fb = Framebuffer::get_instance();
+    if (fb) {
+        Window* win = &windows[wid];
+        fb->RestoreBackground(win->screen_x, win->screen_y,
+                              win->total_w, win->total_h);
+    }
+    redraw_all_chrome();
+}
+
 void WindowManager::set_focus(pt::uint32_t wid)
 {
     // INVALID_WID means "unfocus all" — click on the desktop.
@@ -500,6 +561,10 @@ void WindowManager::set_focus(pt::uint32_t wid)
     if (wid >= MAX_WINDOWS || !windows[wid].active) return;
     if (windows[wid].chromeless) return;  // background widgets are not focusable
     if (!is_on_active_vt(wid)) return;    // reject windows on other VTs
+
+    // Always raise on click, even if already focused
+    raise_window(wid);
+
     if (focused_id == wid) return;
 
     if (focused_id != INVALID_WID)
@@ -516,7 +581,9 @@ pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
     if (px < 0 || py < 0) return INVALID_WID;
     pt::uint32_t ux = (pt::uint32_t)px;
     pt::uint32_t uy = (pt::uint32_t)py;
-    for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {
+    // Iterate front-to-back (topmost window first)
+    for (pt::uint32_t zi = z_count; zi-- > 0; ) {
+        pt::uint32_t i = z_order[zi];
         Window* w = &windows[i];
         if (!w->active) continue;
         if (!is_on_active_vt(i)) continue;
@@ -529,7 +596,9 @@ pt::uint32_t WindowManager::window_at(pt::int16_t px, pt::int16_t py)
 
 void WindowManager::redraw_all_chrome()
 {
-    for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {
+    // Iterate back-to-front so frontmost chrome draws last (on top)
+    for (pt::uint32_t zi = 0; zi < z_count; zi++) {
+        pt::uint32_t i = z_order[zi];
         if (windows[i].active && !windows[i].chromeless && is_on_active_vt(i))
             draw_chrome(i, focused_id == i);
     }
@@ -589,6 +658,29 @@ void WindowManager::move_window(pt::uint32_t wid, pt::int32_t new_x, pt::int32_t
     win->text_col = 0;
     win->text_row = 0;
     win->wrap_pending = false;
+
+    // Redraw all chrome in Z-order (move may have uncovered other windows)
+    redraw_all_chrome();
+}
+
+pt::uint32_t WindowManager::list_windows(WinListEntry* buf, pt::uint32_t max_entries)
+{
+    pt::uint32_t count = 0;
+    for (pt::uint32_t i = 0; i < MAX_WINDOWS && count < max_entries; i++) {
+        if (!windows[i].active) continue;
+        if (windows[i].chromeless) continue;
+        buf[count].wid = (pt::uint8_t)i;
+        buf[count].flags = (focused_id == i) ? 1 : 0;
+        // Copy title
+        pt::uint32_t j = 0;
+        while (j < 29 && windows[i].title[j]) {
+            buf[count].title[j] = windows[i].title[j];
+            j++;
+        }
+        buf[count].title[j] = '\0';
+        count++;
+    }
+    return count;
 }
 
 void wm_route_key_event(pt::uint64_t encoded_event)
