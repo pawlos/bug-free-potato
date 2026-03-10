@@ -291,7 +291,7 @@ void vterm_switch(pt::uint32_t vt_id) {
     g_active_vt = vt_id;
     // Clear entire screen, redraw text + windows for new VT
     Framebuffer* fb = Framebuffer::get_instance();
-    if (fb) fb->Clear(0, 0, 0);
+    if (fb) fb->RestoreBackground(0, 0, fb->get_width(), fb->get_height());
     g_vterms[vt_id].redraw();
     WindowManager::on_vt_switch();
 }

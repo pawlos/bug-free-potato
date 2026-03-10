@@ -85,6 +85,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 
     // Display
     Framebuffer::Init(boot_fb);
+    Framebuffer::get_instance()->InitBackBuffer();
     if (FontData && FontDataSize > 0) {
         if (fbterm.init(FontData, FontDataSize, Framebuffer::get_instance()))
             klog("[MAIN] Framebuffer terminal ready\n");
@@ -111,6 +112,9 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
         const pt::uint32_t center_y = (boot_fb->framebuffer_height - img_height) / 2;
         Framebuffer::get_instance()->Draw(PotatoLogo, center_x, center_y, img_width, img_height);
     }
+
+    // Snapshot desktop as background layer (logo + initial UI preserved)
+    Framebuffer::get_instance()->SnapshotBackground();
 
     // Shell loop
     terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);

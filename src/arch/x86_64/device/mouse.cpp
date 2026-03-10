@@ -5,15 +5,6 @@
 #include "window.h"
 
 
-void DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
-{
-    Framebuffer::get_instance()->DrawCursor(x_pos, y_pos);
-}
-
-void EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos)
-{
-    Framebuffer::get_instance()->EraseCursor(x_pos, y_pos);
-}
 
 void mouse_wait(const pt::uint8_t type)
 {
@@ -114,6 +105,9 @@ bool get_mouse_event(MouseEvent* out) {
 }
 
 static bool prev_left_button = false;
+static pt::uint32_t drag_wid = INVALID_WID;
+static pt::int32_t drag_off_x = 0;
+static pt::int32_t drag_off_y = 0;
 
 void mouse_routine(const pt::int8_t mouse_byte[])
 {
@@ -131,7 +125,6 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     mouse_event_buf[mouse_write_pos % MOUSE_BUF_SIZE] = ev;
     mouse_write_pos++;
 
-    EraseCursor(mouse.pos_x, mouse.pos_y);
     pt::int16_t newPosX = mouse.pos_x + mouse_x;
     if (newPosX < -(CURSOR_WIDTH - MIN_CURSOR_VISIBLE))
         newPosX = -(CURSOR_WIDTH - MIN_CURSOR_VISIBLE);
@@ -149,13 +142,30 @@ void mouse_routine(const pt::int8_t mouse_byte[])
     mouse.pos_y = newPosY;
     mouse.left_button_pressed = left_button_pressed;
     mouse.right_button_pressed = right_button_pressed;
-    DrawCursor(mouse.pos_x, mouse.pos_y);
+    Framebuffer::get_instance()->set_cursor_pos(mouse.pos_x, mouse.pos_y, true);
 
-    // Click-to-focus: detect left-button press edge (rising edge only)
-    bool left_clicked = left_button_pressed && !prev_left_button;
+    // Drag and click-to-focus logic
+    bool left_clicked  = left_button_pressed && !prev_left_button;
+    bool left_released = !left_button_pressed && prev_left_button;
     prev_left_button = left_button_pressed;
+
     if (left_clicked) {
         pt::uint32_t hit = WindowManager::window_at(mouse.pos_x, mouse.pos_y);
-        WindowManager::set_focus(hit);  // INVALID_WID clears focus (desktop click)
+        WindowManager::set_focus(hit);
+        // Check if click is on title bar → start drag
+        if (hit != INVALID_WID && WindowManager::hit_title_bar(hit, mouse.pos_x, mouse.pos_y)) {
+            Window* w = WindowManager::get_window(hit);
+            if (w) {
+                drag_wid   = hit;
+                drag_off_x = mouse.pos_x - (pt::int32_t)w->screen_x;
+                drag_off_y = mouse.pos_y - (pt::int32_t)w->screen_y;
+            }
+        }
+    } else if (left_released) {
+        drag_wid = INVALID_WID;
+    } else if (left_button_pressed && drag_wid != INVALID_WID) {
+        pt::int32_t nx = mouse.pos_x - drag_off_x;
+        pt::int32_t ny = mouse.pos_y - drag_off_y;
+        WindowManager::move_window(drag_wid, nx, ny);
     }
 }

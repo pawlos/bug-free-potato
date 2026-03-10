@@ -10,12 +10,25 @@ void Framebuffer::Init(const boot_framebuffer *fb) {
     buffer = Framebuffer{fb};
 }
 
+void Framebuffer::InitBackBuffer() {
+    pt::size_t size = (pt::size_t)m_stride * m_height;
+    void* buf = vmm.kmalloc(size);
+    if (!buf) kernel_panic("Can't allocate back buffer!", NotAbleToAllocateMemory);
+    m_back = reinterpret_cast<pt::uintptr_t>(buf);
+    // Copy current VRAM contents to back buffer so we start in sync
+    pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_back);
+    pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_addr);
+    pt::size_t qwords = size / 8;
+    for (pt::size_t i = 0; i < qwords; i++)
+        dst[i] = src[i];
+    m_dirty = false;
+}
 
 void Framebuffer::Draw(const pt::uint8_t* what,
                        const pt::uint32_t x_pos,
                        const pt::uint32_t y_pos,
                        const pt::uint32_t width,
-                       const pt::uint32_t height) const {
+                       const pt::uint32_t height) {
     for (pt::uint32_t y = y_pos; y < y_pos + height; y++)
     {
         for (pt::uint32_t x = x_pos; x < x_pos + width ; x++)
@@ -34,22 +47,25 @@ void Framebuffer::Draw(const pt::uint8_t* what,
 void Framebuffer::PutPixel(
     const pt::uint32_t x,
     const pt::uint32_t y,
-    const pt::uint32_t color) const {
-        const pt::uintptr_t fb_addr   = this->m_addr;
+    const pt::uint32_t color) {
+        if (x >= m_width || y >= m_height) return;
+        const pt::uintptr_t fb_addr = m_back ? m_back : m_addr;
         const pt::uint32_t  fb_stride = this->m_stride;
         const pt::uint8_t   fb_bytes  = this->m_bpp / 8;
         *reinterpret_cast<pt::uint32_t *>(fb_addr + x * fb_bytes + y * fb_stride) = color;
+        m_dirty = true;
 }
 
 pt::uint32_t Framebuffer::GetPixel(
     const pt::uint32_t x,
     const pt::uint32_t y) const {
-        const pt::uintptr_t fb_addr   = this->m_addr;
+        const pt::uintptr_t fb_addr = m_back ? m_back : m_addr;
         const pt::uint32_t  fb_stride = this->m_stride;
         const pt::uint8_t   fb_bytes  = this->m_bpp / 8;
         return *reinterpret_cast<pt::uint32_t *>(fb_addr + x * fb_bytes + y * fb_stride);
 }
 
+// ── Cursor mask ─────────────────────────────────────────────────────────
 constexpr pt::uint16_t cursor_size = 256;
 constexpr pt::uint8_t cursor_width = 16;
 constexpr pt::uint8_t normal_cursor_mask[cursor_size] = {
@@ -70,46 +86,97 @@ constexpr pt::uint8_t normal_cursor_mask[cursor_size] = {
     0,0,0,0,0,0,0,0,0,0,2,1,2,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0
 };
-static bool captured = false;
-static pt::uint64_t prevPixel[cursor_size] = {};
-void Framebuffer::DrawCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos) const {
-    if (!captured) captured = true;
 
-    for (pt::uint8_t i = 0; i < cursor_width; i++) {
-        for (pt::uint8_t j = 0; j < cursor_width; j++) {
-            if (y_pos + i >= this->m_height) { continue; }
-            if (x_pos + j >= this->m_width) { continue; }
-            const int pos = i*cursor_width+j;
-            prevPixel[pos] = this->GetPixel(x_pos+j, y_pos+i);
-            if (normal_cursor_mask[pos] != 0) {
-                pt::uint32_t color = normal_cursor_mask[pos] == 1 ? 0xffffff : 0x808080;
-                this->PutPixel(x_pos+j, y_pos+i, color);
-            }
-        }
+void Framebuffer::SnapshotBackground() {
+    pt::size_t size = (pt::size_t)m_stride * m_height;
+    if (!m_bg) {
+        void* buf = vmm.kmalloc(size);
+        if (!buf) kernel_panic("Can't allocate background buffer!", NotAbleToAllocateMemory);
+        m_bg = reinterpret_cast<pt::uintptr_t>(buf);
     }
+    // Copy back buffer to background buffer
+    pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_bg);
+    pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back ? m_back : m_addr);
+    pt::size_t qwords = size / 8;
+    for (pt::size_t i = 0; i < qwords; i++)
+        dst[i] = src[i];
 }
 
-void Framebuffer::EraseCursor(const pt::uint32_t x_pos, const pt::uint32_t y_pos) const {
-    if (!captured) return;
-    for (pt::uint8_t i = 0; i < cursor_width; i++) {
-        for (pt::uint8_t j = 0; j < cursor_width; j++) {
-            if (y_pos + i >= this->m_height) { continue; }
-            if (x_pos + j >= this->m_width) { continue; }
-            const int pos = i*cursor_width+j;
-            this->PutPixel((x_pos+j), (y_pos+i), prevPixel[pos]);
+void Framebuffer::RestoreBackground(pt::uint32_t x, pt::uint32_t y,
+                                     pt::uint32_t w, pt::uint32_t h) {
+    if (!m_bg) {
+        // No background snapshot — fall back to black
+        FillRect(x, y, w, h, 0, 0, 0);
+        return;
+    }
+    const pt::uintptr_t base_dst = m_back ? m_back : m_addr;
+    const pt::uint32_t fb_bytes = m_bpp / 8;
+    // Clamp to screen bounds
+    if (x >= m_width || y >= m_height) return;
+    if (x + w > m_width)  w = m_width - x;
+    if (y + h > m_height) h = m_height - y;
+    pt::size_t row_copy_bytes = (pt::size_t)w * fb_bytes;
+    for (pt::uint32_t row = y; row < y + h; row++) {
+        pt::uint8_t* src = reinterpret_cast<pt::uint8_t*>(m_bg     + row * m_stride + x * fb_bytes);
+        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(base_dst + row * m_stride + x * fb_bytes);
+        for (pt::size_t i = 0; i < row_copy_bytes; i++)
+            dst[i] = src[i];
+    }
+    m_dirty = true;
+}
+
+void Framebuffer::set_cursor_pos(pt::int16_t x, pt::int16_t y, bool visible) {
+    m_cursor_x = x;
+    m_cursor_y = y;
+    m_cursor_visible = visible;
+    m_dirty = true;
+}
+
+void Framebuffer::Flush() {
+    if (!m_dirty) return;
+    if (!m_back) return;
+    m_dirty = false;
+
+    const pt::uint32_t fb_bytes = m_bpp / 8;
+    const pt::size_t row_bytes = (pt::size_t)m_width * fb_bytes;
+
+    // Copy back buffer to VRAM row by row (using 64-bit copies)
+    for (pt::uint32_t y = 0; y < m_height; y++) {
+        pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back + y * m_stride);
+        pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_addr + y * m_stride);
+        pt::size_t qwords = row_bytes / 8;
+        for (pt::size_t i = 0; i < qwords; i++)
+            dst[i] = src[i];
+    }
+
+    // Composite cursor on top of VRAM (not into back buffer)
+    if (m_cursor_visible) {
+        for (pt::uint8_t i = 0; i < cursor_width; i++) {
+            for (pt::uint8_t j = 0; j < cursor_width; j++) {
+                pt::int32_t px = (pt::int32_t)m_cursor_x + j;
+                pt::int32_t py = (pt::int32_t)m_cursor_y + i;
+                if (px < 0 || py < 0) continue;
+                if ((pt::uint32_t)px >= m_width || (pt::uint32_t)py >= m_height) continue;
+                const int pos = i * cursor_width + j;
+                if (normal_cursor_mask[pos] != 0) {
+                    pt::uint32_t color = normal_cursor_mask[pos] == 1 ? 0xffffff : 0x808080;
+                    *reinterpret_cast<pt::uint32_t*>(m_addr + (pt::uint32_t)px * fb_bytes + (pt::uint32_t)py * m_stride) = color;
+                }
+            }
         }
     }
 }
 
 void Framebuffer::ScrollRegionUp(const pt::uint32_t x, const pt::uint32_t y,
                                  const pt::uint32_t w, const pt::uint32_t h,
-                                 const pt::uint32_t pixels) const {
+                                 const pt::uint32_t pixels) {
+    const pt::uintptr_t base = m_back ? m_back : m_addr;
     const pt::uint32_t fb_bytes = m_bpp / 8;
     // Copy rows upward one at a time
     for (pt::uint32_t src_row = y + pixels; src_row < y + h && src_row < m_height; src_row++) {
         const pt::uint32_t dst_row = src_row - pixels;
-        pt::uint8_t* src = reinterpret_cast<pt::uint8_t*>(m_addr + src_row * m_stride + x * fb_bytes);
-        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(m_addr + dst_row * m_stride + x * fb_bytes);
+        pt::uint8_t* src = reinterpret_cast<pt::uint8_t*>(base + src_row * m_stride + x * fb_bytes);
+        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(base + dst_row * m_stride + x * fb_bytes);
         for (pt::uint32_t i = 0; i < w * fb_bytes; i++)
             dst[i] = src[i];
     }
@@ -122,7 +189,7 @@ void Framebuffer::ScrollRegionUp(const pt::uint32_t x, const pt::uint32_t y,
 
 void Framebuffer::FillRect(const pt::uint32_t x, const pt::uint32_t y,
                            const pt::uint32_t w, const pt::uint32_t h,
-                           const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) const {
+                           const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) {
     const pt::uint32_t color = static_cast<pt::uint32_t>(r) << 16
                              | static_cast<pt::uint32_t>(g) << 8
                              | static_cast<pt::uint32_t>(b);
@@ -131,7 +198,7 @@ void Framebuffer::FillRect(const pt::uint32_t x, const pt::uint32_t y,
             this->PutPixel(col, row, color);
 }
 
-void Framebuffer::Clear(const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) const {
+void Framebuffer::Clear(const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) {
     const pt::uint32_t  fb_width  = this->m_width;
     const pt::uint32_t  fb_height  = this->m_height;
     const pt::uint32_t c =  r << 16
@@ -142,5 +209,14 @@ void Framebuffer::Clear(const pt::uint8_t r, const pt::uint8_t g, const pt::uint
         for (pt::uint32_t x = 0; x < fb_width ; x++) {
             this->PutPixel(x, y, c);
         }
+    }
+    // Sync background buffer so restored areas use the new solid color
+    if (m_bg && m_back) {
+        pt::size_t size = (pt::size_t)m_stride * m_height;
+        pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_bg);
+        pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back);
+        pt::size_t qwords = size / 8;
+        for (pt::size_t i = 0; i < qwords; i++)
+            dst[i] = src[i];
     }
 }

@@ -135,12 +135,12 @@ void WindowManager::destroy_window(pt::uint32_t wid)
     pt::uint32_t dead_vt = win->vt_id;
     bool visible = is_on_active_vt(wid);
 
-    // Erase chrome + client area from screen (only if on active VT)
+    // Restore background behind window (only if on active VT)
     if (visible) {
         Framebuffer* fb = Framebuffer::get_instance();
         if (fb)
-            fb->FillRect(win->screen_x, win->screen_y,
-                         win->total_w, win->total_h, 0, 0, 0);
+            fb->RestoreBackground(win->screen_x, win->screen_y,
+                                  win->total_w, win->total_h);
     }
 
     win->active        = false;
@@ -533,6 +533,62 @@ void WindowManager::redraw_all_chrome()
         if (windows[i].active && !windows[i].chromeless && is_on_active_vt(i))
             draw_chrome(i, focused_id == i);
     }
+}
+
+bool WindowManager::hit_title_bar(pt::uint32_t wid, pt::int16_t px, pt::int16_t py)
+{
+    if (wid >= MAX_WINDOWS) return false;
+    Window* w = &windows[wid];
+    if (!w->active || w->chromeless) return false;
+    pt::uint32_t ux = (pt::uint32_t)px;
+    pt::uint32_t uy = (pt::uint32_t)py;
+    return ux >= w->screen_x + BORDER_W &&
+           ux <  w->screen_x + w->total_w - BORDER_W &&
+           uy >= w->screen_y + BORDER_W &&
+           uy <  w->screen_y + BORDER_W + TITLE_BAR_H;
+}
+
+void WindowManager::move_window(pt::uint32_t wid, pt::int32_t new_x, pt::int32_t new_y)
+{
+    if (wid >= MAX_WINDOWS) return;
+    Window* win = &windows[wid];
+    if (!win->active || win->chromeless) return;
+    if (!is_on_active_vt(wid)) return;
+
+    Framebuffer* fb = Framebuffer::get_instance();
+    if (!fb) return;
+
+    // Clamp so the window stays on-screen (at least title bar visible)
+    pt::int32_t min_x = -(pt::int32_t)(win->total_w - BORDER_W - 32);
+    pt::int32_t min_y = 0;
+    pt::int32_t max_x = (pt::int32_t)fb->get_width() - 32;
+    pt::int32_t max_y = (pt::int32_t)fb->get_height() - BORDER_W - TITLE_BAR_H;
+    if (new_x < min_x) new_x = min_x;
+    if (new_x > max_x) new_x = max_x;
+    if (new_y < min_y) new_y = min_y;
+    if (new_y > max_y) new_y = max_y;
+
+    // Restore background behind old position
+    fb->RestoreBackground(win->screen_x, win->screen_y,
+                          win->total_w, win->total_h);
+
+    // Update position (screen_x/y is the outer frame origin)
+    win->screen_x = (pt::uint32_t)new_x;
+    win->screen_y = (pt::uint32_t)new_y;
+    win->client_ox = win->screen_x + BORDER_W;
+    win->client_oy = win->screen_y + BORDER_W + TITLE_BAR_H;
+
+    // Redraw chrome at new position
+    draw_chrome(wid, is_focused(wid));
+
+    // Fill client area with bg color so it's clean for app to redraw
+    fb->FillRect(win->client_ox, win->client_oy,
+                 win->client_w, win->client_h, 0, 0, 0);
+
+    // Reset text cursor — old content is gone, start fresh
+    win->text_col = 0;
+    win->text_row = 0;
+    win->wrap_pending = false;
 }
 
 void wm_route_key_event(pt::uint64_t encoded_event)

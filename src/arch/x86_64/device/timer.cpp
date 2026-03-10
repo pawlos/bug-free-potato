@@ -3,6 +3,7 @@
 #include "io.h"
 #include "virtual.h"
 #include "vterm.h"
+#include "framebuffer.h"
 
 extern VMM vmm;
 
@@ -135,6 +136,9 @@ void timer_tick()
 {
 	ticks++;
 	check_timers();
+	// Flush back buffer to VRAM (composites cursor on top)
+	Framebuffer* fb = Framebuffer::get_instance();
+	if (fb) fb->Flush();
 	// Scheduling is handled by irq0_schedule in idt.cpp, not here.
 }
 

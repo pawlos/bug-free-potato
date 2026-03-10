@@ -104,6 +104,8 @@ public:
     static bool        is_on_active_vt(pt::uint32_t wid);
     static void        on_vt_switch();  // called by vterm_switch()
     static void        draw_chrome(pt::uint32_t wid, bool active);
+    static void        move_window(pt::uint32_t wid, pt::int32_t new_x, pt::int32_t new_y);
+    static bool        hit_title_bar(pt::uint32_t wid, pt::int16_t px, pt::int16_t py);
 
 private:
     static Window windows[MAX_WINDOWS];
