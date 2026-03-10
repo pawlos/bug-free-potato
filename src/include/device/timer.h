@@ -27,3 +27,5 @@ void check_timers();
 void timer_list_all();
 // Called by irq0_schedule; increments ticks and fires callbacks (no scheduler call).
 void timer_tick();
+// Enable framebuffer flush in timer_tick (call after Framebuffer is fully initialized).
+void enable_fb_flush();

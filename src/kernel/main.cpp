@@ -40,7 +40,12 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 
     auto bi = BootInfo(boot_info);
     panic_set_elf_symbols(bi.get_elf_symbols());
-    const auto boot_fb = bi.get_framebuffer();
+
+    // Copy framebuffer info onto the stack NOW — the multiboot2 data lives in
+    // memory that the VMM will treat as free once it initialises the heap.
+    const auto boot_fb_ptr = bi.get_framebuffer();
+    boot_framebuffer saved_fb = *boot_fb_ptr;
+    const boot_framebuffer* boot_fb = &saved_fb;
 
     // Hardware init
     init_mouse(boot_fb->framebuffer_width, boot_fb->framebuffer_height);
@@ -86,6 +91,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     // Display
     Framebuffer::Init(boot_fb);
     Framebuffer::get_instance()->InitBackBuffer();
+    enable_fb_flush();
     if (FontData && FontDataSize > 0) {
         if (fbterm.init(FontData, FontDataSize, Framebuffer::get_instance()))
             klog("[MAIN] Framebuffer terminal ready\n");

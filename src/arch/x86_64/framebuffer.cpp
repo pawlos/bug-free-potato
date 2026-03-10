@@ -133,8 +133,8 @@ void Framebuffer::set_cursor_pos(pt::int16_t x, pt::int16_t y, bool visible) {
 }
 
 void Framebuffer::Flush() {
+    if (!m_back || !m_addr || !m_width) return;
     if (!m_dirty) return;
-    if (!m_back) return;
     m_dirty = false;
 
     const pt::uint32_t fb_bytes = m_bpp / 8;

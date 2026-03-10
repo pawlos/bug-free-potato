@@ -132,13 +132,19 @@ void check_timers()
 	}
 }
 
+static bool fb_flush_enabled = false;
+
+void enable_fb_flush() { fb_flush_enabled = true; }
+
 void timer_tick()
 {
 	ticks++;
 	check_timers();
 	// Flush back buffer to VRAM (composites cursor on top)
-	Framebuffer* fb = Framebuffer::get_instance();
-	if (fb) fb->Flush();
+	if (fb_flush_enabled) {
+		Framebuffer* fb = Framebuffer::get_instance();
+		if (fb) fb->Flush();
+	}
 	// Scheduling is handled by irq0_schedule in idt.cpp, not here.
 }
 

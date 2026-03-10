@@ -48,6 +48,7 @@ SECTIONS
 
     .bss ALIGN(0x1000) (NOLOAD) :
     {
+        _bss_start = .;
         *(.bss)
         *(COMMON)
         _end = .;

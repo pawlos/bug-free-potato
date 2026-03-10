@@ -1,5 +1,6 @@
 global long_mode_start
 extern kernel_main, _syscall_stub
+extern _bss_start, _end
 
 section .boot_text
 bits 64
@@ -14,6 +15,14 @@ long_mode_start:
 	mov es, ax
 	mov fs, ax
 	mov gs, ax
+
+	; Zero the .bss section (NOLOAD — not zeroed by GRUB)
+	mov rdi, _bss_start
+	mov rcx, _end
+	sub rcx, rdi
+	shr rcx, 3            ; count in qwords
+	xor rax, rax
+	rep stosq
 
 	pop rdi
 	; rdi - pointer to boot_info; rsi - pointer to l4_page_table
