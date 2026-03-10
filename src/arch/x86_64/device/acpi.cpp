@@ -50,7 +50,7 @@ ACPI_FADT* ACPI::find_fadt(ACPI_RSDP* rsdp)
 
     // Get RSDT address from RSDP
     pt::uint32_t rsdt_addr = rsdp->rsdt_address;
-    ACPI_SDT_Header* rsdt = (ACPI_SDT_Header*)rsdt_addr;
+    ACPI_SDT_Header* rsdt = (ACPI_SDT_Header*)(pt::uintptr_t)rsdt_addr;
 
     klog("[ACPI] RSDT at %x\n", rsdt_addr);
 
@@ -68,7 +68,7 @@ ACPI_FADT* ACPI::find_fadt(ACPI_RSDP* rsdp)
 
     for (pt::uint32_t i = 0; i < num_entries; i++)
     {
-        ACPI_SDT_Header* header = (ACPI_SDT_Header*)entries[i];
+        ACPI_SDT_Header* header = (ACPI_SDT_Header*)(pt::uintptr_t)entries[i];
 
         if (header->signature[0] == 'F' && header->signature[1] == 'A' &&
             header->signature[2] == 'D' && header->signature[3] == 'T')

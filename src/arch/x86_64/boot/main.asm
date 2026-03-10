@@ -142,7 +142,7 @@ error:
     mov byte  [0xb800a], al
     hlt
 
-section .boot_bss
+section .boot_bss nobits
 align 4096
 page_table_l4:  resb 4096
 align 4096

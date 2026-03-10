@@ -161,11 +161,11 @@ void Shell::print_history() {
     }
 }
 
-void Shell::execute_mem(const char* cmd) {
+void Shell::execute_mem(const char*) {
     vterm_printf("Free memory: %l\n", vmm.memsize());
 }
 
-void Shell::execute_ticks(const char* cmd) {
+void Shell::execute_ticks(const char*) {
     vterm_printf("Ticks: %l\n", get_ticks());
 }
 
@@ -184,11 +184,11 @@ void Shell::execute_alloc(const char* cmd) {
     vterm_printf("Freed successfully\n");
 }
 
-void Shell::execute_clear_color(const char* cmd, pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) {
+void Shell::execute_clear_color(const char*, pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) {
     Framebuffer::get_instance()->Clear(r, g, b);
 }
 
-void Shell::execute_vmm(const char* cmd) {
+void Shell::execute_vmm(const char*) {
     auto *pml4 = reinterpret_cast<pt::uint64_t *>(vmm.GetPageTableL3());
     vterm_printf("Paging struct at address: %x\n", pml4);
     for (int i = 0; i < 512; i++) {
@@ -198,7 +198,7 @@ void Shell::execute_vmm(const char* cmd) {
     }
 }
 
-void Shell::execute_pci(const char* cmd) {
+void Shell::execute_pci(const char*) {
     const auto devices = pci::enumerate();
     auto device = devices;
     while (device != nullptr && device->vendor_id != 0xffff)
@@ -293,7 +293,7 @@ void Shell::execute_map(const char* cmd) {
     }
 }
 
-void Shell::execute_history(const char* cmd) {
+void Shell::execute_history(const char*) {
     print_history();
 }
 
@@ -372,7 +372,7 @@ void Shell::execute_ls(const char* cmd) {
     VFS::list_directory(dir_path);
 }
 
-void Shell::execute_disk(const char* cmd) {
+void Shell::execute_disk(const char*) {
     if (Disk::is_present()) {
         vterm_printf("Disk present: %d sectors (%d MB)\n",
              Disk::get_sector_count(),
@@ -434,14 +434,14 @@ void Shell::execute_cat(const char* cmd) {
     }
 }
 
-void Shell::execute_shutdown(const char* cmd) {
+void Shell::execute_shutdown(const char*) {
     vterm_printf("Shutting down...\n");
     ACPI::shutdown();
     // If we reach here, the system didn't shut down
     vterm_printf("Shutdown failed\n");
 }
 
-void Shell::execute_reboot(const char* cmd) {
+void Shell::execute_reboot(const char*) {
     vterm_printf("Rebooting...\n");
     ACPI::reboot();
     // If we reach here, the system didn't reboot
@@ -508,7 +508,7 @@ void Shell::execute_task(const char* cmd) {
     vterm_printf("Usage: task [create|map [id]]\n");
 }
 
-void Shell::execute_help(const char* cmd) {
+void Shell::execute_help(const char*) {
     print_help();
 }
 
@@ -890,12 +890,12 @@ void Shell::execute_neofetch(const char* cmd) {
     vterm_printf("                 Shell: potatOS sh\n");
 }
 
-void Shell::execute_clear(const char* cmd) {
+void Shell::execute_clear(const char*) {
     // Clear command - clear the screen to black
     Framebuffer::get_instance()->Clear(0, 0, 0);
 }
 
-void Shell::execute_timers(const char* cmd) {
+void Shell::execute_timers(const char*) {
     // Timers command - list all active timers
     timer_list_all();
 }

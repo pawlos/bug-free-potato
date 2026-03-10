@@ -3,8 +3,8 @@
 #include "virtual.h"
 
 pt::uint32_t pciConfigReadDWord(const pt::uint8_t bus, const pt::uint8_t slot, const pt::uint8_t func, const pt::uint8_t offset) {
-  const auto address = bus << 16 | slot << 11 |
-                       func << 8 | offset & 0xFC | 0x80000000;
+  const auto address = (bus << 16) | (slot << 11) |
+                       (func << 8) | (offset & 0xFC) | 0x80000000;
 
   // Write out the address
   IO::outd(0xCF8, address);
@@ -12,8 +12,8 @@ pt::uint32_t pciConfigReadDWord(const pt::uint8_t bus, const pt::uint8_t slot, c
 }
 
 void pciConfigWriteDWord(const pt::uint8_t bus, const pt::uint8_t slot, const pt::uint8_t func, const pt::uint8_t offset, pt::uint32_t value) {
-  const auto address = bus << 16 | slot << 11 |
-                       func << 8 | offset & 0xFC | 0x80000000;
+  const auto address = (bus << 16) | (slot << 11) |
+                       (func << 8) | (offset & 0xFC) | 0x80000000;
   IO::outd(0xCF8, address);
   IO::outd(0xCFC, value);
 }
@@ -47,7 +47,7 @@ pci_device* pci::enumerate()
   int offset = 0;
   for (pt::uint16_t bus = 0; bus < 256; bus++) {
     for (pt::uint8_t device = 0; device < 32; device++) {
-      const pci_query query = {bus, device};
+      const pci_query query = {bus, device, 0};
       if (check_device(device_instance + offset, query)) {
         offset++;
       }

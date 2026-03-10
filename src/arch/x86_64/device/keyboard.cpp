@@ -80,6 +80,8 @@ void keyboard_log(const char *str, ...) {
 	va_start(arg_ptr, str);
 	debug.print_str(str, arg_ptr);
 	va_end(arg_ptr);
+#else
+	(void)str;
 #endif
 }
 
