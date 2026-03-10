@@ -17,8 +17,8 @@ FILE *stderr = &_stderr_impl;
 
 /* ── file pool ───────────────────────────────────────────────────────────── */
 /* Max open FILE* (beyond the 3 predefined streams).
-   Keep this low — the kernel allows MAX_FDS=8 per task. */
-#define FOPEN_MAX_USER 12
+   Keep in sync with kernel Task::MAX_FDS (currently 32). */
+#define FOPEN_MAX_USER 24
 
 static FILE  _file_pool[FOPEN_MAX_USER];
 static int   _file_used[FOPEN_MAX_USER];  /* 0 = free */

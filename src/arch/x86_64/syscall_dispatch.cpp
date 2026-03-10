@@ -122,11 +122,11 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
-				klog("syscall: SYS_OPEN: no free fd\n");
+				klog("syscall: SYS_OPEN: no free fd (task %d '%s')\n", t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
 			if (!VFS::open_file(filename, &t->fd_table[fd])) {
-				klog("syscall: SYS_OPEN: '%s' not found\n", filename);
+				klog("syscall: SYS_OPEN: '%s' not found (task %d '%s')\n", filename, t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
 			t->fd_table[fd].type = FdType::FILE;
@@ -228,7 +228,13 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_GET_TIME: {
 			RTCTime t;
 			rtc_read(&t);
-			return ((pt::uint64_t)t.hours << 8) | t.minutes;
+			// Byte layout: [31:24]=year-2000 [23:16]=month [15:8]=hours [7:0]=minutes
+			// Day in bits [35:32] (next nibble above year)
+			return ((pt::uint64_t)t.day << 32)
+			     | ((pt::uint64_t)(t.year - 2000) << 24)
+			     | ((pt::uint64_t)t.month << 16)
+			     | ((pt::uint64_t)t.hours << 8)
+			     | t.minutes;
 		}
 		case SYS_FILL_RECT: {
 			Framebuffer* fb = Framebuffer::get_instance();
@@ -454,7 +460,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
-				klog("syscall: SYS_CREATE: no free fd\n");
+				klog("syscall: SYS_CREATE: no free fd (task %d '%s')\n", t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
 			if (!VFS::open_file_write(filename, &t->fd_table[fd])) {

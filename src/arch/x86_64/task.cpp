@@ -237,9 +237,8 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->priority       = 1;  // normal priority by default
     new_task->remaining_ticks = SCHEDULER_QUANTUM;
 
-    // Reset per-task file descriptor table for this slot.
-    for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
-        new_task->fd_table[i].open = false;
+    // Allocate per-task file descriptor table on the heap.
+    new_task->fd_table = static_cast<File*>(vmm.kcalloc(Task::MAX_FDS * sizeof(File)));
 
     // Give the new task a clean FPU/SSE state (copy of post-fninit snapshot).
     memcpy(new_task->fxsave_area, default_fxsave, 512);
@@ -527,9 +526,13 @@ void TaskScheduler::kill_user_tasks()
 
         klog("[SCHEDULER] kill_user_tasks: killing task %d\n", i);
 
-        // Close any open file descriptors.
-        for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
-            close_fd(&t->fd_table[fd]);
+        // Close any open file descriptors and free the table.
+        if (t->fd_table) {
+            for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
+                close_fd(&t->fd_table[fd]);
+            vmm.kfree(t->fd_table);
+            t->fd_table = nullptr;
+        }
 
         // Destroy window if task owns one.
         if (t->window_id != INVALID_WID && t->owns_window) {
@@ -569,9 +572,13 @@ bool TaskScheduler::kill_task(pt::uint32_t pid)
 
     klog("[SCHEDULER] kill_task: killing task %d\n", pid);
 
-    // Close any open file descriptors.
-    for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
-        close_fd(&t->fd_table[fd]);
+    // Close any open file descriptors and free the table.
+    if (t->fd_table) {
+        for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
+            close_fd(&t->fd_table[fd]);
+        vmm.kfree(t->fd_table);
+        t->fd_table = nullptr;
+    }
 
     // Destroy window if task owns one.
     if (t->window_id != INVALID_WID && t->owns_window) {
@@ -874,8 +881,12 @@ void TaskScheduler::task_exit(int exit_code)
         current->exit_code = exit_code;
 
         // Close any file descriptors left open by this task.
-        for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
-            close_fd(&current->fd_table[i]);
+        if (current->fd_table) {
+            for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+                close_fd(&current->fd_table[i]);
+            vmm.kfree(current->fd_table);
+            current->fd_table = nullptr;
+        }
 
         // Free the user execution stack eagerly (safe here; we're about to
         // switch away and will never return to user_rsp).
@@ -1134,9 +1145,12 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     // Inherit parent's FPU/SSE state so the child resumes with valid x87/SSE context.
     memcpy(child->fxsave_area, parent->fxsave_area, 512);
 
-    // Copy open file descriptors (shallow copy — positions are independent).
-    for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
-        child->fd_table[i] = parent->fd_table[i];
+    // Allocate and copy open file descriptors (shallow copy — positions are independent).
+    child->fd_table = static_cast<File*>(vmm.kcalloc(Task::MAX_FDS * sizeof(File)));
+    if (parent->fd_table) {
+        for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+            child->fd_table[i] = parent->fd_table[i];
+    }
 
     // Increment ref_count for every pipe FD inherited by the child so that
     // each end is closed independently without premature buffer freeing.

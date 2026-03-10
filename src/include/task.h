@@ -35,7 +35,7 @@ struct TaskContext {
 
 // Task control block
 struct Task {
-    static constexpr pt::size_t MAX_FDS = 16;
+    static constexpr pt::size_t MAX_FDS = 32;
 
     pt::uint32_t id;
     TaskState state;
@@ -59,7 +59,8 @@ struct Task {
     // 0 for kernel-mode tasks.
     pt::uintptr_t user_stack_base;
     // Per-task open file descriptors.  slot.open==false means free.
-    File fd_table[MAX_FDS];
+    // Heap-allocated in create_task() to keep the static Task array small.
+    File* fd_table;
 
     // Per-task user-space page-table frames.
     // user_pdpt/user_pd are fresh (not boot-table copies), wired at PML4[0].
