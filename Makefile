@@ -75,6 +75,8 @@ clean:
 	-rm -f  $(Q2_ELF)
 	-rm -rf $(DUKE_BUILD)
 	-rm -f  $(DUKE_ELF)
+	-rm -rf $(PLAYER_BUILD)
+	-rm -f  $(PLAYER_ELF)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -475,6 +477,22 @@ $(DUKE_ELF): $(DUKE_ALL_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 
 duke3d: $(DUKE_ELF)
 
+# ── MPEG-1 Video Player ──────────────────────────────────────────────────
+PLAYER_DIR   = src/userspace/player
+PLAYER_BUILD = build/userspace/player
+PLAYER_ELF   = dist/userspace/player.elf
+
+$(PLAYER_BUILD)/player.o: $(PLAYER_DIR)/player.c $(PLAYER_DIR)/pl_mpeg.h
+	mkdir -p $(PLAYER_BUILD)
+	$(CC) -c $(CFLAGS_USER) -I src/userspace/libc -O2 -w -o $@ $<
+
+$(PLAYER_ELF): $(PLAYER_BUILD)/player.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+	mkdir -p dist/userspace
+	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
+	      $(LIBC_CRT0) $< $(LIBC_A)
+
+player: $(PLAYER_ELF)
+
 DUKE_GRP ?= assets/duke3d.grp
 
 # Path to Quake PAK0.PAK (user-supplied; copyrighted — cannot auto-download).
@@ -492,7 +510,9 @@ Q2_PAK0 ?= assets/quake2/pak0.pak
 Q2_PAK1 ?= assets/quake2/pak1.pak
 Q2_PAK2 ?= assets/quake2/pak2.pak
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF)
+PLAYER_MPG ?= assets/bad_apple.mpg
+
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF) $(PLAYER_ELF)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=512 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -536,7 +556,9 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file $(Q2_PAK1)                     GAMES/QUAKE2/BASEQ2/PAK1.PAK; \
 	copy_file $(Q2_PAK2)                     GAMES/QUAKE2/BASEQ2/PAK2.PAK; \
 	copy_file $(DUKE_ELF)                    GAMES/DUKE3D/DUKE3D.ELF; \
-	copy_file $(DUKE_GRP)                    GAMES/DUKE3D/DUKE3D.GRP
+	copy_file $(DUKE_GRP)                    GAMES/DUKE3D/DUKE3D.GRP; \
+	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
+	copy_file $(PLAYER_MPG)                  SYS/BADAPPLE.MPG
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
 

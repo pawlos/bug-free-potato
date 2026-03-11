@@ -182,7 +182,9 @@ public:
     // Load an ELF file and start it as a new user-mode task with private
     // page-table frames so it can coexist with other running ELF tasks.
     // Returns the new task ID, or 0xFFFFFFFF on failure.
-    static pt::uint32_t create_elf_task(const char* filename);
+    static pt::uint32_t create_elf_task(const char* filename,
+                                       int argc = 0,
+                                       const char* const* argv = nullptr);
 
     // Kill all user-mode tasks (used by exec before loading a new ELF).
     // Resources are freed immediately; the caller must not be a user task.

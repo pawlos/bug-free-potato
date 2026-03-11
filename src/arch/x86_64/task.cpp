@@ -631,7 +631,9 @@ static constexpr pt::size_t ELF_PD_IDX    = 192;
 // Maximum ELF pages: MAX_PRIV_PTS PT frames × 512 pages each = 16 MB
 static constexpr pt::size_t MAX_ELF_PAGES = Task::MAX_PRIV_PTS * 512;
 
-pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
+pt::uint32_t TaskScheduler::create_elf_task(const char* filename,
+                                            int argc,
+                                            const char* const* argv)
 {
     // 1. Load ELF into the shared staging area (phys 0x18000000 / ELF_STAGING_VA).
     //    elf_loader.cpp redirects writes to ELF_STAGING_VA + (p_vaddr - USER_CODE_BASE).
@@ -822,6 +824,11 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
             }
         }
 
+        const int ARGV_MAX_LOCAL = 16;
+        int real_argc = 0;
+        if (argv && argc > 0)
+            real_argc = (argc > ARGV_MAX_LOCAL) ? ARGV_MAX_LOCAL : argc;
+
         pt::uint64_t rsp = USER_STACK_TOP;
 
         // Write env string data downward.
@@ -836,11 +843,23 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
             uenv_ptrs[i] = rsp;
         }
 
+        // Write argv string data downward.
+        pt::uint64_t uarg_ptrs[ARGV_MAX_LOCAL];
+        for (int i = real_argc - 1; i >= 0; i--) {
+            const char* s = argv[i];
+            int len = 0; while (s[len]) len++;
+            len++;
+            rsp -= (pt::uint64_t)len;
+            for (int j = 0; j < len; j++)
+                elf_write_byte(rsp + (pt::uint64_t)j, (pt::uint8_t)s[j]);
+            uarg_ptrs[i] = rsp;
+        }
+
         rsp &= ~(pt::uint64_t)7;
 
-        // Total qwords: 1(argc=0) + 1(argv NULL) + envc + 1(envp NULL) = envc+3
+        // Total qwords: 1(argc) + real_argc + 1(argv NULL) + envc + 1(envp NULL)
         {
-            pt::uint64_t total_qw = (pt::uint64_t)(envc + 3);
+            pt::uint64_t total_qw = (pt::uint64_t)(real_argc + envc + 3);
             pt::uint64_t final_rsp = rsp - total_qw * 8;
             if (final_rsp & 0xF) rsp -= 8;
         }
@@ -853,8 +872,12 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename)
         }
         // argv NULL sentinel
         rsp -= 8; elf_write_qword(rsp, 0);
-        // argc = 0
-        rsp -= 8; elf_write_qword(rsp, 0);
+        // argv pointers
+        for (int i = real_argc - 1; i >= 0; i--) {
+            rsp -= 8; elf_write_qword(rsp, uarg_ptrs[i]);
+        }
+        // argc
+        rsp -= 8; elf_write_qword(rsp, (pt::uint64_t)real_argc);
 
         // Patch the iretq frame's RSP to point to the new stack layout.
         pt::uint64_t* frame = reinterpret_cast<pt::uint64_t*>(task->preempt_rsp);

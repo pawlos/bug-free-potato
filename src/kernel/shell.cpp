@@ -552,18 +552,47 @@ void Shell::execute_write(const char* cmd) {
 
 
 void Shell::execute_exec(const char* cmd) {
-    const char* filename = cmd + 5;  // skip "exec "
-    if (filename[0] == '\0') {
-        vterm_printf("Usage: exec <filename>\n");
+    const char* args = cmd + 5;  // skip "exec "
+    if (args[0] == '\0') {
+        vterm_printf("Usage: exec <filename> [args...]\n");
         return;
     }
+
+    // Split command line into tokens (in-place copy).
+    constexpr int MAX_ARGS = 16;
+    char arg_buf[256];
+    const char* argv[MAX_ARGS];
+    int argc = 0;
+
+    // Copy to mutable buffer.
+    pt::size_t len = 0;
+    while (args[len] && len < sizeof(arg_buf) - 1) { arg_buf[len] = args[len]; len++; }
+    arg_buf[len] = '\0';
+
+    // Tokenize by spaces.
+    char* p = arg_buf;
+    while (*p && argc < MAX_ARGS) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+        argv[argc++] = p;
+        while (*p && *p != ' ') p++;
+        if (*p) *p++ = '\0';
+    }
+
+    if (argc == 0) {
+        vterm_printf("Usage: exec <filename> [args...]\n");
+        return;
+    }
+
     char path_buf[256];
-    const char* path = make_path(filename, path_buf, sizeof(path_buf));
-    pt::uint32_t task_id = TaskScheduler::create_elf_task(path);
+    const char* path = make_path(argv[0], path_buf, sizeof(path_buf));
+    // argv[0] should be the path as seen by the program.
+    argv[0] = path;
+    pt::uint32_t task_id = TaskScheduler::create_elf_task(path, argc, argv);
     if (task_id == 0xFFFFFFFF)
-        vterm_printf("exec: failed to start '%s'\n", filename);
+        vterm_printf("exec: failed to start '%s'\n", path);
     else
-        vterm_printf("exec: started '%s' as task %d\n", filename, task_id);
+        vterm_printf("exec: started '%s' as task %d\n", path, task_id);
 }
 
 void Shell::execute_rm(const char* cmd) {
