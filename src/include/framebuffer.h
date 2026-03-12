@@ -7,7 +7,7 @@ class Framebuffer
 {
     pt::uintptr_t m_addr;       // VRAM (front buffer)
     pt::uintptr_t m_back;       // back buffer (all rendering goes here)
-    pt::uintptr_t m_bg;         // background buffer (desktop snapshot)
+    pt::uintptr_t m_wallpaper;  // wallpaper buffer (persistent desktop layer)
     pt::uint32_t  m_width;
     pt::uint32_t  m_height;
     pt::uint32_t  m_bpp;
@@ -23,7 +23,7 @@ class Framebuffer
     Framebuffer(const pt::uintptr_t addr, const pt::uint32_t width,
                 const pt::uint32_t height, const pt::uint32_t bpp,
                 const pt::uint32_t stride) : m_addr(addr), m_back(0),
-                                   m_bg(0), m_width(width), m_height(height),
+                                   m_wallpaper(0), m_width(width), m_height(height),
                                    m_bpp(bpp), m_stride(stride),
                                    m_dirty(false),
                                    m_cursor_x(0), m_cursor_y(0),
@@ -55,9 +55,9 @@ public:
     pt::uint32_t  get_stride() const { return m_stride; }
     pt::uint32_t  get_bpp()    const { return m_bpp; }
     void Free() {
-        if (m_bg) {
-            vmm.kfree(reinterpret_cast<void*>(m_bg));
-            m_bg = 0;
+        if (m_wallpaper) {
+            vmm.kfree(reinterpret_cast<void*>(m_wallpaper));
+            m_wallpaper = 0;
         }
         if (m_back) {
             vmm.kfree(reinterpret_cast<void*>(m_back));
@@ -85,12 +85,16 @@ public:
     // Cursor position (composited during Flush, not drawn to back buffer)
     void set_cursor_pos(pt::int16_t x, pt::int16_t y, bool visible);
 
-    // Snapshot current back buffer as the desktop background layer.
-    void SnapshotBackground();
+    // Allocate wallpaper buffer and fill with black.
+    void InitWallpaper();
 
-    // Restore a rectangular region from the background buffer to the back buffer.
-    void RestoreBackground(pt::uint32_t x, pt::uint32_t y,
-                           pt::uint32_t w, pt::uint32_t h);
+    // Draw an RGB24 image into the wallpaper buffer.
+    void DrawToWallpaper(const pt::uint8_t* data,
+                         pt::uint32_t x, pt::uint32_t y,
+                         pt::uint32_t w, pt::uint32_t h);
+
+    // Fill wallpaper buffer with a solid color.
+    void ClearWallpaper(pt::uint8_t r, pt::uint8_t g, pt::uint8_t b);
 
     // Copy back buffer to VRAM (with cursor overlay). Called from timer interrupt.
     void Flush();

@@ -920,8 +920,9 @@ void Shell::execute_neofetch(const char* cmd) {
 }
 
 void Shell::execute_clear(const char*) {
-    // Clear command - clear the screen to black
-    Framebuffer::get_instance()->Clear(0, 0, 0);
+    // Clear the active VTerm — compositor repaints next frame
+    VTerm* vt = vterm_active();
+    if (vt) vt->clear();
 }
 
 void Shell::execute_timers(const char*) {

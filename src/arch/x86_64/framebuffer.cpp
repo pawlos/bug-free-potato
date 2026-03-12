@@ -1,5 +1,7 @@
 #include "framebuffer.h"
 #include "window.h"
+#include "vterm.h"
+#include "device/fbterm.h"
 
 Framebuffer buffer;
 
@@ -88,42 +90,39 @@ constexpr pt::uint8_t normal_cursor_mask[cursor_size] = {
     0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0
 };
 
-void Framebuffer::SnapshotBackground() {
+void Framebuffer::InitWallpaper() {
     pt::size_t size = (pt::size_t)m_stride * m_height;
-    if (!m_bg) {
-        void* buf = vmm.kmalloc(size);
-        if (!buf) kernel_panic("Can't allocate background buffer!", NotAbleToAllocateMemory);
-        m_bg = reinterpret_cast<pt::uintptr_t>(buf);
-    }
-    // Copy back buffer to background buffer
-    pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_bg);
-    pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back ? m_back : m_addr);
-    pt::size_t qwords = size / 8;
-    for (pt::size_t i = 0; i < qwords; i++)
-        dst[i] = src[i];
+    void* buf = vmm.kcalloc(size);
+    if (!buf) kernel_panic("Can't allocate wallpaper buffer!", NotAbleToAllocateMemory);
+    m_wallpaper = reinterpret_cast<pt::uintptr_t>(buf);
 }
 
-void Framebuffer::RestoreBackground(pt::uint32_t x, pt::uint32_t y,
-                                     pt::uint32_t w, pt::uint32_t h) {
-    if (!m_bg) {
-        // No background snapshot — fall back to black
-        FillRect(x, y, w, h, 0, 0, 0);
-        return;
-    }
-    const pt::uintptr_t base_dst = m_back ? m_back : m_addr;
+void Framebuffer::DrawToWallpaper(const pt::uint8_t* data,
+                                   pt::uint32_t x_pos, pt::uint32_t y_pos,
+                                   pt::uint32_t width, pt::uint32_t height) {
+    if (!m_wallpaper) return;
     const pt::uint32_t fb_bytes = m_bpp / 8;
-    // Clamp to screen bounds
-    if (x >= m_width || y >= m_height) return;
-    if (x + w > m_width)  w = m_width - x;
-    if (y + h > m_height) h = m_height - y;
-    pt::size_t row_copy_bytes = (pt::size_t)w * fb_bytes;
-    for (pt::uint32_t row = y; row < y + h; row++) {
-        pt::uint8_t* src = reinterpret_cast<pt::uint8_t*>(m_bg     + row * m_stride + x * fb_bytes);
-        pt::uint8_t* dst = reinterpret_cast<pt::uint8_t*>(base_dst + row * m_stride + x * fb_bytes);
-        for (pt::size_t i = 0; i < row_copy_bytes; i++)
-            dst[i] = src[i];
+    for (pt::uint32_t y = 0; y < height; y++) {
+        for (pt::uint32_t x = 0; x < width; x++) {
+            pt::uint32_t px = x_pos + x;
+            pt::uint32_t py = y_pos + y;
+            if (px >= m_width || py >= m_height) continue;
+            pt::uint32_t pos = y * 3 * width + x * 3;
+            pt::uint32_t color = (pt::uint32_t)data[pos] << 16
+                               | (pt::uint32_t)data[pos + 1] << 8
+                               | (pt::uint32_t)data[pos + 2];
+            *reinterpret_cast<pt::uint32_t*>(m_wallpaper + py * m_stride + px * fb_bytes) = color;
+        }
     }
-    m_dirty = true;
+}
+
+void Framebuffer::ClearWallpaper(pt::uint8_t r, pt::uint8_t g, pt::uint8_t b) {
+    if (!m_wallpaper) return;
+    const pt::uint32_t color = (pt::uint32_t)r << 16 | (pt::uint32_t)g << 8 | (pt::uint32_t)b;
+    const pt::uint32_t fb_bytes = m_bpp / 8;
+    for (pt::uint32_t y = 0; y < m_height; y++)
+        for (pt::uint32_t x = 0; x < m_width; x++)
+            *reinterpret_cast<pt::uint32_t*>(m_wallpaper + y * m_stride + x * fb_bytes) = color;
 }
 
 void Framebuffer::set_cursor_pos(pt::int16_t x, pt::int16_t y, bool visible) {
@@ -136,24 +135,51 @@ void Framebuffer::set_cursor_pos(pt::int16_t x, pt::int16_t y, bool visible) {
 void Framebuffer::Flush() {
     if (!m_back || !m_addr || !m_width) return;
 
-    // Composite all visible windows onto the back buffer before VRAM copy
-    WindowManager::composite(this);
-
-    m_dirty = false;
-
     const pt::uint32_t fb_bytes = m_bpp / 8;
-    const pt::size_t row_bytes = (pt::size_t)m_width * fb_bytes;
+    const pt::size_t fb_size = (pt::size_t)m_stride * m_height;
+    const pt::size_t qwords = fb_size / 8;
 
-    // Copy back buffer to VRAM row by row (using 64-bit copies)
-    for (pt::uint32_t y = 0; y < m_height; y++) {
-        pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back + y * m_stride);
-        pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_addr + y * m_stride);
-        pt::size_t qwords = row_bytes / 8;
+    // Layer 0: Copy wallpaper → back buffer (reset to clean state every frame)
+    if (m_wallpaper) {
+        pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_back);
+        pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_wallpaper);
         for (pt::size_t i = 0; i < qwords; i++)
             dst[i] = src[i];
     }
 
-    // Composite cursor on top of VRAM (not into back buffer)
+    // Layer 1: Render active VTerm cells onto back buffer
+    {
+        VTerm* vt = vterm_active();
+        if (vt && fbterm.is_ready()) {
+            const VTermCell* cells = vt->get_cells();
+            pt::uint32_t cols = vt->get_cols();
+            pt::uint32_t rows = vt->get_rows();
+            pt::uint32_t gw = fbterm.glyph_w();
+            pt::uint32_t gh = fbterm.glyph_h();
+            for (pt::uint32_t r = 0; r < rows; r++)
+                for (pt::uint32_t c = 0; c < cols; c++) {
+                    const VTermCell& cell = cells[r * cols + c];
+                    // Skip transparent cells (space with black bg) so wallpaper shows
+                    if (cell.ch == ' ' && cell.bg == 0x000000) continue;
+                    fbterm.put_char_at(cell.ch, c * gw, r * gh, cell.fg, cell.bg);
+                }
+        }
+    }
+
+    // Layer 2+: Composite windows + chrome onto back buffer
+    WindowManager::composite(this);
+
+    m_dirty = false;
+
+    // Flip: copy back buffer → VRAM
+    {
+        pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back);
+        pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_addr);
+        for (pt::size_t i = 0; i < qwords; i++)
+            dst[i] = src[i];
+    }
+
+    // Top layer: cursor on VRAM (not in back buffer)
     if (m_cursor_visible) {
         for (pt::uint8_t i = 0; i < cursor_width; i++) {
             for (pt::uint8_t j = 0; j < cursor_width; j++) {
@@ -203,24 +229,7 @@ void Framebuffer::FillRect(const pt::uint32_t x, const pt::uint32_t y,
 }
 
 void Framebuffer::Clear(const pt::uint8_t r, const pt::uint8_t g, const pt::uint8_t b) {
-    const pt::uint32_t  fb_width  = this->m_width;
-    const pt::uint32_t  fb_height  = this->m_height;
-    const pt::uint32_t c =  r << 16
-                | g << 8
-                | b;
-
-    for (pt::uint32_t y = 0; y < fb_height; y++) {
-        for (pt::uint32_t x = 0; x < fb_width ; x++) {
-            this->PutPixel(x, y, c);
-        }
-    }
-    // Sync background buffer so restored areas use the new solid color
-    if (m_bg && m_back) {
-        pt::size_t size = (pt::size_t)m_stride * m_height;
-        pt::uint64_t* dst = reinterpret_cast<pt::uint64_t*>(m_bg);
-        pt::uint64_t* src = reinterpret_cast<pt::uint64_t*>(m_back);
-        pt::size_t qwords = size / 8;
-        for (pt::size_t i = 0; i < qwords; i++)
-            dst[i] = src[i];
-    }
+    // Clear the wallpaper — compositor will repaint from it next frame
+    ClearWallpaper(r, g, b);
+    m_dirty = true;
 }

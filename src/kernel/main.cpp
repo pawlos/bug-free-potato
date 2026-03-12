@@ -91,6 +91,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     // Display
     Framebuffer::Init(boot_fb);
     Framebuffer::get_instance()->InitBackBuffer();
+    Framebuffer::get_instance()->InitWallpaper();
     enable_fb_flush();
     if (FontData && FontDataSize > 0) {
         if (fbterm.init(FontData, FontDataSize, Framebuffer::get_instance()))
@@ -104,26 +105,16 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
     if (TaskScheduler::create_elf_task("BIN/TASKBAR.ELF") == 0xFFFFFFFF)
         klog("[MAIN] BIN/TASKBAR.ELF not found or failed to start\n");
 
-    // Initial UI
-    TerminalPrinter terminal;
-    terminal.print_clear();
-    terminal.print_set_color(PRINT_COLOR_YELLOW, PRINT_COLOR_BLACK);
-    if (Logo)
-        terminal.print_str(Logo);
-
+    // Draw potato logo into wallpaper layer
     if (PotatoLogo) {
         constexpr pt::uint32_t img_width  = 197;
         constexpr pt::uint32_t img_height = 197;
         const pt::uint32_t center_x = (boot_fb->framebuffer_width  - img_width)  / 2;
         const pt::uint32_t center_y = (boot_fb->framebuffer_height - img_height) / 2;
-        Framebuffer::get_instance()->Draw(PotatoLogo, center_x, center_y, img_width, img_height);
+        Framebuffer::get_instance()->DrawToWallpaper(PotatoLogo, center_x, center_y, img_width, img_height);
     }
 
-    // Snapshot desktop as background layer (logo + initial UI preserved)
-    Framebuffer::get_instance()->SnapshotBackground();
-
     // Shell loop
-    terminal.print_set_color(PRINT_COLOR_WHITE, PRINT_COLOR_BLACK);
     LineReader reader;
     auto print_prompt = [&]() {
         const char* cwd = shell.get_cwd();

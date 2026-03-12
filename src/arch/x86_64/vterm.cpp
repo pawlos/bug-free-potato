@@ -8,9 +8,6 @@
 VTerm        g_vterms[VTERM_COUNT];
 pt::uint32_t g_active_vt = INVALID_VT;
 
-// Shared shadow buffer for batch diff rendering (only one VTerm batches at a time)
-static VTermCell g_batch_shadow[VTERM_MAX_ROWS * VTERM_MAX_COLS];
-
 // ── helpers ────────────────────────────────────────────────────────────
 
 static bool is_active(pt::uint32_t id) {
@@ -47,12 +44,8 @@ void VTerm::clear() {
     m_saved_row = 0;
 }
 
-void VTerm::render_cell(pt::uint32_t col, pt::uint32_t row) {
-    if (m_batch || !is_active(m_id) || !fbterm.is_ready()) return;
-    const VTermCell& c = m_cells[row * m_cols + col];
-    pt::uint32_t px = col * fbterm.glyph_w();
-    pt::uint32_t py = row * fbterm.glyph_h();
-    fbterm.put_char_at(c.ch, px, py, c.fg, c.bg);
+void VTerm::render_cell(pt::uint32_t, pt::uint32_t) {
+    // No-op: compositor renders all cells during Flush().
 }
 
 void VTerm::scroll() {
@@ -67,17 +60,7 @@ void VTerm::scroll() {
         m_cells[(m_rows - 1) * m_cols + c] = { ' ', m_fg, m_bg };
     }
     m_cur_row = m_rows - 1;
-
-    if (!m_batch && is_active(m_id) && fbterm.is_ready()) {
-        pt::uint32_t gw = fbterm.glyph_w();
-        pt::uint32_t gh = fbterm.glyph_h();
-        pt::uint32_t tw = m_cols * gw;
-        pt::uint32_t th = m_rows * gh;
-        fbterm.scroll_region(0, 0, tw, th, gh);
-        // Render cleared bottom row
-        for (pt::uint32_t c = 0; c < m_cols; c++)
-            render_cell(c, m_rows - 1);
-    }
+    // Compositor renders updated cells during Flush().
 }
 
 void VTerm::handle_csi(char cmd) {
@@ -236,43 +219,16 @@ char VTerm::pop_input() {
 }
 
 void VTerm::redraw() {
-    if (!fbterm.is_ready()) return;
-
-    pt::uint32_t gw = fbterm.glyph_w();
-    pt::uint32_t gh = fbterm.glyph_h();
-
-    // Render every cell — blanks are drawn as bg-colored rectangles,
-    // which implicitly clears whatever was on screen before.
-    for (pt::uint32_t r = 0; r < m_rows; r++)
-        for (pt::uint32_t c = 0; c < m_cols; c++) {
-            const VTermCell& cell = m_cells[r * m_cols + c];
-            fbterm.put_char_at(cell.ch, c * gw, r * gh, cell.fg, cell.bg);
-        }
+    // No-op: compositor renders all cells during Flush().
 }
 
 void VTerm::begin_batch() {
-    pt::uint32_t total = m_rows * m_cols;
-    for (pt::uint32_t i = 0; i < total; i++)
-        g_batch_shadow[i] = m_cells[i];
     m_batch = true;
 }
 
 void VTerm::end_batch() {
     m_batch = false;
-    if (!is_active(m_id) || !fbterm.is_ready()) return;
-
-    pt::uint32_t gw = fbterm.glyph_w();
-    pt::uint32_t gh = fbterm.glyph_h();
-    pt::uint32_t total = m_rows * m_cols;
-    for (pt::uint32_t i = 0; i < total; i++) {
-        const VTermCell& cur = m_cells[i];
-        const VTermCell& old = g_batch_shadow[i];
-        if (cur.ch != old.ch || cur.fg != old.fg || cur.bg != old.bg) {
-            pt::uint32_t col = i % m_cols;
-            pt::uint32_t row = i / m_cols;
-            fbterm.put_char_at(cur.ch, col * gw, row * gh, cur.fg, cur.bg);
-        }
-    }
+    // Compositor renders updated cells during Flush().
 }
 
 // ── global functions ───────────────────────────────────────────────────
@@ -289,10 +245,7 @@ void vterm_switch(pt::uint32_t vt_id) {
     if (g_active_vt < VTERM_COUNT)
         WindowManager::focused_per_vt[g_active_vt] = WindowManager::focused_id;
     g_active_vt = vt_id;
-    // Clear entire screen, redraw text + windows for new VT
-    Framebuffer* fb = Framebuffer::get_instance();
-    if (fb) fb->RestoreBackground(0, 0, fb->get_width(), fb->get_height());
-    g_vterms[vt_id].redraw();
+    // Compositor picks up the new active VTerm + windows on next Flush().
     WindowManager::on_vt_switch();
 }
 

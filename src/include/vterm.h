@@ -26,6 +26,9 @@ public:
     void end_batch();
 
     pt::uint32_t id() const { return m_id; }
+    const VTermCell* get_cells() const { return m_cells; }
+    pt::uint32_t get_cols() const { return m_cols; }
+    pt::uint32_t get_rows() const { return m_rows; }
 
 private:
     void scroll();

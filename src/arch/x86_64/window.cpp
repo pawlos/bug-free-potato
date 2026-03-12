@@ -174,20 +174,7 @@ void WindowManager::destroy_window(pt::uint32_t wid)
     if (!win->active) return;
 
     pt::uint32_t dead_vt = win->vt_id;
-    bool visible = is_on_active_vt(wid);
-
-    // Restore background behind window (only if on active VT)
-    if (visible) {
-        Framebuffer* fb = Framebuffer::get_instance();
-        if (fb)
-            fb->RestoreBackground(win->screen_x, win->screen_y,
-                                  win->total_w, win->total_h);
-        // Re-render VTerm to repair any text behind the window
-        VTerm* vt = vterm_active();
-        if (vt) vt->redraw();
-    }
-
-    // Free pixel buffer
+    // Free pixel buffer (compositor stops drawing this window next frame)
     if (win->pixel_buf) {
         vmm.kfree(win->pixel_buf);
         win->pixel_buf = nullptr;
@@ -709,12 +696,7 @@ void WindowManager::move_window(pt::uint32_t wid, pt::int32_t new_x, pt::int32_t
     if (new_y < min_y) new_y = min_y;
     if (new_y > max_y) new_y = max_y;
 
-    // Restore background behind old position
-    fb->RestoreBackground(win->screen_x, win->screen_y,
-                          win->total_w, win->total_h);
-    // Re-render VTerm to repair text behind old position
-    VTerm* vt = vterm_active();
-    if (vt) vt->redraw();
+    // Compositor repaints from wallpaper+VTerm next frame — no restore needed.
 
     // Update position (screen_x/y is the outer frame origin)
     win->screen_x = (pt::uint32_t)new_x;
