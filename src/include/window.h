@@ -122,6 +122,7 @@ public:
         pt::uint8_t wid;
         pt::uint8_t flags;   // bit 0 = focused
         char title[30];
+        char task_name[16];  // owning task's ELF name
     };
     static pt::uint32_t list_windows(WinListEntry* buf, pt::uint32_t max_entries);
 

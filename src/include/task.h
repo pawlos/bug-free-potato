@@ -186,6 +186,9 @@ public:
                                        int argc = 0,
                                        const char* const* argv = nullptr);
 
+    // Get a task's display name by ID (returns nullptr if invalid).
+    static const char* get_task_name(pt::uint32_t id);
+
     // Kill all user-mode tasks (used by exec before loading a new ELF).
     // Resources are freed immediately; the caller must not be a user task.
     static void kill_user_tasks();

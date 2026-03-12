@@ -121,7 +121,9 @@ static void draw_window_list(void) {
 
     for (long i = 0; i < count; i++) {
         long fg = (wins[i].flags & 1) ? COLOR_FOCUSED : COLOR_NORMAL;
-        const char *title = wins[i].title[0] ? wins[i].title : "???";
+        const char *title = wins[i].task_name[0] ? wins[i].task_name
+                          : wins[i].title[0]     ? wins[i].title
+                          : "???";
 
         /* Truncate title to fit tab */
         char trunc[20];

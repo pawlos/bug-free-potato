@@ -354,6 +354,13 @@ Task* TaskScheduler::get_task(pt::uint32_t id)
     return &tasks[id];
 }
 
+const char* TaskScheduler::get_task_name(pt::uint32_t id)
+{
+    if (id >= MAX_TASKS) return nullptr;
+    if (tasks[id].state == TASK_DEAD) return nullptr;
+    return tasks[id].name;
+}
+
 // Round-robin: walk the task table to find the next READY/RUNNING task.
 // Saves the current RSP and switches to the next task's preempt_rsp.
 // Returns the RSP to load (unchanged if no switch happened).

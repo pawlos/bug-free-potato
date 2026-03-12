@@ -108,6 +108,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* Show filename in window title bar; taskbar uses task_name instead */
     sys_set_window_title(wid, filename);
 
     player_ctx_t ctx;

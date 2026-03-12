@@ -284,11 +284,12 @@ static inline long sys_create_window_chromeless(long cx, long cy, long cw, long 
     return ret;
 }
 
-/* Each entry returned by SYS_LIST_WINDOWS (32 bytes). */
+/* Each entry returned by SYS_LIST_WINDOWS (48 bytes). */
 struct WinListEntry {
     unsigned char wid;
     unsigned char flags;   /* bit 0 = focused */
     char title[30];
+    char task_name[16];    /* owning task's ELF name */
 };
 
 /* Fill buf with up to max_entries window entries. Returns count. */

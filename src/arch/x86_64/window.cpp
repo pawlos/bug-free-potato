@@ -3,6 +3,7 @@
 #include "framebuffer.h"
 #include "virtual.h"
 #include "vterm.h"
+#include "task.h"
 
 Window       WindowManager::windows[MAX_WINDOWS];
 pt::uint32_t WindowManager::focused_id = INVALID_WID;
@@ -738,6 +739,19 @@ pt::uint32_t WindowManager::list_windows(WinListEntry* buf, pt::uint32_t max_ent
             j++;
         }
         buf[count].title[j] = '\0';
+        // Copy task name from owning task
+        buf[count].task_name[0] = '\0';
+        {
+            const char* tname = TaskScheduler::get_task_name(windows[i].owner_task_id);
+            if (tname) {
+                pt::uint32_t k = 0;
+                while (k < 15 && tname[k]) {
+                    buf[count].task_name[k] = tname[k];
+                    k++;
+                }
+                buf[count].task_name[k] = '\0';
+            }
+        }
         count++;
     }
     return count;
