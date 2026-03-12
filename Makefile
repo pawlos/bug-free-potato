@@ -114,7 +114,7 @@ $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 # ── Simple C userspace programs (pattern rules) ──────────────────────────
 SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest \
-               pidtest stattest envtest xxd kilo taskbar
+               pidtest stattest envtest xxd kilo taskbar sysmon
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
 SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
@@ -531,6 +531,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file $(TEST_ELF_BIN)           BIN/TEST.ELF; \
 	copy_file $(BLINK_ELF_BIN)          BIN/BLINK.ELF; \
 	copy_file dist/userspace/taskbar.elf BIN/TASKBAR.ELF; \
+	copy_file dist/userspace/sysmon.elf  BIN/SYSMON.ELF; \
 	copy_file dist/userspace/hello.elf       BIN/HELLO.ELF; \
 	copy_file dist/userspace/fork_test.elf   BIN/FORK_TEST.ELF; \
 	copy_file dist/userspace/pipe_test.elf   BIN/PIPE_TEST.ELF; \

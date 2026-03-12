@@ -46,3 +46,4 @@ constexpr pt::uint64_t SYS_GETPID           = 39; // () → current task ID
 constexpr pt::uint64_t SYS_STAT             = 40; // rdi=filename, rsi=stat_buf ptr; returns 0 or -1
 constexpr pt::uint64_t SYS_MPROTECT         = 41; // rdi=addr, rsi=len, rdx=prot; returns 0 or -1
 constexpr pt::uint64_t SYS_LIST_WINDOWS     = 42; // rdi=buf, rsi=max_entries; returns count
+constexpr pt::uint64_t SYS_LIST_TASKS       = 43; // rdi=buf, rsi=max_entries; returns count

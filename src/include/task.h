@@ -189,6 +189,18 @@ public:
     // Get a task's display name by ID (returns nullptr if invalid).
     static const char* get_task_name(pt::uint32_t id);
 
+    // Entry returned by list_tasks (compact, safe for userspace).
+    struct TaskListEntry {
+        pt::uint32_t id;
+        pt::uint8_t  state;     // TaskState enum value
+        pt::uint8_t  priority;
+        char         name[16];
+        pt::uint64_t ticks;     // scheduler ticks alive
+    };
+
+    // Fill buf with up to max_entries live (non-dead) tasks. Returns count.
+    static pt::uint32_t list_tasks(TaskListEntry* buf, pt::uint32_t max_entries);
+
     // Kill all user-mode tasks (used by exec before loading a new ELF).
     // Resources are freed immediately; the caller must not be a user task.
     static void kill_user_tasks();

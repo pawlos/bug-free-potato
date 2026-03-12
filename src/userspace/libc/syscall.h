@@ -47,6 +47,7 @@
 #define SYS_STAT             40  /* rdi=filename, rsi=stat_buf ptr; returns 0 or -1         */
 #define SYS_MPROTECT         41  /* rdi=addr, rsi=len, rdx=prot(1=X,2=W,4=R); returns 0/-1 */
 #define SYS_LIST_WINDOWS     42  /* rdi=buf, rsi=max_entries; returns count                */
+#define SYS_LIST_TASKS       43  /* rdi=buf, rsi=max_entries; returns count                */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -295,3 +296,16 @@ struct WinListEntry {
 /* Fill buf with up to max_entries window entries. Returns count. */
 static inline long sys_list_windows(struct WinListEntry *buf, long max_entries)
     { return __sc2(SYS_LIST_WINDOWS, (long)buf, max_entries); }
+
+/* Each entry returned by SYS_LIST_TASKS (32 bytes). */
+struct TaskListEntry {
+    unsigned int       id;
+    unsigned char      state;     /* 0=ready, 1=running, 2=blocked */
+    unsigned char      priority;
+    char               name[16];
+    unsigned long long ticks;     /* scheduler ticks alive */
+};
+
+/* Fill buf with up to max_entries live tasks. Returns count. */
+static inline long sys_list_tasks(struct TaskListEntry *buf, long max_entries)
+    { return __sc2(SYS_LIST_TASKS, (long)buf, max_entries); }

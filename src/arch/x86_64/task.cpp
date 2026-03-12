@@ -361,6 +361,27 @@ const char* TaskScheduler::get_task_name(pt::uint32_t id)
     return tasks[id].name;
 }
 
+pt::uint32_t TaskScheduler::list_tasks(TaskListEntry* buf, pt::uint32_t max_entries)
+{
+    if (!buf || max_entries == 0) return 0;
+    pt::uint32_t count = 0;
+    for (pt::uint32_t i = 0; i < MAX_TASKS && count < max_entries; i++) {
+        const Task& t = tasks[i];
+        if (t.state == TASK_DEAD) continue;
+        buf[count].id       = t.id;
+        buf[count].state    = (pt::uint8_t)t.state;
+        buf[count].priority = t.priority;
+        buf[count].ticks    = t.ticks_alive;
+        int j = 0;
+        for (; j < 15 && t.name[j]; j++)
+            buf[count].name[j] = t.name[j];
+        for (; j < 16; j++)
+            buf[count].name[j] = '\0';
+        count++;
+    }
+    return count;
+}
+
 // Round-robin: walk the task table to find the next READY/RUNNING task.
 // Saves the current RSP and switches to the next task's preempt_rsp.
 // Returns the RSP to load (unchanged if no switch happened).
@@ -787,11 +808,14 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename,
     for (pt::size_t k = 0; k < num_pts; k++) task->priv_pt[k] = code_pt_frames[k];
     for (pt::size_t k = num_pts; k < Task::MAX_PRIV_PTS; k++) task->priv_pt[k] = 0;
 
-    // Store filename for display (truncate to fit).
+    // Store basename for display (strip directory path, truncate to fit).
     {
+        const char* base = filename;
+        for (const char* p = filename; *p; p++)
+            if (*p == '/') base = p + 1;
         pt::size_t i = 0;
-        for (; i < sizeof(task->name) - 1 && filename[i]; i++)
-            task->name[i] = filename[i];
+        for (; i < sizeof(task->name) - 1 && base[i]; i++)
+            task->name[i] = base[i];
         task->name[i] = '\0';
     }
 
@@ -1471,11 +1495,14 @@ pt::uint64_t TaskScheduler::exec_task(const char* filename,
     frame[18] = new_user_rsp; // [+144] = new user RSP
 
     // 11. Switch back to task CR3 (now wired to new user address space) and flush TLB.
-    // Update task name to the new binary.
+    // Update task name to the new binary (basename only).
     {
+        const char* base = fname_buf;
+        for (const char* p = fname_buf; *p; p++)
+            if (*p == '/') base = p + 1;
         pt::size_t i = 0;
-        for (; i < sizeof(current->name) - 1 && fname_buf[i]; i++)
-            current->name[i] = fname_buf[i];
+        for (; i < sizeof(current->name) - 1 && base[i]; i++)
+            current->name[i] = base[i];
         current->name[i] = '\0';
     }
 

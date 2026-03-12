@@ -586,6 +586,12 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return WindowManager::list_windows(buf, max_entries);
 		}
 
+		case SYS_LIST_TASKS: {
+			auto* buf = reinterpret_cast<TaskScheduler::TaskListEntry*>(arg1);
+			pt::uint32_t max_entries = (pt::uint32_t)arg2;
+			return TaskScheduler::list_tasks(buf, max_entries);
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;
