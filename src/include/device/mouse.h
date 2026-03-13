@@ -22,6 +22,8 @@ struct MouseEvent {
     bool right_button;
 };
 
+extern mouse_state mouse;
+
 void init_mouse(pt::int16_t max_x, pt::int16_t max_y);
 
 void mouse_handler(pt::int8_t mouse_byte[]);

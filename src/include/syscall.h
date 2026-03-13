@@ -47,3 +47,6 @@ constexpr pt::uint64_t SYS_STAT             = 40; // rdi=filename, rsi=stat_buf 
 constexpr pt::uint64_t SYS_MPROTECT         = 41; // rdi=addr, rsi=len, rdx=prot; returns 0 or -1
 constexpr pt::uint64_t SYS_LIST_WINDOWS     = 42; // rdi=buf, rsi=max_entries; returns count
 constexpr pt::uint64_t SYS_LIST_TASKS       = 43; // rdi=buf, rsi=max_entries; returns count
+constexpr pt::uint64_t SYS_GET_MOUSE_POS   = 44; // () → x|(y<<16)|(left<<32)|(right<<33)
+constexpr pt::uint64_t SYS_POLL_START_KEY  = 45; // () → 1 if Windows key pressed since last poll, else 0
+constexpr pt::uint64_t SYS_RESIZE_WINDOW   = 46; // rdi=x, rsi=y, rdx=w, rcx=h; resize task's window; returns 0 or -1

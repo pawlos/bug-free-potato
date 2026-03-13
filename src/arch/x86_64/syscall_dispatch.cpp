@@ -592,6 +592,26 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return TaskScheduler::list_tasks(buf, max_entries);
 		}
 
+		case SYS_GET_MOUSE_POS: {
+			pt::uint64_t r = (pt::uint64_t)(pt::uint16_t)mouse.pos_x
+			               | ((pt::uint64_t)(pt::uint16_t)mouse.pos_y << 16)
+			               | ((pt::uint64_t)(mouse.left_button_pressed ? 1 : 0) << 32)
+			               | ((pt::uint64_t)(mouse.right_button_pressed ? 1 : 0) << 33);
+			return r;
+		}
+
+		case SYS_POLL_START_KEY:
+			return consume_start_key() ? 1 : 0;
+
+		case SYS_RESIZE_WINDOW: {
+			Task* t = TaskScheduler::get_current_task();
+			if (!t || t->window_id == INVALID_WID) return (pt::uint64_t)-1;
+			bool ok = WindowManager::resize_window(t->window_id,
+			    (pt::uint32_t)arg1, (pt::uint32_t)arg2,
+			    (pt::uint32_t)arg3, (pt::uint32_t)arg4);
+			return ok ? 0 : (pt::uint64_t)-1;
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

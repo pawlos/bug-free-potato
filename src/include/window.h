@@ -42,6 +42,7 @@ struct Window {
     // Per-window pixel buffer (client_w × client_h, ARGB32).
     // All window rendering goes here; compositor blits to back buffer.
     pt::uint32_t* pixel_buf;
+    pt::size_t    buf_capacity;  // allocated size in bytes (may be > client_w*client_h*4)
 
     // Per-window event ring (ev_read == ev_write → empty)
     pt::uint64_t events[EVENT_CAP];
@@ -70,6 +71,10 @@ public:
                                       pt::uint32_t owner_task_id,
                                       pt::uint32_t flags = 0);
     static void       destroy_window(pt::uint32_t wid);
+    // Reposition and resize window without destroying/recreating.
+    // Reuses the pixel buffer if the new size fits; only reallocates if bigger.
+    static bool       resize_window(pt::uint32_t wid, pt::uint32_t x, pt::uint32_t y,
+                                    pt::uint32_t w, pt::uint32_t h);
 
     // ── Compositor: blit all visible windows to back buffer ──
     static void composite(Framebuffer* fb);

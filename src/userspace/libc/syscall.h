@@ -48,6 +48,9 @@
 #define SYS_MPROTECT         41  /* rdi=addr, rsi=len, rdx=prot(1=X,2=W,4=R); returns 0/-1 */
 #define SYS_LIST_WINDOWS     42  /* rdi=buf, rsi=max_entries; returns count                */
 #define SYS_LIST_TASKS       43  /* rdi=buf, rsi=max_entries; returns count                */
+#define SYS_GET_MOUSE_POS   44  /* () → x|(y<<16)|(left<<32)|(right<<33)                 */
+#define SYS_POLL_START_KEY  45  /* () → 1 if Windows key pressed since last poll         */
+#define SYS_RESIZE_WINDOW   46  /* rdi=x, rsi=y, rdx=w, rcx=h; resize task's window    */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -309,3 +312,19 @@ struct TaskListEntry {
 /* Fill buf with up to max_entries live tasks. Returns count. */
 static inline long sys_list_tasks(struct TaskListEntry *buf, long max_entries)
     { return __sc2(SYS_LIST_TASKS, (long)buf, max_entries); }
+
+/* Return absolute mouse position + button state.
+   int x     = (int)(short)(ret & 0xFFFF);
+   int y     = (int)(short)((ret >> 16) & 0xFFFF);
+   int left  = (ret >> 32) & 1;
+   int right = (ret >> 33) & 1; */
+static inline long sys_get_mouse_pos(void)
+    { return __sc0(SYS_GET_MOUSE_POS); }
+
+/* Returns 1 if Windows/Super key was pressed since last poll, 0 otherwise. */
+static inline long sys_poll_start_key(void)
+    { return __sc0(SYS_POLL_START_KEY); }
+
+/* Resize/reposition the calling task's window (chromeless). Returns 0 or -1. */
+static inline long sys_resize_window(long x, long y, long w, long h)
+    { return __sc5(SYS_RESIZE_WINDOW, x, y, w, h, 0); }

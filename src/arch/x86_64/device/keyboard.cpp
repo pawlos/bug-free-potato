@@ -47,6 +47,7 @@ bool altPressed = false;
 bool ctrlPressed = false;
 bool capsLockOn = false;
 static bool e0_prefix = false;  // set when 0xE0 extended-key prefix is received
+static volatile bool start_key_pressed = false;  // Windows/Super key flag
 
 static char keyboard_buffer[128] = {0};
 static int write_pos = 0;
@@ -101,6 +102,12 @@ char keyboard_scancode_to_char(pt::uint8_t scancode) {
 	return current_layout[scancode];
 }
 
+bool consume_start_key() {
+	bool v = start_key_pressed;
+	start_key_pressed = false;
+	return v;
+}
+
 void keyboard_routine(const pt::uint8_t scancode)
 {
 	// E0 is the extended-key prefix byte (Right Ctrl, Right Alt, arrows, etc.).
@@ -113,7 +120,25 @@ void keyboard_routine(const pt::uint8_t scancode)
 	if (scancode == 0xE1) {
 		return;
 	}
+	bool is_e0 = e0_prefix;
 	e0_prefix = false;  // consume the flag regardless of key
+
+	// Windows/Super key (E0 5B) — global hotkey, not routed to any window.
+	// Only trigger on rising edge (ignore auto-repeat).
+	{
+		static bool win_key_down = false;
+		if (is_e0 && (scancode & 0x7F) == L_WIN) {
+			if (!(scancode & 0x80)) {  // press
+				if (!win_key_down) {
+					start_key_pressed = true;
+					win_key_down = true;
+				}
+			} else {  // release
+				win_key_down = false;
+			}
+			return;
+		}
+	}
 
 	if (scancode & 0x80)
 	{

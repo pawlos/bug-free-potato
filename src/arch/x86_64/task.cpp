@@ -1191,7 +1191,7 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     child->exit_code          = 0;
     child->sleep_deadline     = 0;
     child->syscall_frame_rsp  = 0;
-    child->window_id          = parent->window_id;
+    child->window_id          = INVALID_WID;
     child->owns_window        = false;
     child->vterm_id           = parent->vterm_id;
     memcpy(child->name, parent->name, sizeof(child->name));

@@ -139,6 +139,7 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     // Allocate per-window pixel buffer
     pt::size_t buf_size = (pt::size_t)w * h * sizeof(pt::uint32_t);
     win->pixel_buf = reinterpret_cast<pt::uint32_t*>(vmm.kcalloc(buf_size));
+    win->buf_capacity = buf_size;
 
     win->ev_read            = 0;
     win->ev_write           = 0;
@@ -199,6 +200,39 @@ void WindowManager::destroy_window(pt::uint32_t wid)
     // Update global focused_id if the destroyed window was focused
     if (focused_id == wid)
         focused_id = (dead_vt == g_active_vt) ? focused_per_vt[dead_vt] : INVALID_WID;
+}
+
+bool WindowManager::resize_window(pt::uint32_t wid, pt::uint32_t x, pt::uint32_t y,
+                                   pt::uint32_t w, pt::uint32_t h)
+{
+    if (wid >= MAX_WINDOWS) return false;
+    Window* win = &windows[wid];
+    if (!win->active) return false;
+
+    // Update geometry (chromeless only — normal windows would need chrome recalc)
+    win->screen_x  = x;
+    win->screen_y  = y;
+    win->total_w   = w;
+    win->total_h   = h;
+    win->client_ox = x;
+    win->client_oy = y;
+    win->client_w  = w;
+    win->client_h  = h;
+
+    // Reallocate pixel buffer only if new size exceeds current capacity
+    pt::size_t needed = (pt::size_t)w * h * sizeof(pt::uint32_t);
+    if (needed > win->buf_capacity) {
+        if (win->pixel_buf) vmm.kfree(win->pixel_buf);
+        win->pixel_buf = reinterpret_cast<pt::uint32_t*>(vmm.kcalloc(needed));
+        win->buf_capacity = needed;
+    }
+
+    // Reset text cursor
+    win->text_col = 0;
+    win->text_row = 0;
+    win->wrap_pending = false;
+
+    return true;
 }
 
 // ── Chrome drawing (writes to back buffer, called from composite) ───────
