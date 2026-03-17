@@ -9,6 +9,12 @@ public:
     void print_history();
     const char* get_cwd() const { return cwd; }
 
+    // Tab completion: fills matches[] with up to max_matches matching strings.
+    // Returns number of matches found.  Each match is a full replacement for
+    // the token being completed (command name or path).
+    int complete(const char* buf, int buf_len,
+                 char matches[][128], int max_matches);
+
 private:
     static constexpr int MAX_HISTORY = 10;
     static constexpr int CMD_BUFFER_SIZE = 128;

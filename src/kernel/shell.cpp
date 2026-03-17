@@ -1062,4 +1062,169 @@ bool Shell::execute(const char* cmd) {
     return true;
 }
 
+// ── Tab completion ──────────────────────────────────────────────────────
+
+// Helper: case-insensitive prefix match (FAT filenames are uppercase)
+static bool iprefix(const char* str, const char* prefix, int prefix_len) {
+    for (int i = 0; i < prefix_len; i++) {
+        char a = str[i];
+        char b = prefix[i];
+        if (a >= 'a' && a <= 'z') a = (char)(a - 'a' + 'A');
+        if (b >= 'a' && b <= 'z') b = (char)(b - 'a' + 'A');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+// Helper: copy string with max length
+static void scopy(char* dst, const char* src, int max) {
+    int i = 0;
+    while (src[i] && i < max - 1) { dst[i] = src[i]; i++; }
+    dst[i] = '\0';
+}
+
+// Helper: append string
+static void sappend(char* dst, const char* src, int max) {
+    int len = 0;
+    while (dst[len]) len++;
+    int i = 0;
+    while (src[i] && len < max - 1) { dst[len++] = src[i++]; }
+    dst[len] = '\0';
+}
+
+// Helper: lowercase a string in-place
+static void str_to_lower(char* s) {
+    for (; *s; s++)
+        if (*s >= 'A' && *s <= 'Z') *s = (char)(*s - 'A' + 'a');
+}
+
+int Shell::complete(const char* buf, int buf_len,
+                    char matches[][128], int max_matches) {
+    if (buf_len <= 0 || max_matches <= 0) return 0;
+
+    // Commands that take file/path arguments
+    static const char* path_cmds[] = {
+        "exec ", "cat ", "play ", "rm ", nullptr
+    };
+    static const char* dir_cmds[] = {
+        "ls ", "cd ", nullptr
+    };
+
+    // Check if we're completing a path argument
+    const char* arg_start = nullptr;
+    const char* cmd_prefix = nullptr;
+    bool dir_only = false;
+
+    for (int i = 0; path_cmds[i]; i++) {
+        int clen = 0;
+        while (path_cmds[i][clen]) clen++;
+        if (buf_len >= clen && !memcmp(buf, path_cmds[i], clen)) {
+            cmd_prefix = path_cmds[i];
+            arg_start = buf + clen;
+            dir_only = false;
+            break;
+        }
+    }
+    if (!arg_start) {
+        for (int i = 0; dir_cmds[i]; i++) {
+            int clen = 0;
+            while (dir_cmds[i][clen]) clen++;
+            if (buf_len >= clen && !memcmp(buf, dir_cmds[i], clen)) {
+                cmd_prefix = dir_cmds[i];
+                arg_start = buf + clen;
+                dir_only = true;
+                break;
+            }
+        }
+    }
+
+    if (arg_start) {
+        // ── Path completion ──
+        // Split arg into directory part and name prefix
+        int arg_len = 0;
+        while (arg_start[arg_len]) arg_len++;
+
+        char dir_part[128] = {0};
+        const char* name_prefix = arg_start;
+        int name_prefix_len = arg_len;
+
+        // Find last '/'
+        int last_slash = -1;
+        for (int i = 0; i < arg_len; i++)
+            if (arg_start[i] == '/') last_slash = i;
+
+        if (last_slash >= 0) {
+            // Copy directory part
+            for (int i = 0; i < last_slash && i < 126; i++)
+                dir_part[i] = arg_start[i];
+            dir_part[last_slash] = '\0';
+            name_prefix = arg_start + last_slash + 1;
+            name_prefix_len = arg_len - last_slash - 1;
+        }
+
+        // Build full directory path (with cwd if relative)
+        char full_dir[256];
+        full_dir[0] = '\0';
+        if (dir_part[0]) {
+            // make_path may return its 'name' arg directly when cwd is empty,
+            // so copy the result into full_dir to keep it alive.
+            const char* resolved = make_path(dir_part, full_dir, 256);
+            if (resolved != full_dir)
+                scopy(full_dir, resolved, 256);
+        } else if (cwd[0]) {
+            scopy(full_dir, cwd, 256);
+        }
+        const char* search_dir = full_dir;
+
+        // Enumerate directory entries
+        int count = 0;
+        char entry_name[64];
+        pt::uint32_t entry_size;
+        pt::uint8_t entry_type;
+
+        for (int idx = 0; count < max_matches; idx++) {
+            if (!VFS::readdir_ex(search_dir, idx, entry_name, &entry_size, &entry_type))
+                break;
+
+            bool is_dir = (entry_type == 1);
+            if (dir_only && !is_dir) continue;
+
+            // Case-insensitive prefix match on entry name
+            if (name_prefix_len > 0 && !iprefix(entry_name, name_prefix, name_prefix_len))
+                continue;
+
+            // Build the full completion line: "cmd_prefix" + "dir_part/" + "entry_name"
+            char* m = matches[count];
+            scopy(m, cmd_prefix, 128);
+            if (dir_part[0]) {
+                sappend(m, dir_part, 128);
+                sappend(m, "/", 128);
+            }
+            // Lowercase the entry name for nicer display
+            str_to_lower(entry_name);
+            sappend(m, entry_name, 128);
+            if (is_dir) sappend(m, "/", 128);
+            count++;
+        }
+        return count;
+    }
+
+    // ── Command name completion ──
+    static const char* commands[] = {
+        "mem", "ticks", "alloc", "blue", "red", "green", "quit",
+        "vmm", "pci", "map", "history", "ls", "cd", "cat",
+        "play", "disk", "help", "echo", "clear", "timers",
+        "cancel", "shutdown", "reboot", "task", "write", "rm",
+        "exec", "net", "ping", "dhcp", "nslookup", "wget",
+        "ps", "kill", "uptime", "neofetch", nullptr
+    };
+
+    int count = 0;
+    for (int i = 0; commands[i] && count < max_matches; i++) {
+        if (iprefix(commands[i], buf, buf_len))
+            scopy(matches[count++], commands[i], 128);
+    }
+    return count;
+}
+
 Shell shell;

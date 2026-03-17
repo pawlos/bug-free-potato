@@ -116,6 +116,7 @@ ASMCALL void kernel_main(boot_info* boot_info, void* l4_page_table) {
 
     // Shell loop
     LineReader reader;
+    reader.set_shell(&shell);
     auto print_prompt = [&]() {
         const char* cwd = shell.get_cwd();
         if (cwd[0])
