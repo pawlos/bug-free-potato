@@ -1,0 +1,25 @@
+#ifndef SDL_h_
+#define SDL_h_
+
+#include "SDL_stdinc.h"
+#include "SDL_error.h"
+#include "SDL_rect.h"
+#include "SDL_pixels.h"
+#include "SDL_video.h"
+#include "SDL_render.h"
+#include "SDL_events.h"
+#include "SDL_keycode.h"
+#include "SDL_scancode.h"
+#include "SDL_timer.h"
+
+/* SDL_Init subsystem flags */
+#define SDL_INIT_TIMER          0x00000001
+#define SDL_INIT_AUDIO          0x00000010
+#define SDL_INIT_VIDEO          0x00000020
+#define SDL_INIT_EVENTS         0x00004000
+#define SDL_INIT_EVERYTHING     0x0000FFFF
+
+int  SDL_Init(Uint32 flags);
+void SDL_Quit(void);
+
+#endif

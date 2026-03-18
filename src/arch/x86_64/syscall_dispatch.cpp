@@ -612,6 +612,15 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			return ok ? 0 : (pt::uint64_t)-1;
 		}
 
+		case SYS_GET_WINDOW_POS: {
+			Task* t = TaskScheduler::get_current_task();
+			if (!t || t->window_id == INVALID_WID) return (pt::uint64_t)-1;
+			Window* w = WindowManager::get_window(t->window_id);
+			if (!w) return (pt::uint64_t)-1;
+			return (pt::uint64_t)w->client_ox |
+			       ((pt::uint64_t)w->client_oy << 16);
+		}
+
 		default:
 			klog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;

@@ -51,6 +51,7 @@
 #define SYS_GET_MOUSE_POS   44  /* () → x|(y<<16)|(left<<32)|(right<<33)                 */
 #define SYS_POLL_START_KEY  45  /* () → 1 if Windows key pressed since last poll         */
 #define SYS_RESIZE_WINDOW   46  /* rdi=x, rsi=y, rdx=w, rcx=h; resize task's window    */
+#define SYS_GET_WINDOW_POS  47  /* () → client_ox|(client_oy<<16); -1 if no window     */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -328,3 +329,8 @@ static inline long sys_poll_start_key(void)
 /* Resize/reposition the calling task's window (chromeless). Returns 0 or -1. */
 static inline long sys_resize_window(long x, long y, long w, long h)
     { return __sc5(SYS_RESIZE_WINDOW, x, y, w, h, 0); }
+
+/* Get calling task's window client area origin (screen coords).
+   Returns client_ox | (client_oy << 16), or -1 if no window. */
+static inline long sys_get_window_pos(void)
+    { return __sc0(SYS_GET_WINDOW_POS); }
