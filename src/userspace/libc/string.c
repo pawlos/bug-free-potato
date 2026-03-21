@@ -202,3 +202,37 @@ char *strerror(int errnum)
     default:      return "Unknown error";
     }
 }
+
+size_t strcspn(const char *s, const char *reject)
+{
+    size_t n = 0;
+    while (s[n]) {
+        for (const char *r = reject; *r; r++)
+            if (s[n] == *r) return n;
+        n++;
+    }
+    return n;
+}
+
+size_t strspn(const char *s, const char *accept)
+{
+    size_t n = 0;
+    while (s[n]) {
+        int found = 0;
+        for (const char *a = accept; *a; a++)
+            if (s[n] == *a) { found = 1; break; }
+        if (!found) break;
+        n++;
+    }
+    return n;
+}
+
+char *strpbrk(const char *s, const char *accept)
+{
+    while (*s) {
+        for (const char *a = accept; *a; a++)
+            if (*s == *a) return (char*)s;
+        s++;
+    }
+    return (void*)0;
+}

@@ -10,11 +10,20 @@
 #define _FILE_WRITE  (1 << 2)
 #define _FILE_APPEND (1 << 3)
 
-typedef struct {
+typedef struct PotatoFILE {
     int fd;
     int flags;
     int unget_char;   /* -1 = no pending char, else the pushed-back byte */
-} FILE;
+} PotatoFILE;
+
+/* In C builds, FILE = PotatoFILE. In C++ builds where the system
+   <cstdio> may define FILE as struct _IO_FILE, we still provide
+   FILE as PotatoFILE — our fopen/fread etc. are the only implementations
+   available in freestanding. Guard against double-typedef from system. */
+#ifndef __FILE_defined
+#define __FILE_defined
+typedef PotatoFILE FILE;
+#endif
 
 /* Standard streams */
 extern FILE *stdin;
@@ -54,6 +63,14 @@ int    fflush(FILE *f);           /* no-op (unbuffered) */
 int    remove(const char *path);  /* stub — VFS is read-only */
 int    rename(const char *old, const char *new_name); /* stub */
 
-/* Convenience macros */
-#define getc(f)     fgetc(f)
-#define putc(c, f)  fputc(c, f)
+/* getc/putc as real functions (C++ <cstdio> needs "using ::getc") */
+static inline int getc(FILE *f) { return fgetc(f); }
+static inline int putc(int c, FILE *f) { return fputc(c, f); }
+static inline int getchar(void) { return fgetc(stdin); }
+
+int    fgetpos(FILE *stream, fpos_t *pos);
+int    fsetpos(FILE *stream, const fpos_t *pos);
+FILE  *freopen(const char *pathname, const char *mode, FILE *stream);
+FILE  *tmpfile(void);
+int    setvbuf(FILE *stream, char *buf, int mode, size_t size);
+void   setbuf(FILE *stream, char *buf);

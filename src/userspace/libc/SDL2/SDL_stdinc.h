@@ -10,6 +10,11 @@ typedef signed short   Sint16;
 typedef signed int     Sint32;
 typedef signed long long Sint64;
 
+#ifndef _POTATO_SIZE_T
+#define _POTATO_SIZE_T
+typedef unsigned long size_t;
+#endif
+
 typedef int SDL_bool;
 #define SDL_FALSE 0
 #define SDL_TRUE  1
@@ -20,5 +25,7 @@ typedef int SDL_bool;
 #define SDL_strlen __builtin_strlen
 #define SDL_max(a,b) ((a)>(b)?(a):(b))
 #define SDL_min(a,b) ((a)<(b)?(a):(b))
+#define SDL_arraysize(a) (sizeof(a)/sizeof((a)[0]))
+#define SDL_TABLESIZE(t) SDL_arraysize(t)
 
 #endif

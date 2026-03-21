@@ -4,6 +4,8 @@
 
 #define EOF (-1)
 
+typedef long fpos_t;
+
 #ifndef NULL
 #define NULL ((void *)0)
 #endif
@@ -19,6 +21,22 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 
 int sscanf (const char *str, const char *fmt, ...);
 int vsscanf(const char *str, const char *fmt, va_list ap);
+int scanf  (const char *fmt, ...);
+int vscanf (const char *fmt, va_list ap);
+
+int    remove(const char *filename);
+int    rename(const char *oldpath, const char *newpath);
+void   perror(const char *s);
+char  *tmpnam(char *s);
+
+#define _IOFBF 0
+#define _IOLBF 1
+#define _IONBF 2
+#define BUFSIZ 1024
+#define FILENAME_MAX 256
+#define FOPEN_MAX 16
+#define TMP_MAX 256
+#define L_tmpnam 20
 
 /* Pull in FILE*, fopen, fclose, fread, fprintf etc. — must be last to
    avoid circular-include ordering issues (file.h includes stdio.h). */

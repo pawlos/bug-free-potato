@@ -1,5 +1,15 @@
 #pragma once
 
+/* Linux syscall numbers needed by C++ stdlib (futex for atomics/mutex). */
+#ifndef SYS_futex
+#define SYS_futex 202
+#define __NR_futex 202
+#endif
+
+/* syscall() stub — C++ stdlib's atomic_wait uses this for futex.
+   potatOS is single-threaded so futex is a no-op. */
+static inline long syscall(long nr, ...) { (void)nr; return 0; }
+
 /* Syscall numbers — must match src/include/syscall.h in the kernel. */
 #define SYS_WRITE     0   /* rdi=fd, rsi=buf ptr, rdx=count; fd=1→stdout  */
 #define SYS_EXIT      1   /* rdi = exit code                               */

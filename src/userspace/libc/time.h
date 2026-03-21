@@ -1,8 +1,30 @@
 #pragma once
 
+#ifndef _POTATO_SIZE_T
+#define _POTATO_SIZE_T
+typedef unsigned long size_t;
+#endif
+
 typedef long time_t;
 typedef long clock_t;
 typedef long suseconds_t;
+typedef int  clockid_t;
+
+#define CLOCK_REALTIME  0
+#define CLOCK_MONOTONIC 1
+
+#define TIME_UTC 1
+
+#ifndef _STRUCT_TIMESPEC
+#define _STRUCT_TIMESPEC
+struct timespec {
+    time_t tv_sec;
+    long   tv_nsec;
+};
+#endif
+
+int timespec_get(struct timespec *ts, int base);
+int nanosleep(const struct timespec *req, struct timespec *rem);
 
 #define CLOCKS_PER_SEC  1000000L   /* clock() now returns microseconds */
 
@@ -38,3 +60,11 @@ time_t     time (time_t *t);
 clock_t    clock(void);
 int        gettimeofday(struct timeval *tv, struct timezone *tz);
 struct tm *localtime(const time_t *timep);
+struct tm *gmtime(const time_t *timep);
+time_t     mktime(struct tm *tm);
+size_t     strftime(char *s, size_t max, const char *fmt, const struct tm *tm);
+
+char      *asctime(const struct tm *tm);
+char      *ctime(const time_t *timep);
+
+static inline double difftime(time_t t1, time_t t0) { return (double)(t1 - t0); }

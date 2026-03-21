@@ -26,3 +26,15 @@ int    strcasecmp (const char *a, const char *b);
 int    strncasecmp(const char *a, const char *b, size_t n);
 
 char  *strerror(int errnum);
+
+size_t strcspn(const char *s, const char *reject);
+size_t strspn(const char *s, const char *accept);
+char  *strpbrk(const char *s, const char *accept);
+
+/* strcoll: locale-unaware, just use strcmp */
+static inline int strcoll(const char *a, const char *b) { return strcmp(a, b); }
+static inline size_t strxfrm(char *dst, const char *src, size_t n) {
+    size_t len = strlen(src);
+    if (dst && n > 0) { strncpy(dst, src, n); if (n > 0) dst[n-1] = '\0'; }
+    return len;
+}
