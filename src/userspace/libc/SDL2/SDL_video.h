@@ -36,6 +36,9 @@ void        SDL_DestroyWindow(SDL_Window *window);
 void        SDL_GetWindowSize(SDL_Window *window, int *w, int *h);
 void        SDL_SetWindowTitle(SDL_Window *window, const char *title);
 Uint32      SDL_GetWindowID(SDL_Window *window);
+static inline SDL_Window* SDL_GetKeyboardFocus(void) { return (SDL_Window*)0; }
+static inline SDL_Window* SDL_GetMouseFocus(void) { return (SDL_Window*)0; }
+static inline void SDL_SetWindowResizable(SDL_Window *w, SDL_bool resizable) { (void)w; (void)resizable; }
 
 static inline int SDL_GetDesktopDisplayMode(int idx, SDL_DisplayMode *mode)
     { (void)idx; if (mode) { mode->format=0; mode->w=1024; mode->h=768; mode->refresh_rate=60; mode->driverdata=0; } return 0; }

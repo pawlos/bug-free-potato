@@ -30,3 +30,6 @@
 
 /* Display texture format */
 #define DEVILUTIONX_DISPLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888
+
+/* Use the optimized 16-entry palette blending path (avoids arg count mismatch) */
+#define DEVILUTIONX_PALETTE_TRANSPARENCY_BLACK_16_LUT 1
