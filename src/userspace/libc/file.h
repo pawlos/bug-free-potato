@@ -66,7 +66,10 @@ int    rename(const char *old, const char *new_name); /* stub */
 /* getc/putc as real functions (C++ <cstdio> needs "using ::getc") */
 static inline int getc(FILE *f) { return fgetc(f); }
 static inline int putc(int c, FILE *f) { return fputc(c, f); }
+#ifndef _POTATO_GETCHAR_DEFINED
+#define _POTATO_GETCHAR_DEFINED
 static inline int getchar(void) { return fgetc(stdin); }
+#endif
 
 int    fgetpos(FILE *stream, fpos_t *pos);
 int    fsetpos(FILE *stream, const fpos_t *pos);

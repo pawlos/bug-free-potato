@@ -96,6 +96,7 @@ public:
     static pt::uint64_t poll_event(pt::uint32_t wid);    // returns 0 if empty
     static Window*     get_window(pt::uint32_t wid);
     static pt::uint32_t get_task_window(pt::uint32_t task_id);
+    static pt::uint32_t get_window_count();
 
     // Switch focus to wid (dims old focused window, highlights new one).
     static void        set_focus(pt::uint32_t wid);

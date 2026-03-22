@@ -47,5 +47,3 @@ static inline long lseek(int fd, long offset, int whence) {
 static inline int truncate(const char *path, long length) { (void)path; (void)length; return -1; }
 static inline int ftruncate(int fd, long length) { (void)fd; (void)length; return -1; }
 static inline pid_t getpid(void) { return (pid_t)sys_getpid(); }
-static inline unsigned int sleep(unsigned int secs) { sys_sleep_ms(secs * 1000); return 0; }
-static inline int usleep(unsigned long usec) { sys_sleep_ms(usec / 1000); return 0; }

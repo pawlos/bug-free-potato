@@ -11,6 +11,8 @@
 #include "fs/vfs.h"
 #include "device/ac97.h"
 #include "device/acpi.h"
+#include "device/rtc.h"
+#include "window.h"
 #include "task.h"
 #include "net/net.h"
 #include "libs/stdlib.h"
@@ -878,6 +880,14 @@ void Shell::execute_uptime(const char* cmd) {
 void Shell::execute_neofetch(const char* cmd) {
     (void)cmd;
 
+    // ANSI color codes
+    constexpr const char* C_YEL  = "\033[93m";  // bright yellow (potato)
+    constexpr const char* C_BRN  = "\033[33m";  // brown/dark yellow
+    constexpr const char* C_GRN  = "\033[32m";  // green (label)
+    constexpr const char* C_WHT  = "\033[97m";  // bright white (value)
+    constexpr const char* C_CYN  = "\033[96m";  // bright cyan (title)
+    constexpr const char* C_RST  = "\033[0m";   // reset
+
     // Count active tasks
     Task* current = TaskScheduler::get_current_task();
     Task* base = current - current->id;
@@ -887,10 +897,14 @@ void Shell::execute_neofetch(const char* cmd) {
             active++;
     }
 
+    // Count windows
+    int windows = (int)WindowManager::get_window_count();
+
     // Uptime
     pt::uint64_t ticks = get_ticks();
     pt::uint64_t total_sec = ticks / 50;
-    int hours = (int)(total_sec / 3600);
+    int days  = (int)(total_sec / 86400);
+    int hours = (int)((total_sec % 86400) / 3600);
     int min   = (int)((total_sec % 3600) / 60);
     int sec   = (int)(total_sec % 60);
 
@@ -901,22 +915,70 @@ void Shell::execute_neofetch(const char* cmd) {
 
     // Memory
     pt::uint64_t mem_free = vmm.memsize();
+    pt::uint64_t mem_free_kb = mem_free / 1024;
 
-    vterm_printf("    @@@@@@       potat OS\n");
-    vterm_printf("  @@      @@     Uptime: %dh %dm %ds\n", hours, min, sec);
-    vterm_printf(" @@   ..   @@    Tasks: %d / %d\n", active, (int)TaskScheduler::MAX_TASKS);
-    vterm_printf(" @@   ..   @@    Memory: %l free\n", mem_free);
-    vterm_printf("  @@      @@     Display: %dx%d\n", w, h);
+    // Disk
+    pt::uint32_t disk_total = VFS::get_total_space();
+    pt::uint32_t disk_free  = VFS::get_free_space();
+    pt::uint32_t disk_total_mb = disk_total / (1024 * 1024);
+    pt::uint32_t disk_free_mb  = disk_free  / (1024 * 1024);
 
-    if (RTL8139::is_present()) {
-        vterm_printf("    @@@@@@       Network: ");
-        print_ip(g_my_ip);
-        vterm_printf("\n");
-    } else {
-        vterm_printf("    @@@@@@       Network: not connected\n");
+    // RTC time
+    RTCTime rtc;
+    rtc_read(&rtc);
+
+    // ASCII potato + info (14 lines)
+    vterm_printf("%s        ######        %s%s  potat OS%s v1.0\n",
+                 C_YEL, C_RST, C_CYN, C_RST);
+    vterm_printf("%s     ##%s'''''''%s##     %s-----------\n",
+                 C_YEL, C_BRN, C_YEL, C_RST);
+    vterm_printf("%s   ##%s''  . .  ''%s##   %sOS%s:       potat OS (x86_64)\n",
+                 C_YEL, C_BRN, C_YEL, C_GRN, C_WHT);
+    vterm_printf("%s  ##%s''  . . .  ''%s##  %sKernel%s:   custom C++ freestanding\n",
+                 C_YEL, C_BRN, C_YEL, C_GRN, C_WHT);
+    vterm_printf("%s  ##%s''   . .   ''%s##  %sUptime%s:   ",
+                 C_YEL, C_BRN, C_YEL, C_GRN, C_WHT);
+    if (days > 0) vterm_printf("%dd ", days);
+    vterm_printf("%dh %dm %ds\n", hours, min, sec);
+
+    vterm_printf("%s  ##%s'' .     . ''%s##  %sTasks%s:    %d / %d\n",
+                 C_YEL, C_BRN, C_YEL, C_GRN, C_WHT, active, (int)TaskScheduler::MAX_TASKS);
+    vterm_printf("%s   ##%s''     ''%s##%s##  %sWindows%s:  %d / %d\n",
+                 C_YEL, C_BRN, C_YEL, C_GRN, C_GRN, C_WHT, windows, (int)MAX_WINDOWS);
+    vterm_printf("%s     ##%s'''%s####%s''    %sMemory%s:   %l KB free\n",
+                 C_YEL, C_BRN, C_YEL, C_BRN, C_GRN, C_WHT, mem_free_kb);
+    vterm_printf("%s       %s####%s##%s       %sDisk%s:     %d / %d MB\n",
+                 C_YEL, C_YEL, C_BRN, C_RST, C_GRN, C_WHT,
+                 (int)(disk_total_mb - disk_free_mb), (int)disk_total_mb);
+    vterm_printf("%s        %s####%s        %sDisplay%s:  %dx%d @ 32bpp\n",
+                 C_YEL, C_BRN, C_RST, C_GRN, C_WHT, w, h);
+
+    // Audio
+    if (AC97::is_present()) {
+        vterm_printf("                     %sAudio%s:    AC97\n", C_GRN, C_WHT);
     }
 
-    vterm_printf("                 Shell: potatOS sh\n");
+    // Network
+    if (RTL8139::is_present()) {
+        vterm_printf("                     %sNetwork%s:  RTL8139 (", C_GRN, C_WHT);
+        print_ip(g_my_ip);
+        vterm_printf(")\n");
+    }
+
+    // Time
+    vterm_printf("                     %sTime%s:     %d-%02d-%02d %02d:%02d:%02d\n",
+                 C_GRN, C_WHT, (int)rtc.year, (int)rtc.month, (int)rtc.day,
+                 (int)rtc.hours, (int)rtc.minutes, (int)rtc.seconds);
+    vterm_printf("                     %sShell%s:    potatOS sh\n", C_GRN, C_WHT);
+
+    // Color palette bar
+    vterm_printf("%s\n                     ", C_RST);
+    for (int i = 40; i <= 47; i++)
+        vterm_printf("\033[%dm   ", i);
+    vterm_printf("%s\n                     ", C_RST);
+    for (int i = 100; i <= 107; i++)
+        vterm_printf("\033[%dm   ", i);
+    vterm_printf("%s\n", C_RST);
 }
 
 void Shell::execute_clear(const char*) {

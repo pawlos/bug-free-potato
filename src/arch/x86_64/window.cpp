@@ -445,6 +445,8 @@ Window* WindowManager::get_window(pt::uint32_t wid)
     return &windows[wid];
 }
 
+pt::uint32_t WindowManager::get_window_count() { return z_count; }
+
 pt::uint32_t WindowManager::get_task_window(pt::uint32_t task_id)
 {
     for (pt::uint32_t i = 0; i < MAX_WINDOWS; i++) {

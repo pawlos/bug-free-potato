@@ -7,6 +7,9 @@
 #ifndef DUKE3D_POTATO_COMPAT_H
 #define DUKE3D_POTATO_COMPAT_H
 
+/* Suppress libc getchar — we define our own below using sys_read_key() */
+#define _POTATO_GETCHAR_DEFINED
+
 #include "libc/stdlib.h"
 #include "libc/string.h"
 #include "libc/stdio.h"
@@ -99,7 +102,9 @@ int strcasecmp(const char *a, const char *b);
 /* SDL stubs — Duke3D's global.c includes SDL.h for SDL_Quit in Error() */
 #define SDL_Quit() ((void)0)
 
-/* getchar/getch stubs (Duke3D uses these for "press any key" prompts) */
+/* getchar/getch stubs (Duke3D uses these for "press any key" prompts).
+   Suppress the libc version (which uses fgetc(stdin)). */
+#define _POTATO_GETCHAR_DEFINED
 static inline int getchar(void) { return sys_read_key(); }
 #define getch getchar
 
