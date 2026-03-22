@@ -34,12 +34,16 @@ enum {
     SDL_FINGERMOTION     = 0x702,
     SDL_TEXTINPUT        = 0x303,
     SDL_TEXTEDITING      = 0x302,
+    SDL_KEYMAPCHANGED    = 0x304,
+    SDL_EVENT_KEYMAP_CHANGED = 0x304,
 };
 
 /* Mouse button constants */
 #define SDL_BUTTON_LEFT   1
 #define SDL_BUTTON_MIDDLE 2
 #define SDL_BUTTON_RIGHT  3
+#define SDL_BUTTON_X1     4
+#define SDL_BUTTON_X2     5
 
 /* Window events */
 enum {
@@ -58,7 +62,12 @@ enum {
     SDL_WINDOWEVENT_FOCUS_GAINED = 12,
     SDL_WINDOWEVENT_FOCUS_LOST = 13,
     SDL_WINDOWEVENT_CLOSE = 14,
+    SDL_WINDOWEVENT_TAKE_FOCUS = 15,
+    SDL_WINDOWEVENT_HIT_TEST = 16,
 };
+
+#define SDL_AUDIODEVICEADDED   0x1100
+#define SDL_AUDIODEVICEREMOVED 0x1101
 
 /* Syswm event type (stub) */
 #define SDL_SYSWMEVENT 0x201
@@ -167,7 +176,12 @@ typedef union {
     SDL_TextInputEvent   text;
     SDL_JoyButtonEvent   jbutton;
     SDL_ControllerAxisEvent jaxis;
+    struct { Uint32 type; Uint32 timestamp; SDL_JoystickID which; Uint8 ball; Sint16 xrel; Sint16 yrel; } jball;
+    struct { Uint32 type; Uint32 timestamp; Uint32 which; Uint8 iscapture; } adevice;
+    struct { Uint32 type; Uint32 timestamp; Uint32 windowID; Sint32 code; void *data1; void *data2; } user;
 } SDL_Event;
+
+static inline SDL_Scancode SDL_GetScancodeFromKey(SDL_Keycode key) { (void)key; return SDL_SCANCODE_UNKNOWN; }
 
 int SDL_PollEvent(SDL_Event *event);
 int SDL_PushEvent(SDL_Event *event);
@@ -178,5 +192,8 @@ static inline void SDL_SetModState(Uint16 modstate) { (void)modstate; }
 static inline Uint32 SDL_RegisterEvents(int numevents) { (void)numevents; return 0xFFFFFFFF; }
 
 #define SDL_TOUCH_MOUSEID ((Uint32)-1)
+#define SDL_USEREVENT     0x8000
+
+typedef Uint32 SDL_EventType;
 
 #endif

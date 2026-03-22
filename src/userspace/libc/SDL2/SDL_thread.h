@@ -5,6 +5,10 @@
 
 /* potatOS is single-threaded — thread API is stubbed. */
 
+#ifndef SDLCALL
+#define SDLCALL
+#endif
+
 typedef struct SDL_Thread SDL_Thread;
 typedef int (*SDL_ThreadFunction)(void *data);
 

@@ -26,6 +26,9 @@
 #define SDL_INIT_AUDIO          0x00000010
 #define SDL_INIT_VIDEO          0x00000020
 #define SDL_INIT_EVENTS         0x00004000
+#define SDL_INIT_JOYSTICK       0x00000200
+#define SDL_INIT_GAMECONTROLLER 0x00002000
+#define SDL_INIT_HAPTIC         0x00001000
 #define SDL_INIT_EVERYTHING     0x0000FFFF
 
 int  SDL_Init(Uint32 flags);
@@ -53,6 +56,17 @@ static inline void SDL_free(void *ptr) { (void)ptr; }
 static inline SDL_bool SDL_SetHint(const char *name, const char *value)
     { (void)name; (void)value; return SDL_TRUE; }
 #define SDL_HINT_ORIENTATIONS "SDL_HINT_ORIENTATIONS"
+#define SDL_HINT_IME_INTERNAL_EDITING "SDL_IME_INTERNAL_EDITING"
+#define SDL_HINT_GAMECONTROLLERCONFIG "SDL_GAMECONTROLLERCONFIG"
+#define SDL_HINT_MOUSE_TOUCH_EVENTS "SDL_MOUSE_TOUCH_EVENTS"
+#define SDL_HINT_ACCELEROMETER_AS_JOYSTICK "SDL_ACCELEROMETER_AS_JOYSTICK"
+#define SDL_HINT_RENDER_SCALE_QUALITY "SDL_RENDER_SCALE_QUALITY"
+#define SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS "SDL_GAMECONTROLLER_USE_BUTTON_LABELS"
+#define SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"
+
+/* Audio stubs */
+static inline int SDL_GetNumAudioDevices(int iscapture) { (void)iscapture; return 0; }
+static inline const char* SDL_GetAudioDeviceName(int idx, int iscapture) { (void)idx; (void)iscapture; return ""; }
 
 /* Text input stubs */
 static inline void SDL_StartTextInput(void) {}
@@ -72,7 +86,11 @@ typedef struct SDL_RWops {
     size_t (*write)(struct SDL_RWops *ctx, const void *ptr, size_t size, size_t num);
     int    (*close)(struct SDL_RWops *ctx);
     Uint32 type;
-    void  *hidden;
+    union {
+        struct { void *data1; void *data2; } unknown;
+        struct { void *fp; int autoclose; } stdio;
+        struct { Uint8 *base; Uint8 *here; Uint8 *stop; } mem;
+    } hidden;
 } SDL_RWops;
 
 SDL_RWops* SDL_RWFromFile(const char *file, const char *mode);
@@ -93,6 +111,7 @@ SDL_Surface* SDL_LoadBMP_RW(SDL_RWops *src, int freesrc);
 #define RW_SEEK_SET 0
 #define RW_SEEK_CUR 1
 #define RW_SEEK_END 2
+#define SDL_RWOPS_UNKNOWN 0
 
 /* Misc */
 static inline const char* SDL_GetPlatform(void) { return "potatOS"; }
@@ -118,5 +137,9 @@ static inline void SDL_MaximizeWindow(SDL_Window *w) { (void)w; }
 static inline void SDL_RestoreWindow(SDL_Window *w) { (void)w; }
 static inline char* SDL_GetBasePath(void) { return (char*)""; }
 static inline char* SDL_GetPrefPath(const char *org, const char *app) { (void)org; (void)app; return (char*)""; }
+static inline void SDL_DisableScreenSaver(void) {}
+static inline void SDL_EnableScreenSaver(void) {}
+static inline int SDL_GetDisplayDPI(int idx, float *ddpi, float *hdpi, float *vdpi)
+    { (void)idx; if(ddpi)*ddpi=96.0f; if(hdpi)*hdpi=96.0f; if(vdpi)*vdpi=96.0f; return 0; }
 
 #endif

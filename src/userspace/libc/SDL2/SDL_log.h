@@ -3,26 +3,32 @@
 
 #include "SDL_stdinc.h"
 
-#ifndef SDL_LOG_CATEGORY_APPLICATION
-#define SDL_LOG_CATEGORY_APPLICATION 0
-#define SDL_LOG_CATEGORY_ERROR       1
-#define SDL_LOG_CATEGORY_ASSERT      2
-#define SDL_LOG_CATEGORY_SYSTEM      3
-#define SDL_LOG_CATEGORY_AUDIO       4
-#define SDL_LOG_CATEGORY_VIDEO       5
-#define SDL_LOG_CATEGORY_RENDER      6
-#define SDL_LOG_CATEGORY_INPUT       7
-#define SDL_LOG_CATEGORY_CUSTOM      19
-#define SDL_LOG_CATEGORY_TEST        20
+#ifndef SDL_LogCategory_defined_
+#define SDL_LogCategory_defined_
+enum SDL_LogCategory {
+    SDL_LOG_CATEGORY_APPLICATION = 0,
+    SDL_LOG_CATEGORY_ERROR       = 1,
+    SDL_LOG_CATEGORY_ASSERT      = 2,
+    SDL_LOG_CATEGORY_SYSTEM      = 3,
+    SDL_LOG_CATEGORY_AUDIO       = 4,
+    SDL_LOG_CATEGORY_VIDEO       = 5,
+    SDL_LOG_CATEGORY_RENDER      = 6,
+    SDL_LOG_CATEGORY_INPUT       = 7,
+    SDL_LOG_CATEGORY_CUSTOM      = 19,
+    SDL_LOG_CATEGORY_TEST        = 20,
+};
 #endif
 
-#ifndef SDL_LOG_PRIORITY_VERBOSE
-#define SDL_LOG_PRIORITY_VERBOSE  1
-#define SDL_LOG_PRIORITY_DEBUG    2
-#define SDL_LOG_PRIORITY_INFO     3
-#define SDL_LOG_PRIORITY_WARN     4
-#define SDL_LOG_PRIORITY_ERROR    5
-#define SDL_LOG_PRIORITY_CRITICAL 6
+#ifndef SDL_LogPriority_defined_
+#define SDL_LogPriority_defined_
+enum {
+    SDL_LOG_PRIORITY_VERBOSE  = 1,
+    SDL_LOG_PRIORITY_DEBUG    = 2,
+    SDL_LOG_PRIORITY_INFO     = 3,
+    SDL_LOG_PRIORITY_WARN     = 4,
+    SDL_LOG_PRIORITY_ERROR    = 5,
+    SDL_LOG_PRIORITY_CRITICAL = 6,
+};
 #endif
 
 typedef int SDL_LogPriority;
@@ -43,5 +49,9 @@ static inline void SDL_LogGetOutputFunction(SDL_LogOutputFunction *cb, void **ud
 static inline void SDL_LogSetOutputFunction(SDL_LogOutputFunction cb, void *ud) { (void)cb; (void)ud; }
 static inline void SDL_LogMessage(int cat, SDL_LogPriority pri, const char *fmt, ...)
     { (void)cat; (void)pri; (void)fmt; }
+static inline void SDL_LogMessageV(int cat, SDL_LogPriority pri, const char *fmt, __builtin_va_list ap)
+    { (void)cat; (void)pri; (void)fmt; (void)ap; }
+
+#define SDL_NUM_LOG_PRIORITIES 7
 
 #endif

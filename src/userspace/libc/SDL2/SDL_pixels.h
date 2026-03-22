@@ -22,6 +22,10 @@
 
 typedef Uint32 SDL_PixelFormatEnum;
 
+#define SDL_BITSPERPIXEL(X)  (((X) >> 8) & 0xFF)
+#define SDL_BYTESPERPIXEL(X) (((X) & 0xFF) ? ((X) & 0xFF) : (SDL_BITSPERPIXEL(X) + 7) / 8)
+#define SDL_ISPIXELFORMAT_INDEXED(X) ((X) == SDL_PIXELFORMAT_INDEX8)
+
 typedef struct {
     Uint8 r, g, b, a;
 } SDL_Color;

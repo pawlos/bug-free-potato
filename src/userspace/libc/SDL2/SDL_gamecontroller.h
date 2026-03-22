@@ -80,5 +80,25 @@ static inline SDL_GameController* SDL_GameControllerFromInstanceID(SDL_JoystickI
     { (void)id; return (SDL_GameController*)0; }
 static inline SDL_Joystick* SDL_GameControllerGetJoystick(SDL_GameController *gc)
     { (void)gc; return (SDL_Joystick*)0; }
+static inline char* SDL_GameControllerMappingForGUID(SDL_JoystickGUID guid)
+    { (void)guid; return (char*)""; }
+static inline char* SDL_GameControllerMapping(SDL_GameController *gc)
+    { (void)gc; return (char*)""; }
+static inline int SDL_GameControllerAddMapping(const char *map)
+    { (void)map; return 0; }
+
+typedef int SDL_GameControllerType;
+#define SDL_CONTROLLER_TYPE_UNKNOWN            0
+#define SDL_CONTROLLER_TYPE_XBOX360            1
+#define SDL_CONTROLLER_TYPE_XBOXONE            2
+#define SDL_CONTROLLER_TYPE_PS3                3
+#define SDL_CONTROLLER_TYPE_PS4                4
+#define SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO 5
+#define SDL_CONTROLLER_TYPE_PS5                6
+#define SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO   SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO
+static inline SDL_GameControllerType SDL_GameControllerGetType(SDL_GameController *gc)
+    { (void)gc; return SDL_CONTROLLER_TYPE_UNKNOWN; }
+static inline SDL_GameControllerType SDL_GameControllerTypeForIndex(int idx)
+    { (void)idx; return SDL_CONTROLLER_TYPE_UNKNOWN; }
 
 #endif

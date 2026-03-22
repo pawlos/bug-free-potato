@@ -18,4 +18,7 @@ static inline void SDL_WarpMouseInWindow(SDL_Window *w, int x, int y)
 #define SDL_SYSTEM_CURSOR_ARROW 0
 #define SDL_SYSTEM_CURSOR_HAND  11
 
+static inline SDL_Cursor* SDL_CreateColorCursor(SDL_Surface *s, int hot_x, int hot_y)
+    { (void)s; (void)hot_x; (void)hot_y; return (SDL_Cursor*)0; }
+
 #endif

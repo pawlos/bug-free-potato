@@ -56,5 +56,11 @@ static inline int SDL_SetTextureColorMod(SDL_Texture *t, Uint8 r, Uint8 g, Uint8
     { (void)t; (void)r; (void)g; (void)b; return 0; }
 static inline int SDL_SetTextureBlendMode(SDL_Texture *t, int mode) { (void)t; (void)mode; return 0; }
 static inline int SDL_RenderSetClipRect(SDL_Renderer *r, const SDL_Rect *rect) { (void)r; (void)rect; return 0; }
+static inline int SDL_RenderSetIntegerScale(SDL_Renderer *r, SDL_bool enable) { (void)r; (void)enable; return 0; }
+
+SDL_Texture* SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *surface);
+
+static inline int SDL_GetRendererOutputSize(SDL_Renderer *r, int *w, int *h)
+    { (void)r; if(w)*w=0; if(h)*h=0; return 0; }
 
 #endif
