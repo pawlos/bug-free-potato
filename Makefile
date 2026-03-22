@@ -26,6 +26,7 @@ QEMU_OPTIONS=-m 512M \
 
 x86_64_object_files := $(x86_64_cpp_object_files) $(x86_64_asm_object_files)
 
+# ── Kernel build rules ───────────────────────────────────────────────────
 $(kernel_object_files): build/kernel/%.o : src/kernel/%.cpp
 	mkdir -p $(dir $@) && \
 	$(CPP) -c -I src/include -I src/arch/x86_64 -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -mgeneral-regs-only -Wall -Wextra $(CPPFLAGS) $(patsubst build/kernel/%.o, src/kernel/%.cpp, $@) -o $@
@@ -33,7 +34,6 @@ $(kernel_object_files): build/kernel/%.o : src/kernel/%.cpp
 $(x86_64_cpp_object_files): build/x86_64/%.o : src/arch/x86_64/%.cpp
 	mkdir -p $(dir $@) && \
 	$(CPP) -c -I src/include -g -masm=intel -ffreestanding -fno-rtti -mno-red-zone -mgeneral-regs-only -Wall -Wextra $(CPPFLAGS) $(patsubst build/x86_64/%.o, src/arch/x86_64/%.cpp, $@) -o $@
-
 
 $(x86_64_asm_object_files): build/x86_64/%.o : src/arch/x86_64/%.asm
 	mkdir -p $(dir $@) && \
@@ -51,32 +51,6 @@ build-x86_64: $(kernel_object_files) $(x86_64_object_files)
 
 gdb: all disk.img
 	$(QEMU) -cdrom dist/x86_64/kernel.iso -drive file=disk.img,format=raw,if=ide,media=disk -boot order=d -serial stdio $(QEMU_OPTIONS) -s -S
-
-clean:
-	-rm -f build/kernel/*.o
-	-rm -f build/kernel/net/*.o
-	-rm -f build/x86_64/*.o
-	-rm -f build/x86_64/boot/*.o
-	-rm -f build/x86_64/device/*.o
-	-rm -f build/x86_64/filesystem/*.o
-	-rm -f dist/x86_64/kernel.*
-	-rm -f disk.img
-	-rm -f $(TEST_ELF_OBJ) $(TEST_ELF_BIN)
-	-rm -f $(BLINK_ELF_OBJ) $(BLINK_ELF_BIN)
-	-rm -f build/userspace/taskbar.o dist/userspace/taskbar.elf
-	-rm -rf build/userspace/libc
-	-rm -f $(LIBC_CRT0) $(LIBC_A)
-	-rm -f $(SIMPLE_OBJS) $(SIMPLE_BINS)
-	-rm -rf $(DOOM_BUILD)
-	-rm -f  $(DOOM_ELF)
-	-rm -rf $(QUAKE_BUILD)
-	-rm -f  $(QUAKE_ELF)
-	-rm -rf $(Q2_BUILD)
-	-rm -f  $(Q2_ELF)
-	-rm -rf $(DUKE_BUILD)
-	-rm -f  $(DUKE_ELF)
-	-rm -rf $(PLAYER_BUILD)
-	-rm -f  $(PLAYER_ELF)
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -153,456 +127,53 @@ $(BLINK_ELF_BIN): $(BLINK_ELF_OBJ) src/userspace/blink.ld
 	mkdir -p dist/userspace
 	$(LD) -T src/userspace/blink.ld -o $(BLINK_ELF_BIN) $(BLINK_ELF_OBJ)
 
-# ── Doom ──────────────────────────────────────────────────────────────────────
-DOOM_DIR    = src/userspace/doom
-DOOMGEN_DIR = $(DOOM_DIR)/doomgeneric/doomgeneric
-DOOM_BUILD  = build/userspace/doom
-DOOM_ELF    = dist/userspace/doom.elf
-DOOM_WAD    = assets/doom1.wad
-
-# Compile flags: suppress all warnings (-w) so old Doom C doesn't drown the build.
-# -I src/userspace/libc makes #include <stdio.h> etc. find our freestanding libc.
-# -I src/userspace lets potato.c do #include "libc/syscall.h".
-CFLAGS_DOOM = -ffreestanding -fno-stack-protector -fno-builtin \
-              -fno-asynchronous-unwind-tables \
-              -m64 -nostdlib -w \
-              -include stddef.h \
-              -DFEATURE_SOUND \
-              -I src/userspace/libc \
-              -I src/userspace \
-              -I $(DOOMGEN_DIR)
-
-# Fetch doomgeneric source on demand (depth-1 clone, ~2 MB).
-# The repo nests sources under doomgeneric/doomgeneric/, so clone to
-# src/userspace/doom/doomgeneric (the repo root).
-$(DOOMGEN_DIR)/doomgeneric.h:
-	git clone --depth=1 https://github.com/ozkl/doomgeneric.git $(DOOM_DIR)/doomgeneric
-
-# All doomgeneric .c files — exclude other platform implementations and
-# platform-specific audio drivers (Allegro, SDL).
-DOOMGEN_SRCS := $(filter-out \
-    $(DOOMGEN_DIR)/doomgeneric_allegro.c \
-    $(DOOMGEN_DIR)/doomgeneric_emscripten.c \
-    $(DOOMGEN_DIR)/doomgeneric_linuxvt.c \
-    $(DOOMGEN_DIR)/doomgeneric_sdl.c \
-    $(DOOMGEN_DIR)/doomgeneric_soso.c \
-    $(DOOMGEN_DIR)/doomgeneric_sosox.c \
-    $(DOOMGEN_DIR)/doomgeneric_win.c \
-    $(DOOMGEN_DIR)/doomgeneric_xlib.c \
-    $(DOOMGEN_DIR)/i_allegromusic.c \
-    $(DOOMGEN_DIR)/i_allegrosound.c \
-    $(DOOMGEN_DIR)/i_sdlmusic.c \
-    $(DOOMGEN_DIR)/i_sdlsound.c, \
-    $(wildcard $(DOOMGEN_DIR)/*.c))
-DOOMGEN_OBJS := $(patsubst $(DOOMGEN_DIR)/%.c, $(DOOM_BUILD)/dg_%.o, $(DOOMGEN_SRCS))
-
-# doomgeneric.c has its own main() — rename it so ours in potato.c wins.
-$(DOOM_BUILD)/dg_doomgeneric.o: $(DOOMGEN_DIR)/doomgeneric.c $(DOOMGEN_DIR)/doomgeneric.h
-	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -Dmain=_dg_unused_main -o $@ $<
-
-# All other doomgeneric sources compile normally
-$(DOOM_BUILD)/dg_%.o: $(DOOMGEN_DIR)/%.c $(DOOMGEN_DIR)/doomgeneric.h
-	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
-
-# Our platform layer (potato.c + sound module)
-$(DOOM_BUILD)/doomgeneric_potato.o: $(DOOM_DIR)/doomgeneric_potato.c $(DOOMGEN_DIR)/doomgeneric.h
-	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -o $@ $<
-
-$(DOOM_BUILD)/doomgeneric_potato_sound.o: $(DOOM_DIR)/doomgeneric_potato_sound.c $(DOOMGEN_DIR)/doomgeneric.h $(DOOM_DIR)/mus_opl.h
-	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -I $(DOOM_DIR) -o $@ $<
-
-$(DOOM_BUILD)/opl3.o: $(DOOM_DIR)/opl3.c $(DOOM_DIR)/opl3.h
-	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -I $(DOOM_DIR) -o $@ $<
-
-$(DOOM_BUILD)/mus_opl.o: $(DOOM_DIR)/mus_opl.c $(DOOM_DIR)/mus_opl.h $(DOOM_DIR)/opl3.h
-	mkdir -p $(DOOM_BUILD)
-	$(CC) -c $(CFLAGS_DOOM) -I $(DOOM_DIR) -o $@ $<
-
-DOOM_POTATO_OBJS = $(DOOM_BUILD)/doomgeneric_potato.o $(DOOM_BUILD)/doomgeneric_potato_sound.o \
-                   $(DOOM_BUILD)/opl3.o $(DOOM_BUILD)/mus_opl.o
-
-$(DOOM_ELF): $(DOOMGEN_OBJS) $(DOOM_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	mkdir -p dist/userspace
-	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(DOOM_POTATO_OBJS) $(DOOMGEN_OBJS) $(LIBC_A)
-
-# Download shareware DOOM1.WAD (id Software freeware release)
-$(DOOM_WAD):
-	@echo "Downloading shareware doom1.wad..."
-	curl -L -o $@ "https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad" || \
-	  { echo "ERROR: Could not download doom1.wad. Place it manually at $(DOOM_WAD)"; exit 1; }
-
-doom: $(DOOM_ELF)
-
-doom-disk: $(DOOM_ELF) $(DOOM_WAD)
-	@echo "doom.elf and doom1.wad ready for disk image"
-
-# ── Quake ──────────────────────────────────────────────────────────────────────
-QUAKE_DIR    = src/userspace/quake
-QUAKEGEN_DIR = $(QUAKE_DIR)/quakegeneric/source
-QUAKE_BUILD  = build/userspace/quake
-QUAKE_ELF    = dist/userspace/quake.elf
-
-# Compile flags: suppress all warnings (-w) for old Quake C.
-# -I src/userspace/libc makes system includes find our freestanding libc.
-# -I src/userspace lets potato.c do #include "libc/syscall.h".
-# -I $(QUAKEGEN_DIR) allows #include "quakegeneric.h" etc.
-CFLAGS_QUAKE = -ffreestanding -fno-stack-protector -fno-builtin \
-               -fno-asynchronous-unwind-tables \
-               -m64 -nostdlib -w \
-               -I src/userspace/libc \
-               -I src/userspace \
-               -I $(QUAKEGEN_DIR)
-
-# Fetch quakegeneric on demand (depth-1 clone, ~3 MB).
-# After cloning, increase the hardcoded 8 MB memory pool to 64 MB so the
-# full game pak0.pak fits without Hunk_Alloc failures.
-$(QUAKEGEN_DIR)/quakegeneric.h:
-	git clone --depth=1 https://github.com/erysdren/quakegeneric.git $(QUAKE_DIR)/quakegeneric
-	sed -i 's/parms\.memsize = 8\*1024\*1024/parms.memsize = 64*1024*1024/' $(QUAKEGEN_DIR)/quakegeneric.c
-
-# All quakegeneric engine sources (from CMakeLists.txt)
-QUAKEGEN_SRCS := $(addprefix $(QUAKEGEN_DIR)/, \
-    cd_null.c chase.c cl_demo.c cl_input.c cl_main.c cl_parse.c cl_tent.c \
-    cmd.c common.c console.c crc.c cvar.c \
-    d_edge.c d_fill.c d_init.c d_modech.c d_part.c d_polyse.c d_scan.c \
-    d_sky.c d_sprite.c d_surf.c d_vars.c d_zpoint.c \
-    draw.c host_cmd.c host.c in_null.c keys.c mathlib.c menu.c model.c \
-    net_loop.c net_main.c net_none.c net_vcr.c nonintel.c \
-    pr_cmds.c pr_edict.c pr_exec.c \
-    r_aclip.c r_alias.c r_bsp.c r_draw.c r_edge.c r_efrag.c r_light.c \
-    r_main.c r_misc.c r_part.c r_sky.c r_sprite.c r_surf.c r_vars.c \
-    sbar.c screen.c snd_dma.c snd_mem.c snd_mix.c snd_potato.c \
-    sv_main.c sv_move.c sv_phys.c sv_user.c \
-    sys_null.c vid_null.c view.c wad.c world.c zone.c quakegeneric.c)
-
-QUAKEGEN_OBJS := $(patsubst $(QUAKEGEN_DIR)/%.c, $(QUAKE_BUILD)/qg_%.o, $(QUAKEGEN_SRCS))
-
-# quakegeneric.c has a commented-out main(); compile normally
-$(QUAKE_BUILD)/qg_%.o: $(QUAKEGEN_DIR)/%.c $(QUAKEGEN_DIR)/quakegeneric.h
-	mkdir -p $(QUAKE_BUILD)
-	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
-
-# Our potato platform layer
-$(QUAKE_BUILD)/quakegeneric_potato.o: $(QUAKE_DIR)/quakegeneric_potato.c $(QUAKEGEN_DIR)/quakegeneric.h
-	mkdir -p $(QUAKE_BUILD)
-	$(CC) -c $(CFLAGS_QUAKE) -o $@ $<
-
-$(QUAKE_ELF): $(QUAKEGEN_OBJS) $(QUAKE_BUILD)/quakegeneric_potato.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	mkdir -p dist/userspace
-	$(LD) --no-relax --wrap=Sys_Error --wrap=Sys_Printf \
-	      -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(QUAKE_BUILD)/quakegeneric_potato.o $(QUAKEGEN_OBJS) $(LIBC_A)
-
-quake: $(QUAKE_ELF)
-
-# ── Quake 2 ────────────────────────────────────────────────────────────────
-Q2_DIR       = src/userspace/quake2
-Q2_SRC_DIR   = $(Q2_DIR)/quake2-src
-Q2_BUILD     = build/userspace/quake2
-Q2_ELF       = dist/userspace/quake2.elf
-
-CFLAGS_Q2 = -ffreestanding -fno-stack-protector -fno-builtin \
-            -fno-asynchronous-unwind-tables \
-            -m64 -nostdlib -O2 -w \
-            -I src/userspace/libc \
-            -I src/userspace \
-            -I $(Q2_SRC_DIR)
-
-# Clone Q2 GPL source on demand
-$(Q2_SRC_DIR)/qcommon/qcommon.h:
-	git clone --depth=1 https://github.com/id-Software/Quake-2.git $(Q2_SRC_DIR)
-	sed -i 's/sizeof (pv)/sizeof (*pv)/' $(Q2_SRC_DIR)/ref_soft/r_poly.c
-
-# Q2 engine sources (explicit lists to avoid platform-specific files)
-Q2_QCOMMON_SRCS := $(addprefix $(Q2_SRC_DIR)/qcommon/, \
-    cmd.c cmodel.c common.c crc.c cvar.c files.c md4.c net_chan.c pmove.c)
-
-Q2_CLIENT_SRCS := $(addprefix $(Q2_SRC_DIR)/client/, \
-    cl_cin.c cl_ents.c cl_fx.c cl_input.c cl_inv.c cl_main.c \
-    cl_newfx.c cl_parse.c cl_pred.c cl_scrn.c cl_tent.c cl_view.c \
-    console.c keys.c menu.c qmenu.c snd_dma.c snd_mem.c snd_mix.c)
-
-Q2_SERVER_SRCS := $(addprefix $(Q2_SRC_DIR)/server/, \
-    sv_ccmds.c sv_ents.c sv_game.c sv_init.c sv_main.c sv_send.c \
-    sv_user.c sv_world.c)
-
-Q2_GAME_SRCS := $(filter-out $(Q2_SRC_DIR)/game/q_shared.c, \
-    $(wildcard $(Q2_SRC_DIR)/game/*.c))
-
-Q2_REFSOFT_SRCS := $(addprefix $(Q2_SRC_DIR)/ref_soft/, \
-    r_aclip.c r_alias.c r_bsp.c r_draw.c r_edge.c r_image.c r_light.c \
-    r_main.c r_misc.c r_model.c r_part.c r_poly.c r_polyse.c \
-    r_rast.c r_scan.c r_sprite.c r_surf.c)
-
-Q2_SHARED_SRCS := $(Q2_SRC_DIR)/game/q_shared.c $(Q2_SRC_DIR)/linux/glob.c
-
-Q2_ENGINE_SRCS := $(Q2_QCOMMON_SRCS) $(Q2_CLIENT_SRCS) $(Q2_SERVER_SRCS) \
-                  $(Q2_GAME_SRCS) $(Q2_REFSOFT_SRCS) $(Q2_SHARED_SRCS)
-
-Q2_ENGINE_OBJS := $(patsubst $(Q2_SRC_DIR)/%.c, $(Q2_BUILD)/%.o, $(Q2_ENGINE_SRCS))
-
-Q2_POTATO_SRCS := $(Q2_DIR)/q2_potato.c
-Q2_POTATO_OBJS := $(patsubst $(Q2_DIR)/%.c, $(Q2_BUILD)/%.o, $(Q2_POTATO_SRCS))
-
-# Compile Q2 engine sources
-$(Q2_BUILD)/%.o: $(Q2_SRC_DIR)/%.c $(Q2_SRC_DIR)/qcommon/qcommon.h
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS_Q2) -o $@ $<
-
-# Compile potato platform layer
-$(Q2_BUILD)/q2_potato.o: $(Q2_DIR)/q2_potato.c $(Q2_SRC_DIR)/qcommon/qcommon.h
-	mkdir -p $(Q2_BUILD)
-	$(CC) -c $(CFLAGS_Q2) -o $@ $<
-
-$(Q2_ELF): $(Q2_ENGINE_OBJS) $(Q2_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	mkdir -p dist/userspace
-	$(LD) --no-relax --allow-multiple-definition \
-	      -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(Q2_POTATO_OBJS) $(Q2_ENGINE_OBJS) $(LIBC_A)
-
-quake2: $(Q2_ELF)
-
-# ── Duke Nukem 3D (Chocolate Duke3D) ────────────────────────────────────
-DUKE_DIR     = src/userspace/duke3d
-DUKE_SRC_DIR = $(DUKE_DIR)/chocolate_duke3D
-DUKE_BUILD   = build/userspace/duke3d
-DUKE_ELF     = dist/userspace/duke3d.elf
-
-CFLAGS_DUKE = -ffreestanding -fno-stack-protector -fno-builtin \
-              -fno-asynchronous-unwind-tables \
-              -m64 -nostdlib -O2 -w \
-              -DPLATFORM_POTATO \
-              -DUSER_DUMMY_NETWORK=1 \
-              -include $(DUKE_DIR)/potato_compat.h \
-              -I src/userspace/libc \
-              -I src/userspace \
-              -I $(DUKE_DIR) \
-              -I $(DUKE_SRC_DIR)/Engine/src \
-              -I $(DUKE_SRC_DIR)/Game/src
-
-# Clone Chocolate Duke3D source on demand + apply 64-bit patches
-$(DUKE_SRC_DIR)/Engine/src/engine.c:
-	git clone --depth=1 https://github.com/fabiensanglard/chocolate_duke3D.git $(DUKE_SRC_DIR)
-	@echo "Applying potatOS / 64-bit patches to Chocolate Duke3D..."
-	# Fix FP_OFF truncation: remove (int32_t) casts before FP_OFF in engine.c
-	sed -i 's/(int32_t)FP_OFF/(intptr_t)FP_OFF/g;s/(int32_t) FP_OFF/(intptr_t) FP_OFF/g' $(DUKE_SRC_DIR)/Engine/src/engine.c
-	# Fix globalpalwritten: should be intptr_t, not int32_t
-	sed -i 's/int32_t globalpalwritten/intptr_t globalpalwritten/' $(DUKE_SRC_DIR)/Engine/src/engine.c
-	sed -i 's/(int32_t)globalpalwritten/(intptr_t)globalpalwritten/' $(DUKE_SRC_DIR)/Engine/src/engine.c
-	# Fix suckcache parameter type (intptr_t* on 64-bit)
-	sed -i 's/suckcache((int32_t \*)screen)/suckcache((intptr_t *)screen)/' $(DUKE_SRC_DIR)/Engine/src/engine.c
-	# Fix platform.h to include potato_compat.h
-	sed -i 's/#error Define your platform!/#include "potato_compat.h"/' $(DUKE_SRC_DIR)/Engine/src/platform.h
-	# Fix premap.c -O0 issue: ensure it includes via platform.h
-	# Fix sounds.c: uses open()/read()/close() for RTS files
-	sed -i 's|<fcntl.h>|"libc/file.h"|;s|<unistd.h>|"libc/stdlib.h"|' $(DUKE_SRC_DIR)/Game/src/sounds.c || true
-	# Fix config.c: uses getenv, open, etc.
-	sed -i 's|<fcntl.h>|"libc/file.h"|;s|<unistd.h>|"libc/stdlib.h"|' $(DUKE_SRC_DIR)/Game/src/config.c || true
-	# Fix game.c: uses signal, time, etc.
-	sed -i 's|<signal.h>|"libc/signal.h"|;s|<sys/stat.h>|"libc/sys/stat.h"|' $(DUKE_SRC_DIR)/Game/src/game.c || true
-	# Fix itoa conflict with libc (rename to duke_itoa)
-	sed -i 's/uint8_t  \*itoa(int value, uint8_t  \*string, int radix)/uint8_t *duke_itoa(int value, uint8_t *string, int radix)/' $(DUKE_SRC_DIR)/Game/src/global.c || true
-	# Patch load_duke3d_groupfile to use hardcoded GRP path (bypass findGRPToUse/FixFilePath inlining)
-	sed -i '/findGRPToUse(groupfilefullpath)/c\\tsprintf(groupfilefullpath, "%s/DUKE3D.GRP", getGameDir()[0] ? getGameDir() : "GAMES/DUKE3D");' $(DUKE_SRC_DIR)/Game/src/game.c || true
-	sed -i '/FixFilePath(groupfilefullpath)/d' $(DUKE_SRC_DIR)/Game/src/game.c || true
-	# Replace backslash path separators with forward slash (potatOS VFS uses /)
-	sed -i 's|%s\\\\%s|%s/%s|g' $(DUKE_SRC_DIR)/Engine/src/filesystem.c $(DUKE_SRC_DIR)/Game/src/config.c $(DUKE_SRC_DIR)/Game/src/game.c $(DUKE_SRC_DIR)/Game/src/menues.c $(DUKE_SRC_DIR)/Game/src/premap.c || true
-	sed -i 's|%s/%s\\\\%s|%s/%s/%s|g' $(DUKE_SRC_DIR)/Game/src/game.c || true
-
-# Engine sources (replacing display.c with our display_potato.c)
-DUKE_ENGINE_SRCS := $(addprefix $(DUKE_SRC_DIR)/Engine/src/, \
-    cache.c draw.c dummy_multi.c engine.c filesystem.c \
-    fixedPoint_math.c network.c tiles.c)
-
-# Game sources
-DUKE_GAME_SRCS := $(addprefix $(DUKE_SRC_DIR)/Game/src/, \
-    actors.c animlib.c config.c console.c control.c \
-    cvar_defs.c cvars.c game.c gamedef.c global.c \
-    keyboard.c menues.c player.c premap.c rts.c \
-    scriplib.c sector.c sounds.c)
-
-# Audiolib sources (replacing dsl.c with our dsl_potato.c)
-DUKE_AUDIO_SRCS := $(addprefix $(DUKE_SRC_DIR)/Game/src/audiolib/, \
-    fx_man.c ll_man.c multivoc.c mv_mix.c mvreverb.c \
-    nodpmi.c pitch.c user.c usrhooks.c)
-
-# Our platform files
-DUKE_POTATO_SRCS := $(DUKE_DIR)/display_potato.c \
-                    $(DUKE_DIR)/dsl_potato.c \
-                    $(DUKE_DIR)/music_potato.c
-
-DUKE_ENGINE_OBJS := $(patsubst $(DUKE_SRC_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_ENGINE_SRCS))
-DUKE_GAME_OBJS   := $(patsubst $(DUKE_SRC_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_GAME_SRCS))
-DUKE_AUDIO_OBJS  := $(patsubst $(DUKE_SRC_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_AUDIO_SRCS))
-DUKE_POTATO_OBJS := $(patsubst $(DUKE_DIR)/%.c, $(DUKE_BUILD)/%.o, $(DUKE_POTATO_SRCS))
-
-DUKE_ALL_OBJS := $(DUKE_ENGINE_OBJS) $(DUKE_GAME_OBJS) $(DUKE_AUDIO_OBJS) $(DUKE_POTATO_OBJS)
-
-# Ensure clone happens before any Duke3D compilation
-$(DUKE_ALL_OBJS): | $(DUKE_SRC_DIR)/Engine/src/engine.c
-
-# Compile engine sources
-$(DUKE_BUILD)/Engine/src/%.o: $(DUKE_SRC_DIR)/Engine/src/%.c
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
-
-# Compile game sources (premap.c at -O0 to avoid crash)
-$(DUKE_BUILD)/Game/src/premap.o: $(DUKE_SRC_DIR)/Game/src/premap.c
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS_DUKE) -O0 -o $@ $<
-
-$(DUKE_BUILD)/Game/src/%.o: $(DUKE_SRC_DIR)/Game/src/%.c
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
-
-# Compile audiolib sources
-$(DUKE_BUILD)/Game/src/audiolib/%.o: $(DUKE_SRC_DIR)/Game/src/audiolib/%.c
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
-
-# Compile potato platform sources
-$(DUKE_BUILD)/%.o: $(DUKE_DIR)/%.c
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS_DUKE) -o $@ $<
-
-$(DUKE_ELF): $(DUKE_ALL_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	mkdir -p dist/userspace
-	$(LD) --no-relax --allow-multiple-definition \
-	      -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(DUKE_POTATO_OBJS) $(DUKE_ENGINE_OBJS) $(DUKE_GAME_OBJS) $(DUKE_AUDIO_OBJS) $(LIBC_A)
-
-duke3d: $(DUKE_ELF)
-
-# ── MPEG-1 Video Player ──────────────────────────────────────────────────
-PLAYER_DIR   = src/userspace/player
-PLAYER_BUILD = build/userspace/player
-PLAYER_ELF   = dist/userspace/player.elf
-
-$(PLAYER_BUILD)/player.o: $(PLAYER_DIR)/player.c $(PLAYER_DIR)/pl_mpeg.h
-	mkdir -p $(PLAYER_BUILD)
-	$(CC) -c $(CFLAGS_USER) -I src/userspace/libc -O2 -w -o $@ $<
-
-$(PLAYER_ELF): $(PLAYER_BUILD)/player.o $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	mkdir -p dist/userspace
-	$(LD) --no-relax -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $< $(LIBC_A)
-
-player: $(PLAYER_ELF)
-
-# ── DevilutionX (Diablo) ──────────────────────────────────────────────────
-DVLX_DIR     = src/userspace/devilutionx
-DVLX_SRC_DIR = $(DVLX_DIR)/devilutionx-src/Source
-DVLX_3RD_DIR = $(DVLX_DIR)/devilutionx-src/3rdParty
-DVLX_BUILD   = build/userspace/devilutionx
-DVLX_ELF     = dist/userspace/devilutionx.elf
-
-CXXFLAGS_DVLX = -ffreestanding -fno-stack-protector -fno-builtin \
-                -fno-asynchronous-unwind-tables \
-                -m64 -nostdlib -fno-rtti -fno-exceptions -std=c++20 \
-                -O2 -w -fpermissive \
-                -include $(DVLX_DIR)/dvlx_compat.h \
-                -isystem src/userspace/libc \
-                -I src/userspace/libc/SDL2 \
-                -I src/userspace \
-                -I $(DVLX_DIR) \
-                -I $(DVLX_SRC_DIR) \
-                -I $(DVLX_3RD_DIR) \
-                -I $(DVLX_3RD_DIR)/tl \
-                -I $(DVLX_3RD_DIR)/libsmackerdec/include \
-                -I $(DVLX_3RD_DIR)/libmpq-src \
-                -I $(DVLX_3RD_DIR)/PKWare
-
-# All Source/*.cpp minus platform/feature files we don't support
-DVLX_ALL_SRCS := $(shell find $(DVLX_SRC_DIR) -name '*.cpp' 2>/dev/null)
-DVLX_EXCLUDE := $(wildcard \
-    $(DVLX_SRC_DIR)/platform/ctr/*.cpp) $(wildcard \
-    $(DVLX_SRC_DIR)/platform/switch/*.cpp) $(wildcard \
-    $(DVLX_SRC_DIR)/platform/vita/*.cpp) $(wildcard \
-    $(DVLX_SRC_DIR)/platform/android/*.cpp) $(wildcard \
-    $(DVLX_SRC_DIR)/lua/*.cpp) $(wildcard \
-    $(DVLX_SRC_DIR)/lua/modules/*.cpp) $(wildcard \
-    $(DVLX_SRC_DIR)/discord/*.cpp) \
-    $(DVLX_SRC_DIR)/dvlnet/tcp_client.cpp \
-    $(DVLX_SRC_DIR)/dvlnet/tcp_server.cpp \
-    $(DVLX_SRC_DIR)/dvlnet/protocol_zt.cpp \
-    $(DVLX_SRC_DIR)/dvlnet/zerotier_lwip.cpp \
-    $(DVLX_SRC_DIR)/dvlnet/zerotier_native.cpp \
-    $(DVLX_SRC_DIR)/engine/sound.cpp \
-    $(DVLX_SRC_DIR)/utils/soundsample.cpp \
-    $(DVLX_SRC_DIR)/utils/push_aulib_decoder.cpp \
-    $(DVLX_SRC_DIR)/storm/storm_svid.cpp \
-    $(DVLX_SRC_DIR)/utils/screen_reader.cpp \
-    $(DVLX_SRC_DIR)/utils/utf8.cpp \
-    $(DVLX_SRC_DIR)/utils/sdl2_to_1_2_backports.cpp
-DVLX_SRCS := $(filter-out $(DVLX_EXCLUDE), $(DVLX_ALL_SRCS))
-
-# 3rdParty sources (PKWare for MPQ decompression)
-DVLX_3RD_SRCS := $(DVLX_3RD_DIR)/PKWare/explode.cpp \
-                  $(DVLX_3RD_DIR)/PKWare/implode.cpp
-
-# Our platform/compat sources (C++ runtime, stubs)
-DVLX_POTATO_SRCS := $(DVLX_DIR)/cxxrt.cpp \
-                     $(DVLX_DIR)/dvlx_stubs.cpp
-
-DVLX_OBJS := $(patsubst $(DVLX_SRC_DIR)/%.cpp, $(DVLX_BUILD)/src/%.o, $(DVLX_SRCS))
-DVLX_3RD_OBJS := $(patsubst $(DVLX_3RD_DIR)/%.cpp, $(DVLX_BUILD)/3rd/%.o, $(DVLX_3RD_SRCS))
-DVLX_POTATO_OBJS := $(patsubst $(DVLX_DIR)/%.cpp, $(DVLX_BUILD)/potato/%.o, $(DVLX_POTATO_SRCS))
-
-# Compile DevilutionX source files
-$(DVLX_BUILD)/src/%.o: $(DVLX_SRC_DIR)/%.cpp
-	mkdir -p $(dir $@)
-	g++ -c $(CXXFLAGS_DVLX) -o $@ $<
-
-# Compile 3rdParty sources (PKWare compiled as C to avoid mangled memcpy)
-$(DVLX_BUILD)/3rd/PKWare/%.o: $(DVLX_3RD_DIR)/PKWare/%.cpp
-	mkdir -p $(dir $@)
-	gcc -x c -c -ffreestanding -fno-stack-protector -fno-builtin -m64 -nostdlib -O2 -w \
-	    -I $(DVLX_3RD_DIR)/PKWare -o $@ $<
-
-$(DVLX_BUILD)/3rd/%.o: $(DVLX_3RD_DIR)/%.cpp
-	mkdir -p $(dir $@)
-	g++ -c $(CXXFLAGS_DVLX) -o $@ $<
-
-# Compile our potato platform sources
-$(DVLX_BUILD)/potato/%.o: $(DVLX_DIR)/%.cpp
-	mkdir -p $(dir $@)
-	g++ -c $(CXXFLAGS_DVLX) -o $@ $<
-
-$(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
-	mkdir -p dist/userspace
-	$(LD) --no-relax --allow-multiple-definition \
-	      -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(DVLX_POTATO_OBJS) $(DVLX_OBJS) $(DVLX_3RD_OBJS) \
-	      $(LIBC_A) \
-	      /usr/lib/gcc/x86_64-linux-gnu/12/libstdc++.a \
-	      /usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a
-
-devilutionx: $(DVLX_ELF)
-
+# ── Game / app port rules (split into mk/*.mk) ──────────────────────────
+include mk/doom.mk
+include mk/quake.mk
+include mk/quake2.mk
+include mk/duke3d.mk
+include mk/player.mk
+include mk/devilutionx.mk
+
+# ── Clean ────────────────────────────────────────────────────────────────
+clean:
+	-rm -f build/kernel/*.o
+	-rm -f build/kernel/net/*.o
+	-rm -f build/x86_64/*.o
+	-rm -f build/x86_64/boot/*.o
+	-rm -f build/x86_64/device/*.o
+	-rm -f build/x86_64/filesystem/*.o
+	-rm -f dist/x86_64/kernel.*
+	-rm -f disk.img
+	-rm -f $(TEST_ELF_OBJ) $(TEST_ELF_BIN)
+	-rm -f $(BLINK_ELF_OBJ) $(BLINK_ELF_BIN)
+	-rm -f build/userspace/taskbar.o dist/userspace/taskbar.elf
+	-rm -rf build/userspace/libc
+	-rm -f $(LIBC_CRT0) $(LIBC_A)
+	-rm -f $(SIMPLE_OBJS) $(SIMPLE_BINS)
+	-rm -rf $(DOOM_BUILD)
+	-rm -f  $(DOOM_ELF)
+	-rm -rf $(QUAKE_BUILD)
+	-rm -f  $(QUAKE_ELF)
+	-rm -rf $(Q2_BUILD)
+	-rm -f  $(Q2_ELF)
+	-rm -rf $(DUKE_BUILD)
+	-rm -f  $(DUKE_ELF)
+	-rm -rf $(PLAYER_BUILD)
+	-rm -f  $(PLAYER_ELF)
+
+# ── Disk image ───────────────────────────────────────────────────────────
 DUKE_GRP ?= assets/duke3d.grp
-
-# Path to Quake PAK0.PAK (user-supplied; copyrighted — cannot auto-download).
-# Copy PAK0.PAK into assets/ before running make disk.img.
-# Override: make disk.img QUAKE_PAK=/path/to/pak0.pak
 QUAKE_PAK ?= assets/PAK0.PAK
+Q2_PAK0 ?= assets/quake2/pak0.pak
+Q2_PAK1 ?= assets/quake2/pak1.pak
+Q2_PAK2 ?= assets/quake2/pak2.pak
+PLAYER_MPG ?= assets/bad_apple.mpg
 
-# Create FAT32 disk image with test files from bins folder
 ASSET_FILES = assets/font.psf \
               assets/potato.raw \
               assets/potato.txt \
               assets/boot.raw
-
-Q2_PAK0 ?= assets/quake2/pak0.pak
-Q2_PAK1 ?= assets/quake2/pak1.pak
-Q2_PAK2 ?= assets/quake2/pak2.pak
-
-PLAYER_MPG ?= assets/bad_apple.mpg
 
 disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF) $(PLAYER_ELF)
 	@echo "Creating FAT32 disk image..."
@@ -656,6 +227,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
 
+# ── Run targets ──────────────────────────────────────────────────────────
 run: all disk.img
 	$(QEMU) -cdrom dist/x86_64/kernel.iso -drive file=disk.img,format=raw,if=ide,media=disk -boot order=d -serial stdio $(QEMU_OPTIONS)
 
