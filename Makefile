@@ -134,6 +134,7 @@ include mk/quake2.mk
 include mk/duke3d.mk
 include mk/player.mk
 include mk/devilutionx.mk
+include mk/imgview.mk
 
 # ── Clean ────────────────────────────────────────────────────────────────
 clean:
@@ -161,6 +162,8 @@ clean:
 	-rm -f  $(DUKE_ELF)
 	-rm -rf $(PLAYER_BUILD)
 	-rm -f  $(PLAYER_ELF)
+	-rm -rf $(IMGVIEW_BUILD)
+	-rm -f  $(IMGVIEW_ELF)
 
 # ── Disk image ───────────────────────────────────────────────────────────
 DUKE_GRP ?= assets/duke3d.grp
@@ -175,7 +178,7 @@ ASSET_FILES = assets/font.psf \
               assets/potato.txt \
               assets/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF) $(PLAYER_ELF)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF) $(PLAYER_ELF) $(IMGVIEW_ELF)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=512 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -223,6 +226,8 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file $(DUKE_ELF)                    GAMES/DUKE3D/DUKE3D.ELF; \
 	copy_file $(DUKE_GRP)                    GAMES/DUKE3D/DUKE3D.GRP; \
 	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
+	copy_file $(IMGVIEW_ELF)                 BIN/IMGVIEW.ELF; \
+	copy_file assets/menu.png                SYS/MENU.PNG; \
 	copy_file $(PLAYER_MPG)                  SYS/BADAPPLE.MPG
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
