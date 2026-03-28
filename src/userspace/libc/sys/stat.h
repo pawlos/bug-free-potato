@@ -1,6 +1,9 @@
 #pragma once
 #include "../syscall.h"
 
+#ifndef S_IFMT
+#define S_IFMT  0170000
+#endif
 #ifndef S_IFDIR
 #define S_IFDIR 0040000
 #endif
@@ -29,22 +32,34 @@
 #define S_IROTH 0004
 #endif
 
+#define S_ISREG(m)  (((m) & S_IFMT) == S_IFREG)
+#define S_ISDIR(m)  (((m) & S_IFMT) == S_IFDIR)
+
 /* Q2-compatible struct stat (minimal) */
 struct stat {
     unsigned int st_mode;
     long         st_mtime;
+    long         st_ctime;
     unsigned int st_size;
 };
 
-/* Stub: always return -1 (file not found) -- Q2 uses this only for
-   CompareAttributes in Sys_FindFirst, which we handle differently. */
+/* stat: try to open file to see if it exists, report as regular file */
 static inline int stat(const char *path, struct stat *buf)
 {
-    (void)path;
     if (buf) {
         buf->st_mode  = S_IFREG;
         buf->st_mtime = 0;
         buf->st_size  = 0;
+    }
+    /* Try opening to check existence and get size */
+    int fd = sys_open(path);
+    if (fd >= 0) {
+        if (buf) {
+            long end = sys_lseek(fd, 0, 2 /* SEEK_END */);
+            if (end >= 0) buf->st_size = (unsigned int)end;
+        }
+        sys_close(fd);
+        return 0;
     }
     return -1;
 }

@@ -467,3 +467,18 @@ int sscanf(const char *str, const char *fmt, ...)
     int r = vsscanf(str, fmt, ap);
     va_end(ap); return r;
 }
+
+void perror(const char *s)
+{
+    if (s && *s) {
+        printf("%s: error\n", s);
+    } else {
+        printf("error\n");
+    }
+}
+
+int fileno(FILE *stream)
+{
+    (void)stream;
+    return -1;
+}

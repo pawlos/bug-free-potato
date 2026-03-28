@@ -77,3 +77,4 @@ FILE  *freopen(const char *pathname, const char *mode, FILE *stream);
 FILE  *tmpfile(void);
 int    setvbuf(FILE *stream, char *buf, int mode, size_t size);
 void   setbuf(FILE *stream, char *buf);
+int    fileno(FILE *stream);

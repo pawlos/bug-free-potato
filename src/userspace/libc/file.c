@@ -262,6 +262,44 @@ int vfscanf(FILE *f, const char *fmt, va_list ap)
             int suppress = 0;
             if (*p == '*') { suppress = 1; p++; }
 
+            /* Optional width */
+            int width = 0;
+            while (*p >= '0' && *p <= '9') { width = width * 10 + (*p - '0'); p++; }
+
+            /* Scanset: %[...] or %[^...] */
+            if (*p == '[') {
+                p++;
+                int negate = 0;
+                if (*p == '^') { negate = 1; p++; }
+                /* Build scanset bitmap (256 bits) */
+                unsigned char set[32];
+                for (int i = 0; i < 32; i++) set[i] = 0;
+                /* ']' as first char (or after '^') is literal */
+                if (*p == ']') { set[(unsigned char)']' / 8] |= (1 << (']' % 8)); p++; }
+                while (*p && *p != ']') {
+                    unsigned char ch = (unsigned char)*p;
+                    set[ch / 8] |= (1 << (ch % 8));
+                    p++;
+                }
+                if (*p == ']') p++;
+                /* Read matching chars */
+                char *s = suppress ? (char *)0 : va_arg(ap, char *);
+                int i = 0;
+                int max = width > 0 ? width : 0x7FFFFFFF;
+                int c = fgetc(f);
+                while (c != EOF && i < max) {
+                    int in_set = (set[(unsigned char)c / 8] >> (c % 8)) & 1;
+                    if (negate ? in_set : !in_set) break;
+                    if (s) s[i] = (char)c;
+                    i++;
+                    c = fgetc(f);
+                }
+                if (c != EOF) ungetc(c, f);
+                if (i == 0) return count ? count : EOF;
+                if (s) { s[i] = '\0'; count++; }
+                continue;
+            }
+
             if (*p == 'd' || *p == 'i') {
                 /* Read decimal integer */
                 int c;

@@ -424,3 +424,18 @@ int usleep(unsigned int usec)
     sys_sleep_ms(ms);
     return 0;
 }
+
+/* __assert_fail — called by assert() macro */
+void __assert_fail(const char *assertion, const char *file,
+                   unsigned int line, const char *function)
+{
+    printf("Assertion failed: %s (%s:%u: %s)\n",
+           assertion, file, line, function ? function : "?");
+    exit(1);
+}
+
+/* strtoimax — like strtol for intmax_t */
+long strtoimax(const char *s, char **endptr, int base)
+{
+    return strtol(s, endptr, base);
+}

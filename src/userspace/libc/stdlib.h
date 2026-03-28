@@ -34,6 +34,9 @@ void   srand(unsigned int seed);
 void   qsort(void *base, size_t nmemb, size_t size,
              int (*cmp)(const void *, const void *));
 
+/* alloca — stack allocation */
+#define alloca __builtin_alloca
+
 double atof  (const char *s);
 double strtod(const char *s, char **endptr);
 float  strtof(const char *s, char **endptr);
