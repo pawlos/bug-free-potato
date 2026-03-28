@@ -40,6 +40,10 @@ static inline SDL_Window* SDL_GetKeyboardFocus(void) { return (SDL_Window*)0; }
 static inline SDL_Window* SDL_GetMouseFocus(void) { return (SDL_Window*)0; }
 static inline void SDL_SetWindowResizable(SDL_Window *w, SDL_bool resizable) { (void)w; (void)resizable; }
 
+struct SDL_Surface; /* forward decl */
+SDL_Surface* SDL_GetWindowSurface(SDL_Window *window);
+int          SDL_UpdateWindowSurface(SDL_Window *window);
+
 static inline int SDL_GetDesktopDisplayMode(int idx, SDL_DisplayMode *mode)
     { (void)idx; if (mode) { mode->format=0; mode->w=1024; mode->h=768; mode->refresh_rate=60; mode->driverdata=0; } return 0; }
 static inline int SDL_GetCurrentDisplayMode(int idx, SDL_DisplayMode *mode)

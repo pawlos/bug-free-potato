@@ -9,11 +9,21 @@
 #define SDL_RENDERER_SOFTWARE      0x00000001
 #define SDL_RENDERER_ACCELERATED   0x00000002
 #define SDL_RENDERER_PRESENTVSYNC  0x00000004
+#define SDL_RENDERER_TARGETTEXTURE 0x00000008
 
 /* Texture access modes */
 #define SDL_TEXTUREACCESS_STATIC    0
 #define SDL_TEXTUREACCESS_STREAMING 1
 #define SDL_TEXTUREACCESS_TARGET    2
+
+typedef struct SDL_RendererInfo {
+    const char *name;
+    Uint32 flags;
+    Uint32 num_texture_formats;
+    Uint32 texture_formats[16];
+    int max_texture_width;
+    int max_texture_height;
+} SDL_RendererInfo;
 
 typedef struct SDL_Renderer SDL_Renderer;
 typedef struct SDL_Texture  SDL_Texture;
@@ -60,6 +70,9 @@ static inline int SDL_RenderSetIntegerScale(SDL_Renderer *r, SDL_bool enable) { 
 static inline int SDL_RenderSetVSync(SDL_Renderer *r, int vsync) { (void)r; (void)vsync; return 0; }
 
 SDL_Texture* SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *surface);
+
+static inline int SDL_GetRendererInfo(SDL_Renderer *r, SDL_RendererInfo *info)
+    { (void)r; if(info) { info->name="potato"; info->flags=SDL_RENDERER_TARGETTEXTURE; info->num_texture_formats=0; info->max_texture_width=4096; info->max_texture_height=4096; } return 0; }
 
 static inline int SDL_GetRendererOutputSize(SDL_Renderer *r, int *w, int *h)
     { (void)r; if(w)*w=0; if(h)*h=0; return 0; }

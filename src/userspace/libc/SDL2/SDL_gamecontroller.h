@@ -86,6 +86,10 @@ static inline char* SDL_GameControllerMapping(SDL_GameController *gc)
     { (void)gc; return (char*)""; }
 static inline int SDL_GameControllerAddMapping(const char *map)
     { (void)map; return 0; }
+static inline int SDL_GameControllerAddMappingsFromFile(const char *file)
+    { (void)file; return 0; }
+static inline int SDL_GameControllerRumble(SDL_GameController *gc, Uint16 lo, Uint16 hi, Uint32 dur)
+    { (void)gc; (void)lo; (void)hi; (void)dur; return -1; }
 
 typedef int SDL_GameControllerType;
 #define SDL_CONTROLLER_TYPE_UNKNOWN            0

@@ -29,6 +29,7 @@
 #define SDL_INIT_JOYSTICK       0x00000200
 #define SDL_INIT_GAMECONTROLLER 0x00002000
 #define SDL_INIT_HAPTIC         0x00001000
+#define SDL_INIT_NOPARACHUTE    0x00100000
 #define SDL_INIT_EVERYTHING     0x0000FFFF
 
 int  SDL_Init(Uint32 flags);
@@ -42,9 +43,7 @@ static inline Uint32 SDL_WasInit(Uint32 flags) { (void)flags; return SDL_INIT_EV
 static inline int SDL_ShowSimpleMessageBox(Uint32 flags, const char *title, const char *msg, SDL_Window *w)
     { (void)flags; (void)title; (void)msg; (void)w; return 0; }
 
-/* Window surface (stub) */
-static inline SDL_Surface* SDL_GetWindowSurface(SDL_Window *w) { (void)w; return (SDL_Surface*)0; }
-static inline int SDL_UpdateWindowSurface(SDL_Window *w) { (void)w; return 0; }
+/* Window surface — implemented in sdl2.c (declared in SDL_video.h) */
 
 /* Clipboard stubs */
 static inline int SDL_SetClipboardText(const char *text) { (void)text; return 0; }
@@ -60,13 +59,43 @@ static inline SDL_bool SDL_SetHint(const char *name, const char *value)
 #define SDL_HINT_GAMECONTROLLERCONFIG "SDL_GAMECONTROLLERCONFIG"
 #define SDL_HINT_MOUSE_TOUCH_EVENTS "SDL_MOUSE_TOUCH_EVENTS"
 #define SDL_HINT_ACCELEROMETER_AS_JOYSTICK "SDL_ACCELEROMETER_AS_JOYSTICK"
+#define SDL_HINT_RENDER_VSYNC "SDL_RENDER_VSYNC"
 #define SDL_HINT_RENDER_SCALE_QUALITY "SDL_RENDER_SCALE_QUALITY"
 #define SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS "SDL_GAMECONTROLLER_USE_BUTTON_LABELS"
 #define SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS "SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS"
 
-/* Audio stubs */
-static inline int SDL_GetNumAudioDevices(int iscapture) { (void)iscapture; return 0; }
-static inline const char* SDL_GetAudioDeviceName(int idx, int iscapture) { (void)idx; (void)iscapture; return ""; }
+/* Audio */
+typedef Uint32 SDL_AudioDeviceID;
+typedef Uint16 SDL_AudioFormat;
+#define AUDIO_U8     0x0008
+#define AUDIO_S8     0x8008
+#define AUDIO_S16SYS 0x8010
+#define SDL_AUDIO_ALLOW_ANY_CHANGE 0
+
+typedef struct SDL_AudioSpec {
+    int freq;
+    SDL_AudioFormat format;
+    Uint8 channels;
+    Uint8 silence;
+    Uint16 samples;
+    Uint32 size;
+    void (*callback)(void *userdata, Uint8 *stream, int len);
+    void *userdata;
+} SDL_AudioSpec;
+
+SDL_AudioDeviceID SDL_OpenAudioDevice(const char *device, int iscapture,
+    const SDL_AudioSpec *desired, SDL_AudioSpec *obtained, int allowed_changes);
+void SDL_CloseAudioDevice(SDL_AudioDeviceID dev);
+int  SDL_QueueAudio(SDL_AudioDeviceID dev, const void *data, Uint32 len);
+Uint32 SDL_GetQueuedAudioSize(SDL_AudioDeviceID dev);
+void SDL_ClearQueuedAudio(SDL_AudioDeviceID dev);
+void SDL_PauseAudioDevice(SDL_AudioDeviceID dev, int pause_on);
+
+static inline int SDL_GetNumAudioDevices(int iscapture) { (void)iscapture; return 1; }
+static inline const char* SDL_GetAudioDeviceName(int idx, int iscapture) { (void)idx; (void)iscapture; return "potatOS AC97"; }
+
+/* SDL_PushEvent declared in SDL_events.h */
+/* SDL_GetKeyboardState declared in SDL_events.h */
 
 /* Text input stubs */
 static inline void SDL_StartTextInput(void) {}
@@ -112,6 +141,15 @@ SDL_Surface* SDL_LoadBMP_RW(SDL_RWops *src, int freesrc);
 #define RW_SEEK_CUR 1
 #define RW_SEEK_END 2
 #define SDL_RWOPS_UNKNOWN 0
+
+/* Haptic stubs */
+typedef struct SDL_Haptic SDL_Haptic;
+static inline SDL_Haptic* SDL_HapticOpen(int idx) { (void)idx; return (SDL_Haptic*)0; }
+static inline void SDL_HapticClose(SDL_Haptic *h) { (void)h; }
+static inline int SDL_HapticRumbleInit(SDL_Haptic *h) { (void)h; return -1; }
+static inline int SDL_HapticRumblePlay(SDL_Haptic *h, float strength, Uint32 len)
+    { (void)h; (void)strength; (void)len; return -1; }
+static inline int SDL_HapticRumbleStop(SDL_Haptic *h) { (void)h; return 0; }
 
 /* Misc */
 static inline const char* SDL_GetPlatform(void) { return "potatOS"; }

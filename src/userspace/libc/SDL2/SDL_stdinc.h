@@ -28,4 +28,21 @@ typedef int SDL_bool;
 #define SDL_arraysize(a) (sizeof(a)/sizeof((a)[0]))
 #define SDL_TABLESIZE(t) SDL_arraysize(t)
 
+/* Compile-time assert used by SDLPoP types.h */
+#define SDL_COMPILE_TIME_ASSERT(name, x) \
+    typedef int SDL_compile_time_assert_##name[(x) ? 1 : -1]
+
+#define SDL_zero(x) __builtin_memset(&(x), 0, sizeof((x)))
+#define SDL_zeroa(x) __builtin_memset((x), 0, sizeof((x)))
+
+/* stdbool compat for C */
+#ifndef __cplusplus
+#ifndef __bool_true_false_are_defined
+#define bool  _Bool
+#define true  1
+#define false 0
+#define __bool_true_false_are_defined 1
+#endif
+#endif
+
 #endif

@@ -16,7 +16,11 @@ typedef struct SDL_Surface {
     void   *lock_data;
     SDL_Rect clip_rect;
     int     refcount;
+    Uint32  color_key;
+    int     blend_mode;  /* SDL_BlendMode */
 } SDL_Surface;
+
+#define SDL_PREALLOC 0x00000001
 
 SDL_Surface* SDL_CreateRGBSurface(Uint32 flags, int w, int h, int depth,
                                    Uint32 Rmask, Uint32 Gmask,
@@ -50,6 +54,20 @@ int  SDL_BlitScaled(SDL_Surface *src, const SDL_Rect *srcrect,
                     SDL_Surface *dst, SDL_Rect *dstrect);
 int  SDL_SoftStretch(SDL_Surface *src, const SDL_Rect *srcrect,
                      SDL_Surface *dst, const SDL_Rect *dstrect);
+
+/* Blend modes */
+typedef enum {
+    SDL_BLENDMODE_NONE  = 0x00000000,
+    SDL_BLENDMODE_BLEND = 0x00000001,
+    SDL_BLENDMODE_ADD   = 0x00000002,
+    SDL_BLENDMODE_MOD   = 0x00000004,
+    SDL_BLENDMODE_MUL   = 0x00000008
+} SDL_BlendMode;
+
+static inline int SDL_SetSurfaceBlendMode(SDL_Surface *s, SDL_BlendMode m)
+    { if (s) s->blend_mode = (int)m; return 0; }
+static inline int SDL_GetSurfaceBlendMode(SDL_Surface *s, SDL_BlendMode *m)
+    { if (s && m) *m = (SDL_BlendMode)s->blend_mode; return 0; }
 
 #define SDL_MUSTLOCK(s) ((s)->locked)
 
