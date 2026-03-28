@@ -3,6 +3,7 @@ src/userspace/doom/doomgeneric/
 src/userspace/quake/quakegeneric/
 src/userspace/quake2/quake2-src/
 src/userspace/duke3d/chocolate_duke3D/
+src/userspace/sdlpop/SDLPoP-src/
 
 # Game data (user-supplied, not redistributable)
 assets/doom1.wad
