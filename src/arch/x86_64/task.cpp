@@ -966,9 +966,20 @@ void TaskScheduler::task_exit(int exit_code)
         current->window_id = INVALID_WID;
         current->owns_window = false;
 
+        // Zero page table pointers so lazy cleanup in create_task()
+        // won't dereference stale values.  The actual frames leak, but
+        // it's safe.  (We can't call free_user_pagetables here because
+        // this task's CR3 is still active.)
+        for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++)
+            current->priv_pt[k] = 0;
+        current->num_priv_pts = 0;
+        current->stack_pt     = 0;
+        current->user_pd      = 0;
+        current->user_pdpt    = 0;
+        current->user_heap_top = 0;
+
         current->state = TASK_DEAD;
         task_count--;
-        // Stack is freed lazily in create_task() when this slot is reused.
         // Fire yield so the scheduler switches away immediately.
         asm volatile("int 0x81");
         // Should never reach here; yield_tick won't resume a DEAD task.
