@@ -178,8 +178,8 @@ static inline void SDL_HideWindow(SDL_Window *w) { (void)w; }
 static inline void SDL_RaiseWindow(SDL_Window *w) { (void)w; }
 static inline void SDL_MaximizeWindow(SDL_Window *w) { (void)w; }
 static inline void SDL_RestoreWindow(SDL_Window *w) { (void)w; }
-static inline char* SDL_GetBasePath(void) { return (char*)""; }
-static inline char* SDL_GetPrefPath(const char *org, const char *app) { (void)org; (void)app; return (char*)""; }
+static inline char* SDL_GetBasePath(void) { return (char*)"GAMES/DIABLO/"; }
+static inline char* SDL_GetPrefPath(const char *org, const char *app) { (void)org; (void)app; return (char*)"GAMES/DIABLO/"; }
 static inline void SDL_DisableScreenSaver(void) {}
 static inline void SDL_EnableScreenSaver(void) {}
 static inline int SDL_GetDisplayDPI(int idx, float *ddpi, float *hdpi, float *vdpi)
