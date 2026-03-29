@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* potatOS is single-threaded, so mutexes are no-ops. */
 
 typedef struct SDL_mutex SDL_mutex;
@@ -28,5 +33,10 @@ static inline SDL_sem* SDL_CreateSemaphore(Uint32 val) { (void)val; return (SDL_
 static inline void SDL_DestroySemaphore(SDL_sem *s) { (void)s; }
 static inline int SDL_SemWait(SDL_sem *s) { (void)s; return 0; }
 static inline int SDL_SemPost(SDL_sem *s) { (void)s; return 0; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

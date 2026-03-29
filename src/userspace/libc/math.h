@@ -1,5 +1,10 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* ── Constants ───────────────────────────────────────────────────────────── */
 #define M_E        2.71828182845904523536
 #define M_LOG2E    1.44269504088896340736
@@ -74,3 +79,7 @@ float expf(float x);
 float powf(float x, float y);
 
 float ldexpf(float x, int exp);
+
+#ifdef __cplusplus
+}
+#endif

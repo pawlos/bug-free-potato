@@ -5,6 +5,10 @@
 typedef unsigned long size_t;
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef long time_t;
 typedef long clock_t;
 typedef long suseconds_t;
@@ -68,3 +72,7 @@ char      *asctime(const struct tm *tm);
 char      *ctime(const time_t *timep);
 
 static inline double difftime(time_t t1, time_t t0) { return (double)(t1 - t0); }
+
+#ifdef __cplusplus
+}
+#endif

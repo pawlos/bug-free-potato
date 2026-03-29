@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef struct {
     Uint8 major;
     Uint8 minor;
@@ -24,5 +29,10 @@ typedef struct {
 #define SDL_VERSION_ATLEAST(X, Y, Z) (SDL_COMPILEDVERSION >= SDL_VERSIONNUM(X, Y, Z))
 
 static inline void SDL_GetVersion(SDL_version *ver) { SDL_VERSION(ver); }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

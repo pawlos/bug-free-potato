@@ -6,6 +6,11 @@
 #include "SDL_video.h"
 #include "SDL_gamecontroller.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* Event types */
 enum {
     SDL_QUIT           = 0x100,
@@ -195,5 +200,10 @@ static inline Uint32 SDL_RegisterEvents(int numevents) { (void)numevents; return
 #define SDL_USEREVENT     0x8000
 
 typedef Uint32 SDL_EventType;
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

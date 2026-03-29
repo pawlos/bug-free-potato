@@ -4,6 +4,11 @@
 #include "SDL_stdinc.h"
 #include "SDL_video.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef struct SDL_Cursor SDL_Cursor;
 
 Uint32 SDL_GetMouseState(int *x, int *y);
@@ -20,5 +25,10 @@ static inline void SDL_WarpMouseInWindow(SDL_Window *w, int x, int y)
 
 static inline SDL_Cursor* SDL_CreateColorCursor(SDL_Surface *s, int hot_x, int hot_y)
     { (void)s; (void)hot_x; (void)hot_y; return (SDL_Cursor*)0; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

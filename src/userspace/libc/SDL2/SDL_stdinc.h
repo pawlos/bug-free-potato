@@ -1,6 +1,11 @@
 #ifndef SDL_stdinc_h_
 #define SDL_stdinc_h_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef unsigned char  Uint8;
 typedef unsigned short Uint16;
 typedef unsigned int   Uint32;
@@ -43,6 +48,11 @@ typedef int SDL_bool;
 #define false 0
 #define __bool_true_false_are_defined 1
 #endif
+#endif
+
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif

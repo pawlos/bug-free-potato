@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #ifndef SDL_LogCategory_defined_
 #define SDL_LogCategory_defined_
 enum SDL_LogCategory {
@@ -53,5 +58,10 @@ static inline void SDL_LogMessageV(int cat, SDL_LogPriority pri, const char *fmt
     { (void)cat; (void)pri; (void)fmt; (void)ap; }
 
 #define SDL_NUM_LOG_PRIORITIES 7
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -1,6 +1,11 @@
 #pragma once
 #include "syscall.h"  /* size_t */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* ── d_type constants ───────────────────────────────────────────────────── */
 #define DT_UNKNOWN  0
 #define DT_DIR      4
@@ -37,3 +42,7 @@ int closedir(DIR *dirp);
 
 /* Reset the stream to the beginning. */
 void rewinddir(DIR *dirp);
+
+#ifdef __cplusplus
+}
+#endif

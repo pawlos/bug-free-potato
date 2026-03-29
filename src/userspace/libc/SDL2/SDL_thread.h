@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* potatOS is single-threaded — thread API is stubbed. */
 
 #ifndef SDLCALL
@@ -21,5 +26,10 @@ static inline void SDL_DetachThread(SDL_Thread *t) { (void)t; }
 typedef unsigned long SDL_threadID;
 static inline SDL_threadID SDL_ThreadID(void) { return 1; }
 static inline SDL_threadID SDL_GetThreadID(SDL_Thread *t) { (void)t; return 1; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

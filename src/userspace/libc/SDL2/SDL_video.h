@@ -4,6 +4,11 @@
 #include "SDL_stdinc.h"
 #include "SDL_rect.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* Window position sentinels */
 #define SDL_WINDOWPOS_UNDEFINED 0x1FFF0000
 #define SDL_WINDOWPOS_CENTERED  0x2FFF0000
@@ -56,5 +61,10 @@ static inline int SDL_GetWindowDisplayMode(SDL_Window *w, SDL_DisplayMode *mode)
     { (void)w; return SDL_GetDesktopDisplayMode(0, mode); }
 static inline int SDL_SetWindowDisplayMode(SDL_Window *w, const SDL_DisplayMode *mode)
     { (void)w; (void)mode; return 0; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

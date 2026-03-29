@@ -4,6 +4,11 @@
 #include "SDL.h"
 #include "SDL_surface.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #define IMG_INIT_PNG  0x02
 #define IMG_INIT_JPG  0x01
 
@@ -13,5 +18,12 @@ static inline const char* IMG_GetError(void) { return SDL_GetError(); }
 
 SDL_Surface* IMG_Load(const char *file);
 SDL_Surface* IMG_Load_RW(SDL_RWops *src, int freesrc);
+SDL_Surface* IMG_LoadPNG_RW(SDL_RWops *src);
+int IMG_SavePNG_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

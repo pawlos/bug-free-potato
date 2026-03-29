@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* x86_64 is always little-endian */
 #define SDL_LIL_ENDIAN 1234
 #define SDL_BIG_ENDIAN 4321
@@ -25,5 +30,10 @@ static inline Uint64 SDL_Swap64(Uint64 x) {
 #define SDL_SwapBE16(x) SDL_Swap16(x)
 #define SDL_SwapBE32(x) SDL_Swap32(x)
 #define SDL_SwapBE64(x) SDL_Swap64(x)
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

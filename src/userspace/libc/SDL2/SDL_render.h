@@ -5,6 +5,11 @@
 #include "SDL_rect.h"
 #include "SDL_video.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* Renderer flags */
 #define SDL_RENDERER_SOFTWARE      0x00000001
 #define SDL_RENDERER_ACCELERATED   0x00000002
@@ -76,5 +81,10 @@ static inline int SDL_GetRendererInfo(SDL_Renderer *r, SDL_RendererInfo *info)
 
 static inline int SDL_GetRendererOutputSize(SDL_Renderer *r, int *w, int *h)
     { (void)r; if(w)*w=0; if(h)*h=0; return 0; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -10,6 +10,11 @@
 #define _FILE_WRITE  (1 << 2)
 #define _FILE_APPEND (1 << 3)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef struct PotatoFILE {
     int fd;
     int flags;
@@ -78,3 +83,7 @@ FILE  *tmpfile(void);
 int    setvbuf(FILE *stream, char *buf, int mode, size_t size);
 void   setbuf(FILE *stream, char *buf);
 int    fileno(FILE *stream);
+
+#ifdef __cplusplus
+}
+#endif

@@ -4,6 +4,11 @@
 #include "SDL_stdinc.h"
 #include "SDL_joystick.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef struct SDL_GameController SDL_GameController;
 
 typedef enum {
@@ -104,5 +109,10 @@ static inline SDL_GameControllerType SDL_GameControllerGetType(SDL_GameControlle
     { (void)gc; return SDL_CONTROLLER_TYPE_UNKNOWN; }
 static inline SDL_GameControllerType SDL_GameControllerTypeForIndex(int idx)
     { (void)idx; return SDL_CONTROLLER_TYPE_UNKNOWN; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

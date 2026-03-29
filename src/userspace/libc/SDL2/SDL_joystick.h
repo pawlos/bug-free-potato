@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* potatOS has no joystick/gamepad support — minimal stubs. */
 
 typedef Sint32 SDL_JoystickID;
@@ -33,5 +38,10 @@ static inline SDL_JoystickGUID SDL_JoystickGetGUID(SDL_Joystick *j)
 static inline SDL_JoystickGUID SDL_JoystickGetDeviceGUID(int idx)
     { SDL_JoystickGUID g = {{0}}; (void)idx; return g; }
 static inline const char* SDL_JoystickNameForIndex(int idx) { (void)idx; return ""; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

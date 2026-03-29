@@ -5,6 +5,11 @@
 #include "SDL_rect.h"
 #include "SDL_pixels.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef struct SDL_Surface {
     Uint32  flags;
     SDL_PixelFormat *format;
@@ -70,5 +75,10 @@ static inline int SDL_GetSurfaceBlendMode(SDL_Surface *s, SDL_BlendMode *m)
     { if (s && m) *m = (SDL_BlendMode)s->blend_mode; return 0; }
 
 #define SDL_MUSTLOCK(s) ((s)->locked)
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

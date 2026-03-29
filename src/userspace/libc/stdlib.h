@@ -2,6 +2,11 @@
 #include "syscall.h"  /* for size_t */
 #include "time.h"     /* time_t     */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 
@@ -48,4 +53,8 @@ int    mkdir(const char *path, unsigned int mode);
 #ifndef _UNISTD_H
 unsigned int sleep(unsigned int seconds);
 int          usleep(unsigned int usec);
+#endif
+
+#ifdef __cplusplus
+}
 #endif

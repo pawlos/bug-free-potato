@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef struct { int x, y; } SDL_Point;
 typedef struct { int x, y, w, h; } SDL_Rect;
 
@@ -46,5 +51,10 @@ static inline void SDL_UnionRect(const SDL_Rect *a, const SDL_Rect *b, SDL_Rect 
     int y2 = (a->y+a->h) > (b->y+b->h) ? (a->y+a->h) : (b->y+b->h);
     result->x = x1; result->y = y1; result->w = x2-x1; result->h = y2-y1;
 }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

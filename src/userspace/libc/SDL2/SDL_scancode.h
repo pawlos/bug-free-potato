@@ -1,6 +1,11 @@
 #ifndef SDL_scancode_h_
 #define SDL_scancode_h_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* SDL scancodes — subset matching USB HID usage table.
    We map from PS/2 set-1 at runtime in the event system. */
 typedef enum {
@@ -117,5 +122,10 @@ typedef enum {
     SDL_SCANCODE_AUDIOMUTE = 262,
     SDL_NUM_SCANCODES = 512
 } SDL_Scancode;
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

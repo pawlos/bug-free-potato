@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* Pixel format constants — only the ones games actually use. */
 #define SDL_PIXELFORMAT_UNKNOWN   0
 #define SDL_PIXELFORMAT_INDEX8    0x13000001
@@ -52,5 +57,10 @@ SDL_Palette* SDL_AllocPalette(int ncolors);
 void         SDL_FreePalette(SDL_Palette *palette);
 int          SDL_SetPaletteColors(SDL_Palette *palette, const SDL_Color *colors,
                                    int firstcolor, int ncolors);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -21,6 +21,11 @@
 #include "SDL_joystick.h"
 #include "SDL_main.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /* SDL_Init subsystem flags */
 #define SDL_INIT_TIMER          0x00000001
 #define SDL_INIT_AUDIO          0x00000010
@@ -179,5 +184,10 @@ static inline void SDL_DisableScreenSaver(void) {}
 static inline void SDL_EnableScreenSaver(void) {}
 static inline int SDL_GetDisplayDPI(int idx, float *ddpi, float *hdpi, float *vdpi)
     { (void)idx; if(ddpi)*ddpi=96.0f; if(hdpi)*hdpi=96.0f; if(vdpi)*vdpi=96.0f; return 0; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

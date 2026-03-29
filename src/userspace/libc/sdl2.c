@@ -1807,3 +1807,15 @@ int SDL_JoystickRumble(SDL_Joystick *j, Uint16 lo, Uint16 hi, Uint32 dur)
     (void)j; (void)lo; (void)hi; (void)dur;
     return -1;
 }
+
+SDL_Surface* IMG_LoadPNG_RW(SDL_RWops *src)
+{
+    return IMG_Load_RW(src, 0);
+}
+
+int IMG_SavePNG_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst)
+{
+    (void)surface;
+    if (freedst && dst) SDL_RWclose(dst);
+    return -1; /* not implemented */
+}

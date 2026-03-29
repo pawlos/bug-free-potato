@@ -1,6 +1,11 @@
 #pragma once
 #include "syscall.h"  /* for size_t */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 size_t strlen (const char *s);
 char  *strcpy (char *dst, const char *src);
 char  *strncpy(char *dst, const char *src, size_t n);
@@ -39,3 +44,7 @@ static inline size_t strxfrm(char *dst, const char *src, size_t n) {
     if (dst && n > 0) { strncpy(dst, src, n); if (n > 0) dst[n-1] = '\0'; }
     return len;
 }
+
+#ifdef __cplusplus
+}
+#endif

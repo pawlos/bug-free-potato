@@ -2,6 +2,11 @@
 #include "syscall.h"  /* size_t */
 #include <stdarg.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 #define EOF (-1)
 
 typedef long fpos_t;
@@ -42,3 +47,7 @@ char  *tmpnam(char *s);
 /* Pull in FILE*, fopen, fclose, fread, fprintf etc. — must be last to
    avoid circular-include ordering issues (file.h includes stdio.h). */
 #include "file.h"
+
+#ifdef __cplusplus
+}
+#endif

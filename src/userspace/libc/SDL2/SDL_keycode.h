@@ -4,6 +4,11 @@
 #include "SDL_scancode.h"
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 typedef Sint32 SDL_Keycode;
 
 /* SDL keycodes — ASCII range maps directly; special keys use SDLK_SCANCODE_MASK. */
@@ -148,5 +153,10 @@ typedef enum {
     KMOD_CTRL   = KMOD_LCTRL  | KMOD_RCTRL,
     KMOD_ALT    = KMOD_LALT   | KMOD_RALT,
 } SDL_Keymod;
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

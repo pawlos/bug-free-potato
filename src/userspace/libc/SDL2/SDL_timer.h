@@ -3,6 +3,11 @@
 
 #include "SDL_stdinc.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 Uint32 SDL_GetTicks(void);
 void   SDL_Delay(Uint32 ms);
 
@@ -13,5 +18,10 @@ static inline SDL_TimerID SDL_AddTimer(Uint32 interval, SDL_TimerCallback cb, vo
     { (void)interval; (void)cb; (void)param; return 1; }
 static inline SDL_bool SDL_RemoveTimer(SDL_TimerID id)
     { (void)id; return SDL_TRUE; }
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
