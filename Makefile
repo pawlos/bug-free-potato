@@ -251,7 +251,8 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file assets/menu.png                SYS/MENU.PNG; \
 	copy_file $(PLAYER_MPG)                  SYS/BADAPPLE.MPG; \
 	copy_file $(DVLX_ELF)                    GAMES/DIABLO/DIABLO.ELF; \
-	copy_file assets/diablo/DIABDAT.MPQ      GAMES/DIABLO/DIABDAT.MPQ
+	copy_file assets/diablo/DIABDAT.MPQ      GAMES/DIABLO/DIABDAT.MPQ; \
+	copy_file assets/diablo/devilutionx.mpq  GAMES/DIABLO/DEVILUTIONX.MPQ
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
 
