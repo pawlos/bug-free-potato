@@ -272,6 +272,17 @@ int printf(const char *fmt, ...)
     va_end(ap); return r;
 }
 
+int serial_printf(const char *fmt, ...)
+{
+    char out[1024];
+    va_list ap; va_start(ap, fmt);
+    int n = vsnprintf(out, sizeof(out), fmt, ap);
+    va_end(ap);
+    if (n > (int)(sizeof(out) - 1)) n = (int)(sizeof(out) - 1);
+    sys_write_serial(out, (size_t)n);
+    return n;
+}
+
 int putchar(int c)
 {
     char ch = (char)c;
