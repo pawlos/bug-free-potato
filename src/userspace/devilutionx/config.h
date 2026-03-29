@@ -1,6 +1,5 @@
-#pragma once
-#define PROJECT_NAME "devilutionx"
-#define PROJECT_VERSION "1.5.3"
-#define PROJECT_VERSION_MAJOR 1
-#define PROJECT_VERSION_MINOR 5
-#define PROJECT_VERSION_PATCH 3
+/* Minimal config.h for libmpq on potatOS */
+#ifndef LIBMPQ_CONFIG_H
+#define LIBMPQ_CONFIG_H
+#define VERSION "0.4.2"
+#endif

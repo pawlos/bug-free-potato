@@ -21,6 +21,13 @@ CXXFLAGS_DVLX = -ffreestanding -fno-stack-protector -fno-builtin \
                 -I $(DVLX_3RD_DIR)/libmpq-src \
                 -I $(DVLX_3RD_DIR)/PKWare
 
+CFLAGS_DVLX_C = -ffreestanding -fno-stack-protector -fno-builtin \
+                -fno-asynchronous-unwind-tables \
+                -m64 -nostdlib -O2 -w \
+                -isystem src/userspace/libc \
+                -I $(DVLX_DIR) \
+                -I $(DVLX_3RD_DIR)/libmpq-src
+
 # All Source/*.cpp minus platform/feature files we don't support
 DVLX_ALL_SRCS := $(shell find $(DVLX_SRC_DIR) -name '*.cpp' 2>/dev/null)
 DVLX_EXCLUDE := $(wildcard \
@@ -49,13 +56,27 @@ DVLX_SRCS := $(filter-out $(DVLX_EXCLUDE), $(DVLX_ALL_SRCS))
 DVLX_3RD_SRCS := $(DVLX_3RD_DIR)/PKWare/explode.cpp \
                   $(DVLX_3RD_DIR)/PKWare/implode.cpp
 
-# Our platform/compat sources (C++ runtime, stubs)
+# libmpq C sources
+DVLX_LIBMPQ_SRCS := $(DVLX_3RD_DIR)/libmpq-src/libmpq/common.c \
+                     $(DVLX_3RD_DIR)/libmpq-src/libmpq/explode.c \
+                     $(DVLX_3RD_DIR)/libmpq-src/libmpq/extract.c \
+                     $(DVLX_3RD_DIR)/libmpq-src/libmpq/huffman.c \
+                     $(DVLX_3RD_DIR)/libmpq-src/libmpq/mpq.c \
+                     $(DVLX_3RD_DIR)/libmpq-src/libmpq/wave.c
+
+# Our platform/compat sources (C++ runtime, stubs, fmt)
 DVLX_POTATO_SRCS := $(DVLX_DIR)/cxxrt.cpp \
-                     $(DVLX_DIR)/dvlx_stubs.cpp
+                     $(DVLX_DIR)/dvlx_stubs.cpp \
+                     $(DVLX_DIR)/dvlx_fmt.cpp
+
+# C-only stubs (avoid C++ header conflicts)
+DVLX_POTATO_C_SRCS := $(DVLX_DIR)/dvlx_wchar.c
 
 DVLX_OBJS := $(patsubst $(DVLX_SRC_DIR)/%.cpp, $(DVLX_BUILD)/src/%.o, $(DVLX_SRCS))
 DVLX_3RD_OBJS := $(patsubst $(DVLX_3RD_DIR)/%.cpp, $(DVLX_BUILD)/3rd/%.o, $(DVLX_3RD_SRCS))
+DVLX_LIBMPQ_OBJS := $(patsubst $(DVLX_3RD_DIR)/libmpq-src/libmpq/%.c, $(DVLX_BUILD)/3rd/libmpq/%.o, $(DVLX_LIBMPQ_SRCS))
 DVLX_POTATO_OBJS := $(patsubst $(DVLX_DIR)/%.cpp, $(DVLX_BUILD)/potato/%.o, $(DVLX_POTATO_SRCS))
+DVLX_POTATO_C_OBJS := $(patsubst $(DVLX_DIR)/%.c, $(DVLX_BUILD)/potato/%.o, $(DVLX_POTATO_C_SRCS))
 
 $(DVLX_BUILD)/src/%.o: $(DVLX_SRC_DIR)/%.cpp
 	mkdir -p $(dir $@)
@@ -71,17 +92,28 @@ $(DVLX_BUILD)/3rd/%.o: $(DVLX_3RD_DIR)/%.cpp
 	mkdir -p $(dir $@)
 	g++ -c $(CXXFLAGS_DVLX) -o $@ $<
 
+# libmpq compiled as C
+$(DVLX_BUILD)/3rd/libmpq/%.o: $(DVLX_3RD_DIR)/libmpq-src/libmpq/%.c
+	mkdir -p $(dir $@)
+	gcc -c $(CFLAGS_DVLX_C) -o $@ $<
+
 $(DVLX_BUILD)/potato/%.o: $(DVLX_DIR)/%.cpp
 	mkdir -p $(dir $@)
 	g++ -c $(CXXFLAGS_DVLX) -o $@ $<
 
-$(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_POTATO_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
+$(DVLX_BUILD)/potato/%.o: $(DVLX_DIR)/%.c
+	mkdir -p $(dir $@)
+	gcc -c $(CFLAGS_DVLX_C) -o $@ $<
+
+$(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	mkdir -p dist/userspace
 	$(LD) --no-relax --allow-multiple-definition \
 	      -T src/userspace/libc/libc.ld -o $@ \
-	      $(LIBC_CRT0) $(DVLX_POTATO_OBJS) $(DVLX_OBJS) $(DVLX_3RD_OBJS) \
+	      $(LIBC_CRT0) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) \
+	      --start-group \
 	      $(LIBC_A) \
 	      /usr/lib/gcc/x86_64-linux-gnu/12/libstdc++.a \
-	      /usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a
+	      /usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a \
+	      --end-group
 
 devilutionx: $(DVLX_ELF)

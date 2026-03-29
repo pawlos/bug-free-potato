@@ -31,5 +31,22 @@
 /* Display texture format */
 #define DEVILUTIONX_DISPLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888
 
+/* Project info */
+#ifndef PROJECT_NAME
+#define PROJECT_NAME "DevilutionX"
+#endif
+#ifndef PROJECT_VERSION
+#define PROJECT_VERSION "1.5.0"
+#endif
+#ifndef PROJECT_VERSION_MAJOR
+#define PROJECT_VERSION_MAJOR 1
+#endif
+#ifndef PROJECT_VERSION_MINOR
+#define PROJECT_VERSION_MINOR 5
+#endif
+#ifndef PROJECT_VERSION_PATCH
+#define PROJECT_VERSION_PATCH 0
+#endif
+
 /* Use the optimized 16-entry palette blending path (avoids arg count mismatch) */
 #define DEVILUTIONX_PALETTE_TRANSPARENCY_BLACK_16_LUT 1
