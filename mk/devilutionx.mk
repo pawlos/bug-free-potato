@@ -107,7 +107,7 @@ $(DVLX_BUILD)/potato/%.o: $(DVLX_DIR)/%.c
 
 $(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	mkdir -p dist/userspace
-	$(LD) --no-relax --allow-multiple-definition \
+	$(LD) --no-relax --allow-multiple-definition -N \
 	      -T src/userspace/libc/libc.ld -o $@ \
 	      $(LIBC_CRT0) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) \
 	      --start-group \
