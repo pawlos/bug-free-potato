@@ -12,6 +12,15 @@
 /* Pull in our sol stubs (need complete types) */
 #include <sol/sol.hpp>
 
+/* ── main wrapper: provide clean argc/argv (kernel doesn't set up the stack) ── */
+namespace devilution { int DiabloMain(int argc, char **argv); }
+
+extern "C" int main(int /*argc*/, char ** /*argv*/)
+{
+    static char *fake_argv[] = { (char*)"diablo", nullptr };
+    return devilution::DiabloMain(1, fake_argv);
+}
+
 extern "C" {
 
 void *malloc(size_t size);
