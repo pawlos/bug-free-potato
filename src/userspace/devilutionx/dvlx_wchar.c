@@ -281,12 +281,9 @@ size_t strftime(char *s, size_t max, const char *fmt, const void *tm) {
     return 0;
 }
 
-/* zlib stubs -- libmpq links against zlib but Diablo MPQs don't use zlib */
-int inflateInit_(void *strm, const char *version, int stream_size) { (void)strm; (void)version; (void)stream_size; return -1; }
-int inflate(void *strm, int flush) { (void)strm; (void)flush; return -1; }
-int inflateEnd(void *strm) { (void)strm; return -1; }
+/* zlib: now linking real libz.a */
 
-/* bzip2 stubs -- same reasoning */
+/* bzip2 stubs -- Diablo MPQs don't use bzip2 compression */
 int BZ2_bzDecompressInit(void *strm, int verbosity, int small) { (void)strm; (void)verbosity; (void)small; return -1; }
 int BZ2_bzDecompress(void *strm) { (void)strm; return -1; }
 int BZ2_bzDecompressEnd(void *strm) { (void)strm; return -1; }

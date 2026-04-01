@@ -112,6 +112,7 @@ $(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) $(DVLX_POTATO_OBJ
 	      $(LIBC_CRT0) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) \
 	      --start-group \
 	      $(LIBC_A) \
+	      /usr/lib/x86_64-linux-gnu/libz.a \
 	      /usr/lib/gcc/x86_64-linux-gnu/12/libstdc++.a \
 	      /usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a \
 	      --end-group
