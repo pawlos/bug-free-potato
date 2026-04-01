@@ -108,6 +108,12 @@ $(DVLX_BUILD)/potato/%.o: $(DVLX_DIR)/%.c
 $(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(LIBC_CRT0) $(LIBC_A) src/userspace/libc/libc.ld
 	mkdir -p dist/userspace
 	$(LD) --no-relax --allow-multiple-definition -N \
+	      --wrap=libmpq__archive_open \
+	      --wrap=libmpq__file_number_from_hash \
+	      --wrap=libmpq__file_hash_s \
+	      --wrap=libmpq__file_size_unpacked \
+	      --wrap=libmpq__block_open_offset_with_filename_s \
+	      --wrap=libmpq__block_read_with_temporary_buffer \
 	      -T src/userspace/libc/libc.ld -o $@ \
 	      $(LIBC_CRT0) $(DVLX_POTATO_OBJS) $(DVLX_POTATO_C_OBJS) $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) \
 	      --start-group \
