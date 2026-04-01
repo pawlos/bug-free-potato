@@ -62,6 +62,7 @@ static inline long syscall(long nr, ...) { (void)nr; return 0; }
 #define SYS_POLL_START_KEY  45  /* () → 1 if Windows key pressed since last poll         */
 #define SYS_RESIZE_WINDOW   46  /* rdi=x, rsi=y, rdx=w, rcx=h; resize task's window    */
 #define SYS_GET_WINDOW_POS  47  /* () → client_ox|(client_oy<<16); -1 if no window     */
+#define SYS_SET_FS_BASE     48  /* rdi=base; set FS segment base for TLS               */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0

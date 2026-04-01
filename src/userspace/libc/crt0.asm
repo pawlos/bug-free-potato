@@ -6,9 +6,19 @@ extern environ
 extern __init_array_start
 extern __init_array_end
 
+section .bss
+alignb 64
+_tls_block: resb 256      ; minimal TLS area (stack canary at offset 0x28)
+
 section .text
 _start:
     xor     rbp, rbp        ; mark bottom of call chain
+
+    ; Set up FS base for TLS (stack canary at %fs:0x28 used by libstdc++)
+    lea     rdi, [rel _tls_block]
+    mov     eax, 48         ; SYS_SET_FS_BASE
+    int     0x80
+
     mov     rdi, [rsp]      ; argc (SysV initial stack)
     lea     rsi, [rsp+8]    ; argv = &stack[1]
 
