@@ -54,11 +54,11 @@ extern "C" int32_t __wrap_libmpq__block_open_offset_with_filename_s(mpq_archive_
     return err;
 }
 
-extern "C" int32_t __real_libmpq__block_read_with_temporary_buffer(mpq_archive_s*, uint32_t, uint8_t*, int64_t, uint8_t*, int64_t, int64_t*);
-extern "C" int32_t __wrap_libmpq__block_read_with_temporary_buffer(mpq_archive_s *a, uint32_t fnum, uint8_t *out, int64_t outsize, uint8_t *tmp, int64_t tmpsize, int64_t *transferred)
+extern "C" int32_t __real_libmpq__block_read_with_temporary_buffer(mpq_archive_s*, uint32_t, uint32_t, uint8_t*, int64_t, uint8_t*, int64_t, int64_t*);
+extern "C" int32_t __wrap_libmpq__block_read_with_temporary_buffer(mpq_archive_s *a, uint32_t fnum, uint32_t blocknum, uint8_t *out, int64_t outsize, uint8_t *tmp, int64_t tmpsize, int64_t *transferred)
 {
-    int32_t err = __real_libmpq__block_read_with_temporary_buffer(a, fnum, out, outsize, tmp, tmpsize, transferred);
-    serial_printf("[DVX] block_read(fnum=%u, outsize=%ld) = %d xfer=%ld\n", fnum, (long)outsize, err, transferred ? (long)*transferred : -1);
+    int32_t err = __real_libmpq__block_read_with_temporary_buffer(a, fnum, blocknum, out, outsize, tmp, tmpsize, transferred);
+    serial_printf("[DVX] block_read(fnum=%u blk=%u, outsize=%ld) = %d xfer=%ld\n", fnum, blocknum, (long)outsize, err, transferred ? (long)*transferred : -1);
     return err;
 }
 
@@ -155,7 +155,7 @@ void StoreOpened(std::string_view) {}
 
 void SVidMute() {}
 void SVidUnmute() {}
-void SVidPlayBegin(const char *, int) {}
+bool SVidPlayBegin(const char *, int) { return false; }
 bool SVidPlayContinue() { return false; }
 void SVidPlayEnd() {}
 

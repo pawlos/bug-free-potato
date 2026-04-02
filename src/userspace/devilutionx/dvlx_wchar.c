@@ -283,10 +283,21 @@ size_t strftime(char *s, size_t max, const char *fmt, const void *tm) {
 
 /* zlib: now linking real libz.a */
 
-/* bzip2 stubs -- Diablo MPQs don't use bzip2 compression */
-int BZ2_bzDecompressInit(void *strm, int verbosity, int small) { (void)strm; (void)verbosity; (void)small; return -1; }
-int BZ2_bzDecompress(void *strm) { (void)strm; return -1; }
-int BZ2_bzDecompressEnd(void *strm) { (void)strm; return -1; }
+/* bzip2: now linking real libbz2.a (devilutionx.mpq uses bzip2 compression) */
+
+/* stubs required by libbz2's error reporting and string handling */
+typedef struct FILE FILE;
+int __fprintf_chk(FILE *stream, int flag, const char *fmt, ...) {
+    (void)stream; (void)flag; (void)fmt;
+    return 0;
+}
+
+/* __ctype_b_loc: libbz2's bzopen uses isspace() etc. We only need decompress, not file I/O */
+static const unsigned short _ctype_table[384] = {0};
+const unsigned short **__ctype_b_loc(void) {
+    static const unsigned short *p = &_ctype_table[128];
+    return &p;
+}
 
 /* __udivti3 -- 128-bit unsigned division (GCC runtime) */
 typedef unsigned long long uint64_t;
