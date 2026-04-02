@@ -153,18 +153,28 @@ clean:
 	-rm -rf build/userspace/libc
 	-rm -f $(LIBC_CRT0) $(LIBC_A)
 	-rm -f $(SIMPLE_OBJS) $(SIMPLE_BINS)
-	-rm -rf $(DOOM_BUILD)
-	-rm -f  $(DOOM_ELF)
-	-rm -rf $(QUAKE_BUILD)
-	-rm -f  $(QUAKE_ELF)
-	-rm -rf $(Q2_BUILD)
-	-rm -f  $(Q2_ELF)
-	-rm -rf $(DUKE_BUILD)
-	-rm -f  $(DUKE_ELF)
 	-rm -rf $(PLAYER_BUILD)
 	-rm -f  $(PLAYER_ELF)
 	-rm -rf $(IMGVIEW_BUILD)
 	-rm -f  $(IMGVIEW_ELF)
+# Per-game clean targets (games are built separately, not part of clean)
+clean-doom:
+	-rm -rf $(DOOM_BUILD) && rm -f $(DOOM_ELF)
+clean-quake:
+	-rm -rf $(QUAKE_BUILD) && rm -f $(QUAKE_ELF)
+clean-quake2:
+	-rm -rf $(Q2_BUILD) && rm -f $(Q2_ELF)
+clean-duke3d:
+	-rm -rf $(DUKE_BUILD) && rm -f $(DUKE_ELF)
+clean-devilutionx:
+	-rm -rf $(DVLX_BUILD) && rm -f $(DVLX_ELF)
+
+clean-sdlpop:
+	-rm -rf $(SDLPOP_BUILD) && rm -f $(SDLPOP_ELF)
+
+clean-games: clean-doom clean-quake clean-quake2 clean-duke3d clean-sdlpop clean-devilutionx
+
+clean-all: clean clean-games
 
 # ── Disk image ───────────────────────────────────────────────────────────
 DUKE_GRP ?= assets/duke3d.grp
@@ -179,11 +189,11 @@ ASSET_FILES = assets/font.psf \
               assets/potato.txt \
               assets/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_ELF) $(DOOM_WAD) $(QUAKE_ELF) $(Q2_ELF) $(DUKE_ELF) $(PLAYER_ELF) $(IMGVIEW_ELF) $(SDLPOP_ELF)
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYER_ELF) $(IMGVIEW_ELF)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=1024 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
-	mmd -i disk.img ::SYS ::BIN ::GAMES ::GAMES/DOOM ::GAMES/QUAKE ::GAMES/QUAKE/ID1 ::GAMES/SNAKE ::GAMES/QUAKE2 ::GAMES/QUAKE2/BASEQ2 ::GAMES/DUKE3D ::GAMES/POP ::GAMES/POP/DATA ::GAMES/POP/DATA/PRINCE ::GAMES/POP/DATA/FAT ::GAMES/POP/DATA/GUARD ::GAMES/POP/DATA/GUARD1 ::GAMES/POP/DATA/GUARD2 ::GAMES/POP/DATA/KID ::GAMES/POP/DATA/LEVELS ::GAMES/POP/DATA/SHADOW ::GAMES/POP/DATA/SKEL ::GAMES/POP/DATA/TITLE ::GAMES/POP/DATA/VDUNGEON ::GAMES/POP/DATA/VIZIER ::GAMES/POP/DATA/VPALACE ::GAMES/POP/DATA/PV ::GAMES/POP/DATA/FONT ::GAMES/DIABLO
+	mmd -i disk.img ::SYS ::BIN ::GAMES ::GAMES/SNAKE
 	@copy_file() { \
 	  src="$$1"; dst="$$2"; \
 	  [ -f "$$src" ] || return 0; \
@@ -215,44 +225,72 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(DOOM_
 	copy_file dist/userspace/xxd.elf         BIN/XXD.ELF; \
 	copy_file dist/userspace/kilo.elf        BIN/KILO.ELF; \
 	copy_file dist/userspace/sdl2demo.elf   BIN/SDL2DEMO.ELF; \
-	copy_file $(DOOM_ELF)                    GAMES/DOOM/DOOM.ELF; \
-	copy_file $(DOOM_WAD)                    GAMES/DOOM/DOOM1.WAD; \
 	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \
-	copy_file $(QUAKE_ELF)                   GAMES/QUAKE/QUAKE.ELF; \
-	copy_file $(QUAKE_PAK)                   GAMES/QUAKE/ID1/PAK0.PAK; \
-	copy_file $(Q2_ELF)                      GAMES/QUAKE2/QUAKE2.ELF; \
-	copy_file $(Q2_PAK0)                     GAMES/QUAKE2/BASEQ2/PAK0.PAK; \
-	copy_file $(Q2_PAK1)                     GAMES/QUAKE2/BASEQ2/PAK1.PAK; \
-	copy_file $(Q2_PAK2)                     GAMES/QUAKE2/BASEQ2/PAK2.PAK; \
-	copy_file $(DUKE_ELF)                    GAMES/DUKE3D/DUKE3D.ELF; \
-	copy_file $(DUKE_GRP)                    GAMES/DUKE3D/DUKE3D.GRP; \
-	copy_file $(SDLPOP_ELF)                 GAMES/POP/POP.ELF; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/PRINCE/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/PRINCE/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/FAT/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/FAT/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/GUARD/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/GUARD/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/GUARD1/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/GUARD1/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/GUARD2/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/GUARD2/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/KID/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/KID/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/LEVELS/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/LEVELS/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/SHADOW/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/SHADOW/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/SKEL/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/SKEL/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/TITLE/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/TITLE/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/VDUNGEON/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/VDUNGEON/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/VIZIER/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/VIZIER/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/VPALACE/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/VPALACE/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/PV/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/PV/$$(basename $$f)"; done; \
-	for f in src/userspace/sdlpop/SDLPoP-src/data/font/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/FONT/$$(basename $$f)"; done; \
-	[ -f src/userspace/sdlpop/SDLPoP-src/data/icon.png ] && mcopy -i disk.img src/userspace/sdlpop/SDLPoP-src/data/icon.png "::GAMES/POP/DATA/ICON.PNG"; \
-	[ -f src/userspace/sdlpop/SDLPoP-src/data/light.png ] && mcopy -i disk.img src/userspace/sdlpop/SDLPoP-src/data/light.png "::GAMES/POP/DATA/LIGHT.PNG"; \
-	[ -f src/userspace/sdlpop/SDLPoP-src/SDLPoP.ini ] && mcopy -i disk.img src/userspace/sdlpop/SDLPoP-src/SDLPoP.ini "::GAMES/POP/SDLPOP.INI"; \
-	for f in assets/pop/*.DAT; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/$$(basename $$f)"; done; \
 	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
 	copy_file $(IMGVIEW_ELF)                 BIN/IMGVIEW.ELF; \
 	copy_file assets/menu.png                SYS/MENU.PNG; \
 	copy_file $(PLAYER_MPG)                  SYS/BADAPPLE.MPG; \
-	copy_file $(DVLX_ELF)                    GAMES/DIABLO/DIABLO.ELF; \
-	copy_file assets/diablo/DIABDAT.MPQ      GAMES/DIABLO/DIABDAT.MPQ; \
-	copy_file assets/diablo/devilutionx.mpq  GAMES/DIABLO/DEVILUTIONX.MPQ
+	if [ -f $(DOOM_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/DOOM; \
+	  copy_file $(DOOM_ELF)  GAMES/DOOM/DOOM.ELF; \
+	  copy_file $(DOOM_WAD)  GAMES/DOOM/DOOM1.WAD; \
+	fi; \
+	if [ -f $(QUAKE_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/QUAKE ::GAMES/QUAKE/ID1; \
+	  copy_file $(QUAKE_ELF) GAMES/QUAKE/QUAKE.ELF; \
+	  copy_file $(QUAKE_PAK) GAMES/QUAKE/ID1/PAK0.PAK; \
+	fi; \
+	if [ -f $(Q2_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/QUAKE2 ::GAMES/QUAKE2/BASEQ2; \
+	  copy_file $(Q2_ELF)  GAMES/QUAKE2/QUAKE2.ELF; \
+	  copy_file $(Q2_PAK0) GAMES/QUAKE2/BASEQ2/PAK0.PAK; \
+	  copy_file $(Q2_PAK1) GAMES/QUAKE2/BASEQ2/PAK1.PAK; \
+	  copy_file $(Q2_PAK2) GAMES/QUAKE2/BASEQ2/PAK2.PAK; \
+	fi; \
+	if [ -f $(DUKE_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/DUKE3D; \
+	  copy_file $(DUKE_ELF) GAMES/DUKE3D/DUKE3D.ELF; \
+	  copy_file $(DUKE_GRP) GAMES/DUKE3D/DUKE3D.GRP; \
+	fi; \
+	if [ -f $(SDLPOP_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/POP ::GAMES/POP/DATA ::GAMES/POP/DATA/PRINCE ::GAMES/POP/DATA/FAT ::GAMES/POP/DATA/GUARD ::GAMES/POP/DATA/GUARD1 ::GAMES/POP/DATA/GUARD2 ::GAMES/POP/DATA/KID ::GAMES/POP/DATA/LEVELS ::GAMES/POP/DATA/SHADOW ::GAMES/POP/DATA/SKEL ::GAMES/POP/DATA/TITLE ::GAMES/POP/DATA/VDUNGEON ::GAMES/POP/DATA/VIZIER ::GAMES/POP/DATA/VPALACE ::GAMES/POP/DATA/PV ::GAMES/POP/DATA/FONT; \
+	  copy_file $(SDLPOP_ELF) GAMES/POP/POP.ELF; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/PRINCE/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/PRINCE/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/FAT/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/FAT/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/GUARD/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/GUARD/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/GUARD1/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/GUARD1/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/GUARD2/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/GUARD2/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/KID/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/KID/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/LEVELS/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/LEVELS/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/SHADOW/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/SHADOW/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/SKEL/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/SKEL/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/TITLE/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/TITLE/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/VDUNGEON/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/VDUNGEON/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/VIZIER/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/VIZIER/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/VPALACE/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/VPALACE/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/PV/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/PV/$$(basename $$f)"; done; \
+	  for f in src/userspace/sdlpop/SDLPoP-src/data/font/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/FONT/$$(basename $$f)"; done; \
+	  [ -f src/userspace/sdlpop/SDLPoP-src/data/icon.png ] && mcopy -i disk.img src/userspace/sdlpop/SDLPoP-src/data/icon.png "::GAMES/POP/DATA/ICON.PNG"; \
+	  [ -f src/userspace/sdlpop/SDLPoP-src/data/light.png ] && mcopy -i disk.img src/userspace/sdlpop/SDLPoP-src/data/light.png "::GAMES/POP/DATA/LIGHT.PNG"; \
+	  [ -f src/userspace/sdlpop/SDLPoP-src/SDLPoP.ini ] && mcopy -i disk.img src/userspace/sdlpop/SDLPoP-src/SDLPoP.ini "::GAMES/POP/SDLPOP.INI"; \
+	  for f in assets/pop/*.DAT; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/POP/DATA/$$(basename $$f)"; done; \
+	fi; \
+	if [ -f $(DVLX_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/DIABLO; \
+	  copy_file $(DVLX_ELF)                   GAMES/DIABLO/DIABLO.ELF; \
+	  copy_file assets/diablo/DIABDAT.MPQ      GAMES/DIABLO/DIABDAT.MPQ; \
+	  copy_file assets/diablo/devilutionx.mpq  GAMES/DIABLO/DEVILUTIONX.MPQ; \
+	  if [ -d src/userspace/devilutionx/devilutionx-src/assets ]; then \
+	    cd src/userspace/devilutionx/devilutionx-src && \
+	    find assets -type d | sort | while read d; do \
+	      mmd -i ../../../../disk.img "::GAMES/DIABLO/$$d" 2>/dev/null || true; \
+	    done && \
+	    find assets -type f | while read f; do \
+	      mcopy -i ../../../../disk.img "$$f" "::GAMES/DIABLO/$$f"; \
+	    done && \
+	    cd ../../../..; \
+	  fi; \
+	fi
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::
 
