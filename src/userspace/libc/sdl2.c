@@ -11,6 +11,15 @@
 #include "stdlib.h"
 #include "file.h"
 
+/* Define SDL_DEBUG_TRACE to enable serial debug output for rendering pipeline */
+/* #define SDL_DEBUG_TRACE */
+#ifdef SDL_DEBUG_TRACE
+extern int serial_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+#define sdl_trace(...) serial_printf(__VA_ARGS__)
+#else
+#define sdl_trace(...) ((void)0)
+#endif
+
 /* Forward declaration for SDL_GetKeyboardState / SDL_PollEvent */
 static Uint8 g_keyboard_state[512];
 
@@ -110,6 +119,7 @@ SDL_Window* SDL_CreateWindow(const char *title, int x, int y, int w, int h,
     while (title && title[i] && i < 31) { g_window.title[i] = title[i]; i++; }
     g_window.title[i] = '\0';
     sys_set_window_title(wid, g_window.title);
+    sdl_trace("[SDL] CreateWindow: '%s' %dx%d wid=%ld\n", g_window.title, w, h, wid);
     return &g_window;
 }
 
@@ -238,6 +248,22 @@ int SDL_RenderCopy(SDL_Renderer *renderer, SDL_Texture *texture,
     }
 
     sys_draw_pixels(renderer->rgb24_buf, dx, dy, dw, dh);
+
+    static int rc_trace = 0;
+    if (rc_trace < 30) {
+        rc_trace++;
+        /* Count non-black pixels in texture */
+        int nonblack = 0;
+        int total = texture->w * texture->h;
+        for (int _i = 0; _i < total && _i < 50000; _i++) {
+            Uint32 p = texture->pixels[_i];
+            if ((p & 0x00FFFFFF) != 0) { nonblack++; }
+        }
+        sdl_trace("[SDL] RenderCopy #%d: tex=%dx%d nonblack=%d/%d\n",
+                  rc_trace, texture->w, texture->h, nonblack,
+                  total < 50000 ? total : 50000);
+    }
+
     return 0;
 }
 
@@ -273,6 +299,16 @@ void SDL_DestroyTexture(SDL_Texture *texture)
     free(texture);
 }
 
+int SDL_QueryTexture(SDL_Texture *t, Uint32 *fmt, int *access, int *w, int *h)
+{
+    if (!t) return -1;
+    if (fmt) *fmt = t->format;
+    if (access) *access = 0;
+    if (w) *w = t->w;
+    if (h) *h = t->h;
+    return 0;
+}
+
 /* Global palette for 8-bit→ARGB conversion in SDL_UpdateTexture.
    Updated whenever SDL_SetPaletteColors is called. */
 static SDL_Palette *g_active_palette = (SDL_Palette*)0;
@@ -289,6 +325,20 @@ int SDL_UpdateTexture(SDL_Texture *texture, const SDL_Rect *rect,
     int dy = rect ? rect->y : 0;
 
     int src_bpp = (tw > 0) ? pitch / tw : 4;  /* detect source bytes per pixel */
+
+    static int ut_trace = 0;
+    if (ut_trace < 20) {
+        ut_trace++;
+        /* Sample source pixels for non-black */
+        int nonblack = 0;
+        const Uint32 *sp32 = (const Uint32*)pixels;
+        int total32 = (pitch / 4) * th;
+        for (int _i = 0; _i < total32 && _i < 50000; _i++) {
+            if ((sp32[_i] & 0x00FFFFFF) != 0) nonblack++;
+        }
+        sdl_trace("[SDL] UpdateTexture #%d: %dx%d pitch=%d bpp=%d nonblack=%d\n",
+                  ut_trace, tw, th, pitch, src_bpp, nonblack);
+    }
 
     if (src_bpp == 1 && g_active_palette && g_active_palette->ncolors > 0) {
         /* 8-bit indexed → ARGB8888 via palette lookup */
@@ -647,6 +697,21 @@ int SDL_SetPaletteColors(SDL_Palette *palette, const SDL_Color *colors,
     memcpy(palette->colors + firstcolor, colors, ncolors * sizeof(SDL_Color));
     palette->version++;
     g_active_palette = palette;  /* track for 8-bit→ARGB in SDL_UpdateTexture */
+    /* Sample multiple entries to find non-black colors */
+    {
+        int found_idx = -1;
+        for (int _i = 0; _i < ncolors && _i < 256; _i++) {
+            if (colors[_i].r || colors[_i].g || colors[_i].b) { found_idx = _i; break; }
+        }
+        if (found_idx >= 0) {
+            sdl_trace("[SDL] SetPaletteColors: pal=%p first=%d n=%d first_nonblack[%d]=(%d,%d,%d,%d)\n",
+                      palette, firstcolor, ncolors, found_idx + firstcolor,
+                      colors[found_idx].r, colors[found_idx].g, colors[found_idx].b, colors[found_idx].a);
+        } else {
+            sdl_trace("[SDL] SetPaletteColors: pal=%p first=%d n=%d ALL BLACK\n",
+                      palette, firstcolor, ncolors);
+        }
+    }
     return 0;
 }
 
@@ -883,6 +948,17 @@ int SDL_SetSurfacePalette(SDL_Surface *surface, SDL_Palette *palette)
         SDL_FreePalette(surface->format->palette);
     palette->refcount++;
     surface->format->palette = palette;
+    sdl_trace("[SDL] SetSurfacePalette: pal=%p ncolors=%d first3=(%d,%d,%d) (%d,%d,%d) (%d,%d,%d)\n",
+              palette, palette->ncolors,
+              palette->ncolors > 0 ? palette->colors[0].r : -1,
+              palette->ncolors > 0 ? palette->colors[0].g : -1,
+              palette->ncolors > 0 ? palette->colors[0].b : -1,
+              palette->ncolors > 1 ? palette->colors[1].r : -1,
+              palette->ncolors > 1 ? palette->colors[1].g : -1,
+              palette->ncolors > 1 ? palette->colors[1].b : -1,
+              palette->ncolors > 2 ? palette->colors[2].r : -1,
+              palette->ncolors > 2 ? palette->colors[2].g : -1,
+              palette->ncolors > 2 ? palette->colors[2].b : -1);
     return 0;
 }
 
@@ -1067,10 +1143,41 @@ int SDL_FillRect(SDL_Surface *dst, const SDL_Rect *rect, Uint32 color)
     return 0;
 }
 
+static int g_blit_trace_count = 0;
+
 int SDL_BlitSurface(SDL_Surface *src, const SDL_Rect *srcrect,
                     SDL_Surface *dst, SDL_Rect *dstrect)
 {
     if (!src || !dst || !src->pixels || !dst->pixels) return -1;
+
+    if (g_blit_trace_count < 20) {
+        g_blit_trace_count++;
+        sdl_trace("[SDL] BlitSurface #%d: src=%dx%d fmt=0x%x bpp=%d pal=%p -> dst=%dx%d fmt=0x%x bpp=%d\n",
+                  g_blit_trace_count,
+                  src->w, src->h, src->format->format, src->format->BytesPerPixel,
+                  src->format->palette,
+                  dst->w, dst->h, dst->format->format, dst->format->BytesPerPixel);
+        if (src->format->palette && src->format->palette->ncolors > 0) {
+            /* Sample the first non-zero src pixel and show what it maps to */
+            Uint8 *sp = (Uint8*)src->pixels;
+            int found = -1;
+            for (int i = 0; i < src->w * src->h && i < 10000; i++) {
+                if (sp[i] != 0) { found = i; break; }
+            }
+            if (found >= 0) {
+                int idx = sp[found];
+                SDL_Color c = src->format->palette->colors[idx];
+                sdl_trace("[SDL]   px[%d]=idx %d -> RGBA(%d,%d,%d,%d)  pal[1]=(%d,%d,%d,%d) pal[128]=(%d,%d,%d,%d)\n",
+                          found, idx, c.r, c.g, c.b, c.a,
+                          src->format->palette->colors[1].r, src->format->palette->colors[1].g,
+                          src->format->palette->colors[1].b, src->format->palette->colors[1].a,
+                          src->format->palette->colors[128].r, src->format->palette->colors[128].g,
+                          src->format->palette->colors[128].b, src->format->palette->colors[128].a);
+            } else {
+                sdl_trace("[SDL]   all src pixels are 0 (first 10000)\n");
+            }
+        }
+    }
 
     /* Source rect defaults to full surface */
     int sx = 0, sy = 0, sw = src->w, sh = src->h;
@@ -1288,8 +1395,12 @@ SDL_Surface* SDL_GetWindowSurface(SDL_Window *window)
     g_window_surface = SDL_CreateRGBSurface(0, w, h, 32,
                                             0x00FF0000, 0x0000FF00,
                                             0x000000FF, 0xFF000000);
+    sdl_trace("[SDL] GetWindowSurface: created %dx%d ARGB8888 surf=%p pixels=%p\n",
+              w, h, g_window_surface, g_window_surface ? g_window_surface->pixels : 0);
     return g_window_surface;
 }
+
+static int g_update_trace_count = 0;
 
 int SDL_UpdateWindowSurface(SDL_Window *window)
 {
@@ -1301,6 +1412,21 @@ int SDL_UpdateWindowSurface(SDL_Window *window)
     if (!rgb) return -1;
 
     Uint32 *src = (Uint32*)g_window_surface->pixels;
+
+    if (g_update_trace_count < 20) {
+        g_update_trace_count++;
+        /* Sample a few pixels from the ARGB window surface */
+        Uint32 p0 = total > 0 ? src[0] : 0;
+        Uint32 pm = total > 1 ? src[total / 2] : 0;
+        int non_black = 0;
+        for (int i = 0; i < total && i < 50000; i++) {
+            if (src[i] != 0 && src[i] != 0xFF000000) { non_black++; }
+        }
+        sdl_trace("[SDL] UpdateWindowSurface #%d: %dx%d surf=%p px[0]=0x%08x px[mid]=0x%08x non_black=%d/%d\n",
+                  g_update_trace_count, w, h, g_window_surface,
+                  p0, pm, non_black, total < 50000 ? total : 50000);
+    }
+
     for (int i = 0; i < total; i++) {
         Uint32 px = src[i]; /* ARGB */
         rgb[i * 3 + 0] = (px >> 16) & 0xFF; /* R */

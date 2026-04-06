@@ -56,8 +56,7 @@ void SDL_RenderPresent(SDL_Renderer *renderer);
 
 static inline void SDL_RenderGetScale(SDL_Renderer *r, float *sx, float *sy)
     { (void)r; if (sx) *sx = 1.0f; if (sy) *sy = 1.0f; }
-static inline int SDL_QueryTexture(SDL_Texture *t, Uint32 *fmt, int *access, int *w, int *h)
-    { (void)t; if(fmt)*fmt=0; if(access)*access=0; if(w)*w=0; if(h)*h=0; return 0; }
+int SDL_QueryTexture(SDL_Texture *t, Uint32 *fmt, int *access, int *w, int *h);
 static inline int SDL_SetRenderTarget(SDL_Renderer *r, SDL_Texture *t) { (void)r; (void)t; return 0; }
 static inline SDL_Texture* SDL_GetRenderTarget(SDL_Renderer *r) { (void)r; return (SDL_Texture*)0; }
 static inline void SDL_RenderGetLogicalSize(SDL_Renderer *r, int *w, int *h)

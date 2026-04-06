@@ -58,7 +58,21 @@ extern "C" int32_t __real_libmpq__block_read_with_temporary_buffer(mpq_archive_s
 extern "C" int32_t __wrap_libmpq__block_read_with_temporary_buffer(mpq_archive_s *a, uint32_t fnum, uint32_t blocknum, uint8_t *out, int64_t outsize, uint8_t *tmp, int64_t tmpsize, int64_t *transferred)
 {
     int32_t err = __real_libmpq__block_read_with_temporary_buffer(a, fnum, blocknum, out, outsize, tmp, tmpsize, transferred);
-    serial_printf("[DVX] block_read(fnum=%u blk=%u, outsize=%ld) = %d xfer=%ld\n", fnum, blocknum, (long)outsize, err, transferred ? (long)*transferred : -1);
+    /* Check if output buffer has any non-zero data */
+    int nonzero = 0;
+    for (int64_t i = 0; i < outsize && i < 1024; i++) {
+        if (out[i] != 0) { nonzero++; }
+    }
+    static int blk_trace = 0;
+    if (blk_trace < 40) {
+        blk_trace++;
+        serial_printf("[DVX] block_read(fnum=%u blk=%u, outsize=%ld) = %d xfer=%ld nonzero=%d first4=[%02x %02x %02x %02x]\n",
+                      fnum, blocknum, (long)outsize, err,
+                      transferred ? (long)*transferred : -1,
+                      nonzero,
+                      outsize > 0 ? out[0] : 0, outsize > 1 ? out[1] : 0,
+                      outsize > 2 ? out[2] : 0, outsize > 3 ? out[3] : 0);
+    }
     return err;
 }
 
