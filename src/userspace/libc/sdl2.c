@@ -521,6 +521,52 @@ static SDL_Keycode scancode_to_keycode(SDL_Scancode sc)
     }
 }
 
+/* ── Text Input ────────────────────────────────────────────────────────── */
+
+static int g_text_input_enabled = 0;
+
+void SDL_StartTextInput(void)  { g_text_input_enabled = 1; }
+void SDL_StopTextInput(void)   { g_text_input_enabled = 0; }
+
+/* Pending text input event (generated alongside SDL_KEYDOWN) */
+static int g_pending_textinput = 0;
+static SDL_Event g_pending_textinput_ev;
+
+/* Convert SDL scancode + modifiers to a printable ASCII character, or 0 */
+static char scancode_to_char(SDL_Scancode sc, Uint16 mod)
+{
+    int shift = (mod & (KMOD_LSHIFT | KMOD_RSHIFT)) != 0;
+    /* Letters */
+    if (sc >= SDL_SCANCODE_A && sc <= SDL_SCANCODE_Z) {
+        char c = 'a' + (sc - SDL_SCANCODE_A);
+        return shift ? (c - 32) : c;
+    }
+    /* Number row */
+    if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9) {
+        if (!shift) return '1' + (sc - SDL_SCANCODE_1);
+        static const char shifted[] = "!@#$%^&*(";
+        return shifted[sc - SDL_SCANCODE_1];
+    }
+    if (sc == SDL_SCANCODE_0) return shift ? ')' : '0';
+    /* Space */
+    if (sc == SDL_SCANCODE_SPACE) return ' ';
+    /* Punctuation */
+    switch (sc) {
+    case SDL_SCANCODE_MINUS:        return shift ? '_' : '-';
+    case SDL_SCANCODE_EQUALS:       return shift ? '+' : '=';
+    case SDL_SCANCODE_LEFTBRACKET:  return shift ? '{' : '[';
+    case SDL_SCANCODE_RIGHTBRACKET: return shift ? '}' : ']';
+    case SDL_SCANCODE_BACKSLASH:    return shift ? '|' : '\\';
+    case SDL_SCANCODE_SEMICOLON:    return shift ? ':' : ';';
+    case SDL_SCANCODE_APOSTROPHE:   return shift ? '"' : '\'';
+    case SDL_SCANCODE_GRAVE:        return shift ? '~' : '`';
+    case SDL_SCANCODE_COMMA:        return shift ? '<' : ',';
+    case SDL_SCANCODE_PERIOD:       return shift ? '>' : '.';
+    case SDL_SCANCODE_SLASH:        return shift ? '?' : '/';
+    default: return 0;
+    }
+}
+
 /* ── Events ─────────────────────────────────────────────────────────────── */
 
 /* Modifier key tracking */
@@ -566,6 +612,13 @@ int SDL_PollEvent(SDL_Event *event)
 {
     if (!event) return 0;
 
+    /* Drain pending text input event first (queued from prior key press) */
+    if (g_pending_textinput) {
+        *event = g_pending_textinput_ev;
+        g_pending_textinput = 0;
+        return 1;
+    }
+
     /* Check keyboard events from window queue */
     long kev = sys_get_key_event();
     if (kev != -1) {
@@ -585,6 +638,20 @@ int SDL_PollEvent(SDL_Event *event)
         /* Keep g_keyboard_state in sync for SDL_GetKeyboardState */
         if (sc < SDL_NUM_SCANCODES)
             g_keyboard_state[sc] = pressed ? 1 : 0;
+
+        /* Queue a text input event for printable key presses */
+        if (pressed && g_text_input_enabled
+            && !(g_key_modifiers & (KMOD_LCTRL | KMOD_RCTRL | KMOD_LALT | KMOD_RALT))) {
+            char ch = scancode_to_char(sc, g_key_modifiers);
+            if (ch) {
+                g_pending_textinput = 1;
+                g_pending_textinput_ev.type = SDL_TEXTINPUT;
+                g_pending_textinput_ev.text.timestamp = SDL_GetTicks();
+                g_pending_textinput_ev.text.windowID = g_window.wid;
+                g_pending_textinput_ev.text.text[0] = ch;
+                g_pending_textinput_ev.text.text[1] = '\0';
+            }
+        }
         return 1;
     }
 

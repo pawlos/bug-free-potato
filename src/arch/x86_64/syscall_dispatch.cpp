@@ -621,13 +621,36 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			       ((pt::uint64_t)w->client_oy << 16);
 		}
 
-		case 48: { // SYS_SET_FS_BASE
+		case SYS_SET_FS_BASE: {
 			pt::uint64_t base = arg1;
 			// Set FS base via MSR 0xC0000100
 			asm volatile("wrmsr" :: "c"(0xC0000100U),
 			             "a"((pt::uint32_t)(base & 0xFFFFFFFF)),
 			             "d"((pt::uint32_t)(base >> 32)));
 			return 0;
+		}
+
+		case SYS_MKDIR: {
+			const char* path = reinterpret_cast<const char*>(arg1);
+			if (!path) return (pt::uint64_t)-1;
+			return VFS::create_directory(path) ? 0 : (pt::uint64_t)-1;
+		}
+
+		case SYS_OPEN_RW: {
+			const char* filename = reinterpret_cast<const char*>(arg1);
+			Task* t = TaskScheduler::get_current_task();
+			int fd = -1;
+			for (int i = 3; i < (int)Task::MAX_FDS; i++) {
+				if (!t->fd_table[i].open) { fd = i; break; }
+			}
+			if (fd == -1) return (pt::uint64_t)-1;
+			if (!VFS::open_file_readwrite(filename, &t->fd_table[fd])) {
+				klog("syscall: SYS_OPEN_RW: '%s' not found\n", filename);
+				return (pt::uint64_t)-1;
+			}
+			t->fd_table[fd].type = FdType::FILE;
+			klog("syscall: SYS_OPEN_RW: '%s' -> fd %d\n", filename, fd);
+			return (pt::uint64_t)fd;
 		}
 
 		default:

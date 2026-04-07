@@ -104,6 +104,16 @@ bool VFS::open_file_write(const char* filename, File* out) {
     return active_fs->open_file_write(filename, out);
 }
 
+bool VFS::open_file_readwrite(const char* filename, File* out) {
+    if (!active_fs) return false;
+    return active_fs->open_file_readwrite(filename, out);
+}
+
+bool VFS::create_directory(const char* path) {
+    if (!active_fs) return false;
+    return active_fs->create_directory(path);
+}
+
 pt::uint32_t VFS::seek_file(File* file, pt::int32_t offset, int whence) {
     if (!active_fs) return (pt::uint32_t)-1;
     return active_fs->seek_file(file, offset, whence);

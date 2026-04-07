@@ -51,3 +51,6 @@ constexpr pt::uint64_t SYS_GET_MOUSE_POS   = 44; // () → x|(y<<16)|(left<<32)|
 constexpr pt::uint64_t SYS_POLL_START_KEY  = 45; // () → 1 if Windows key pressed since last poll, else 0
 constexpr pt::uint64_t SYS_RESIZE_WINDOW   = 46; // rdi=x, rsi=y, rdx=w, rcx=h; resize task's window; returns 0 or -1
 constexpr pt::uint64_t SYS_GET_WINDOW_POS  = 47; // () → client_ox|(client_oy<<16); returns -1 if no window
+constexpr pt::uint64_t SYS_SET_FS_BASE    = 48; // rdi=base; set FS segment base (thread-local storage)
+constexpr pt::uint64_t SYS_MKDIR           = 49; // rdi=path; create directory (recursive); returns 0 or -1
+constexpr pt::uint64_t SYS_OPEN_RW        = 50; // rdi=filename; open existing for read+write; returns fd or -1

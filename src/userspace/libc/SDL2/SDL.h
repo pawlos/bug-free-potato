@@ -102,9 +102,9 @@ static inline const char* SDL_GetAudioDeviceName(int idx, int iscapture) { (void
 /* SDL_PushEvent declared in SDL_events.h */
 /* SDL_GetKeyboardState declared in SDL_events.h */
 
-/* Text input stubs */
-static inline void SDL_StartTextInput(void) {}
-static inline void SDL_StopTextInput(void) {}
+/* Text input — implemented in sdl2.c */
+void SDL_StartTextInput(void);
+void SDL_StopTextInput(void);
 static inline void SDL_SetTextInputRect(const SDL_Rect *rect) { (void)rect; }
 
 /* Query constants for SDL_ShowCursor etc. */

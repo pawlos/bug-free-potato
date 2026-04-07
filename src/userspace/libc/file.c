@@ -50,21 +50,29 @@ FILE *fopen(const char *path, const char *mode)
     /* Determine flags from mode string */
     int write_mode  = 0;
     int append_mode = 0;
+    int rw_mode     = 0;
     if (mode) {
         for (const char *m = mode; *m; m++) {
             if (*m == 'w') write_mode  = 1;
             if (*m == 'a') append_mode = 1;
+            if (*m == '+') rw_mode     = 1;
         }
     }
 
     int fd;
-    if (write_mode) {
+    if (write_mode && rw_mode) {
+        /* "w+": create/truncate, read+write */
+        fd = sys_create(path);
+    } else if (write_mode) {
         /* "w": create new or truncate existing */
         fd = sys_create(path);
     } else if (append_mode) {
         /* "a": open existing (keeping content) or create fresh */
         fd = sys_open(path);
         if (fd < 0) fd = sys_create(path);
+    } else if (rw_mode) {
+        /* "r+": open existing for read+write, no truncation */
+        fd = sys_open_rw(path);
     } else {
         /* "r": read-only, existing file */
         fd = sys_open(path);
@@ -77,7 +85,7 @@ FILE *fopen(const char *path, const char *mode)
     f->fd         = fd;
     f->flags      = 0;
     f->unget_char = -1;
-    if (write_mode)  f->flags |= _FILE_WRITE;
+    if (write_mode || rw_mode)  f->flags |= _FILE_WRITE;
     if (append_mode) {
         f->flags |= _FILE_APPEND | _FILE_WRITE;
         sys_lseek(fd, 0, SEEK_END);   /* position at end of file */
@@ -380,6 +388,5 @@ int fscanf(FILE *f, const char *fmt, ...)
 /* Unbuffered I/O — fflush is a no-op. */
 int fflush(FILE *f) { (void)f; return 0; }
 
-/* VFS is read-only; save-game operations fail gracefully. */
-int remove(const char *path) { (void)path; return -1; }
+int remove(const char *path) { return (int)sys_remove(path); }
 int rename(const char *old, const char *new_name) { (void)old; (void)new_name; return -1; }

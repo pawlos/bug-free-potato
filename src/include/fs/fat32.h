@@ -98,6 +98,8 @@ public:
     bool file_exists(const char* filename) override;
     void list_root_directory() override;
     bool open_file_write(const char* filename, File* out) override;
+    bool open_file_readwrite(const char* filename, File* out) override;
+    bool create_directory(const char* path) override;
     bool create_file(const char* filename, const pt::uint8_t* data, pt::uint32_t size) override;
     bool delete_file(const char* filename) override;
     bool readdir(int idx, char* name_out, pt::uint32_t* size_out) override;
@@ -136,6 +138,8 @@ private:
     bool write_fat_entry(pt::uint32_t cluster, pt::uint32_t value);
     bool update_dir_entry(File* file);
     bool create_dir_entry(const char* filename, File* out);
+    bool create_dir_entry_in(pt::uint32_t dir_cluster, const char* filename, File* out);
+    bool create_subdirectory(pt::uint32_t parent_cluster, const char* dirname);
 
     FAT32_BPB    bpb;
     pt::uint32_t* fat_table         = nullptr;  // cached FAT (array of uint32)

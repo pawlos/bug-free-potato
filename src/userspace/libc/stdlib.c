@@ -357,8 +357,7 @@ int putenv(char *s) { (void)s; return -1; }
 int toupper(int c) { return (c >= 'a' && c <= 'z') ? c - 32 : c; }
 int tolower(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
 
-/* Doom uses mkdir to create save-game directories. Our VFS is read-only. */
-int mkdir(const char *path, unsigned int mode) { (void)path; (void)mode; return -1; }
+int mkdir(const char *path, unsigned int mode) { (void)mode; return (int)sys_mkdir(path); }
 
 /* ── qsort (iterative quicksort) ─────────────────────────────────────────── */
 

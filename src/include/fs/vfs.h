@@ -38,6 +38,8 @@ public:
     // write_file / open_file_write default to "not supported" so FAT12 needs no changes.
     virtual pt::uint32_t write_file(File*, const void*, pt::uint32_t) { return 0; }
     virtual bool open_file_write(const char*, File*) { return false; }
+    virtual bool open_file_readwrite(const char*, File*) { return false; }
+    virtual bool create_directory(const char*) { return false; }
     virtual pt::uint32_t seek_file(File* file, pt::int32_t offset, int whence) = 0;
     virtual void close_file(File* file) = 0;
     virtual bool file_exists(const char* filename) = 0;
@@ -66,6 +68,8 @@ public:
     static pt::uint32_t read_file(File* file, void* buffer, pt::uint32_t bytes_to_read);
     static pt::uint32_t write_file(File* file, const void* buffer, pt::uint32_t bytes_to_write);
     static bool open_file_write(const char* filename, File* out);
+    static bool open_file_readwrite(const char* filename, File* out);
+    static bool create_directory(const char* path);
     static pt::uint32_t seek_file(File* file, pt::int32_t offset, int whence);
     static void close_file(File* file);
     static bool file_exists(const char* filename);

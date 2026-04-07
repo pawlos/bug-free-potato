@@ -63,6 +63,8 @@ static inline long syscall(long nr, ...) { (void)nr; return 0; }
 #define SYS_RESIZE_WINDOW   46  /* rdi=x, rsi=y, rdx=w, rcx=h; resize task's window    */
 #define SYS_GET_WINDOW_POS  47  /* () → client_ox|(client_oy<<16); -1 if no window     */
 #define SYS_SET_FS_BASE     48  /* rdi=base; set FS segment base for TLS               */
+#define SYS_MKDIR           49  /* rdi=path; create directory (recursive); returns 0/-1 */
+#define SYS_OPEN_RW         50  /* rdi=filename; open existing for r+w; returns fd/-1   */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -282,6 +284,14 @@ static inline long sys_getpid(void)
 /* Stat a file: fills stat_buf with size + timestamps.  Returns 0 or -1. */
 static inline long sys_stat(const char *filename, void *buf)
     { return __sc2(SYS_STAT, (long)filename, (long)buf); }
+
+/* Create directory (recursive).  Returns 0 or -1. */
+static inline long sys_mkdir(const char *path)
+    { return __sc1(SYS_MKDIR, (long)path); }
+
+/* Open existing file for read+write.  Returns fd or -1. */
+static inline long sys_open_rw(const char *filename)
+    { return __sc1(SYS_OPEN_RW, (long)filename); }
 
 /* Change page permissions.  prot: PROT_EXEC|PROT_WRITE|PROT_READ. */
 static inline long sys_mprotect(void *addr, size_t len, int prot)
