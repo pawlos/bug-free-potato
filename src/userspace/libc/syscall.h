@@ -65,6 +65,8 @@ static inline long syscall(long nr, ...) { (void)nr; return 0; }
 #define SYS_SET_FS_BASE     48  /* rdi=base; set FS segment base for TLS               */
 #define SYS_MKDIR           49  /* rdi=path; create directory (recursive); returns 0/-1 */
 #define SYS_OPEN_RW         50  /* rdi=filename; open existing for r+w; returns fd/-1   */
+#define SYS_AUDIO_OPEN      51  /* rdi=rate, rsi=channels, rdx=format; returns 0/-1    */
+#define SYS_AUDIO_CLOSE     52  /* no args; returns 0/-1                               */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -292,6 +294,17 @@ static inline long sys_mkdir(const char *path)
 /* Open existing file for read+write.  Returns fd or -1. */
 static inline long sys_open_rw(const char *filename)
     { return __sc1(SYS_OPEN_RW, (long)filename); }
+
+/* Open audio device: claim ownership, set sample rate/channels.
+ * format: 0 = signed 16-bit LE.  Returns 0 on success, -1 on error. */
+static inline long sys_audio_open(unsigned int rate, unsigned int channels,
+                                  unsigned int format)
+    { return __sc3(SYS_AUDIO_OPEN, (long)rate, (long)channels, (long)format); }
+
+/* Close audio device: stop playback, release ownership.
+ * Returns 0 on success, -1 if not owner. */
+static inline long sys_audio_close(void)
+    { return __sc0(SYS_AUDIO_CLOSE); }
 
 /* Change page permissions.  prot: PROT_EXEC|PROT_WRITE|PROT_READ. */
 static inline long sys_mprotect(void *addr, size_t len, int prot)
