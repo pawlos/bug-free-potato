@@ -22,6 +22,10 @@ pt::uint16_t AC97::nabm_base   = 0;
 AC97_BDL_Entry* AC97::bdl      = nullptr;
 pt::uint8_t* AC97::dma_buf[AC97_MAX_BDL_ENTRIES] = {};
 static pt::uint32_t cached_sample_rate = 0;
+pt::int32_t  AC97::owner_task_id  = -1;
+AC97_DMASlot AC97::slots[2]       = {};
+pt::uint8_t  AC97::active_slot    = 0;
+pt::uint8_t  AC97::audio_channels = 2;
 
 // ---------------------------------------------------------------------------
 // PCI config helpers
@@ -242,6 +246,18 @@ bool AC97::initialize() {
         }
     }
 
+    for (int i = 0; i < 2; i++) {
+        slots[i].buffer = static_cast<pt::uint8_t*>(
+            VMM::Instance()->kcalloc(AC97_DMA_BUFFER_BYTES));
+        if (!slots[i].buffer) {
+            klog("[AC97] Failed to allocate DMA slot %d buffer\n", i);
+            return false;
+        }
+        slots[i].length  = 0;
+        slots[i].filled  = false;
+        slots[i].playing = false;
+    }
+
     initialized = true;
     klog("[AC97] Ready (%d x %d KB DMA buffers)\n",
          AC97_MAX_BDL_ENTRIES, AC97_DMA_BUFFER_BYTES / 1024);
@@ -276,6 +292,95 @@ void AC97::set_volume(pt::uint8_t percent) {
     nam_write(AC97_NAM_MIC_VOLUME,       AC97_VOLUME_MUTE); // mute mic
 
     klog("[AC97] Volume %d%% (reg=%x)\n", percent, vol);
+}
+
+// ---------------------------------------------------------------------------
+// open: configure streaming mode (rate, channels, format)
+// ---------------------------------------------------------------------------
+bool AC97::open(pt::uint32_t rate, pt::uint8_t channels, pt::uint8_t format) {
+    if (!initialized) return false;
+    (void)format;
+    set_sample_rate(rate);
+    audio_channels = channels;
+    slots[0].filled = false; slots[0].playing = false; slots[0].length = 0;
+    slots[1].filled = false; slots[1].playing = false; slots[1].length = 0;
+    active_slot = 0;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// close: stop playback and release ownership
+// ---------------------------------------------------------------------------
+void AC97::close() {
+    if (!initialized) return;
+    stop();
+    slots[0].filled = false; slots[0].playing = false; slots[0].length = 0;
+    slots[1].filled = false; slots[1].playing = false; slots[1].length = 0;
+    active_slot = 0;
+    owner_task_id = -1;
+}
+
+// ---------------------------------------------------------------------------
+// poll_dma: check if current slot finished, advance to next if queued
+// ---------------------------------------------------------------------------
+void AC97::poll_dma() {
+    if (!initialized) return;
+    if (!slots[0].playing && !slots[1].playing) return;
+
+    pt::uint16_t status = nabm_read_word(AC97_NABM_PCM_OUT_STATUS);
+    if (!(status & AC97_STS_DCH)) return; // Still playing
+
+    slots[active_slot].playing = false;
+    slots[active_slot].filled  = false;
+    slots[active_slot].length  = 0;
+
+    nabm_write_word(AC97_NABM_PCM_OUT_STATUS, AC97_STS_LVBCI | AC97_STS_BCIS | AC97_STS_FIFOE);
+
+    pt::uint8_t next = 1 - active_slot;
+    if (slots[next].filled) {
+        active_slot = next;
+        slots[next].playing = true;
+        start_dma(slots[next].buffer, slots[next].length);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// has_free_slot: true if at least one slot is available for queuing
+// ---------------------------------------------------------------------------
+bool AC97::has_free_slot() {
+    return !slots[0].filled || !slots[1].filled;
+}
+
+// ---------------------------------------------------------------------------
+// queue_pcm: copy data into a free slot and start playback if idle
+// ---------------------------------------------------------------------------
+pt::uint32_t AC97::queue_pcm(const pt::uint8_t* data, pt::uint32_t length) {
+    if (!initialized || !data || length == 0) return 0;
+
+    poll_dma();
+
+    int free_idx = -1;
+    if (!slots[0].filled) free_idx = 0;
+    else if (!slots[1].filled) free_idx = 1;
+    else return 0;
+
+    if (length > AC97_DMA_BUFFER_BYTES)
+        length = AC97_DMA_BUFFER_BYTES;
+
+    const pt::uint8_t* src = data;
+    pt::uint8_t* dst = slots[free_idx].buffer;
+    for (pt::uint32_t i = 0; i < length; i++) dst[i] = src[i];
+
+    slots[free_idx].length = length;
+    slots[free_idx].filled = true;
+
+    if (!slots[0].playing && !slots[1].playing) {
+        active_slot = (pt::uint8_t)free_idx;
+        slots[free_idx].playing = true;
+        start_dma(slots[free_idx].buffer, slots[free_idx].length);
+    }
+
+    return length;
 }
 
 // ---------------------------------------------------------------------------

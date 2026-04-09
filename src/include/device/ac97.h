@@ -83,6 +83,14 @@ constexpr pt::uint16_t AC97_BDL_FLAG_IOC  = 0x4000;  // Interrupt on completion
 constexpr pt::uint8_t  AC97_MAX_BDL_ENTRIES  = 32;
 constexpr pt::uint32_t AC97_DMA_BUFFER_BYTES = 0x8000;  // 32 KB per DMA buffer
 
+// Double-buffered DMA slot
+struct AC97_DMASlot {
+    pt::uint8_t* buffer;     // Pre-allocated DMA buffer (AC97_DMA_BUFFER_BYTES)
+    pt::uint32_t length;     // Bytes of valid PCM data in this slot
+    bool         filled;     // True if userspace has written data here
+    bool         playing;    // True if DMA is currently playing this slot
+};
+
 class AC97 {
 public:
     // Find AC97 on PCI bus, reset codec, configure volume.
@@ -108,6 +116,24 @@ public:
 
     // True while DMA is running.
     static bool is_playing();
+
+    // Open audio device: configure sample rate and channels. Caller sets owner_task_id.
+    static bool open(pt::uint32_t rate, pt::uint8_t channels, pt::uint8_t format);
+
+    // Close audio device: stop DMA, reset slots, clear owner.
+    static void close();
+
+    // Queue PCM data into next free DMA slot. Returns bytes queued, 0 if full.
+    static pt::uint32_t queue_pcm(const pt::uint8_t* data, pt::uint32_t length);
+
+    // Check if current DMA slot finished; auto-start next if queued.
+    static void poll_dma();
+
+    // True if at least one DMA slot is available for writing.
+    static bool has_free_slot();
+
+    // Task that owns the audio device (-1 = no owner).
+    static pt::int32_t owner_task_id;
 
     // Set master volume 0 (mute) .. 100 (max).
     static void set_volume(pt::uint8_t percent);
@@ -151,4 +177,8 @@ private:
 
     // Reset PCM-Out channel registers
     static void reset_channel();
+
+    static AC97_DMASlot  slots[2];
+    static pt::uint8_t   active_slot;
+    static pt::uint8_t   audio_channels;
 };
