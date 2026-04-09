@@ -54,3 +54,5 @@ constexpr pt::uint64_t SYS_GET_WINDOW_POS  = 47; // () → client_ox|(client_oy<
 constexpr pt::uint64_t SYS_SET_FS_BASE    = 48; // rdi=base; set FS segment base (thread-local storage)
 constexpr pt::uint64_t SYS_MKDIR           = 49; // rdi=path; create directory (recursive); returns 0 or -1
 constexpr pt::uint64_t SYS_OPEN_RW        = 50; // rdi=filename; open existing for read+write; returns fd or -1
+constexpr pt::uint64_t SYS_AUDIO_OPEN    = 51; // rdi=rate, rsi=channels, rdx=format; returns 0 or -1
+constexpr pt::uint64_t SYS_AUDIO_CLOSE   = 52; // no args; returns 0 or -1

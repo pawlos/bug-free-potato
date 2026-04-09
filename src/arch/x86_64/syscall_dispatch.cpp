@@ -519,16 +519,30 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 
 		case SYS_AUDIO_WRITE: {
 			if (!AC97::is_present()) return (pt::uint64_t)-1;
-			if (AC97::is_playing())  return 0;  /* busy — caller should retry */
 			const pt::uint8_t* data = reinterpret_cast<const pt::uint8_t*>(arg1);
 			pt::uint32_t bytes = static_cast<pt::uint32_t>(arg2);
-			pt::uint32_t rate  = static_cast<pt::uint32_t>(arg3);
-			return AC97::play_pcm(data, bytes, rate) ? 1 : (pt::uint64_t)-1;
+			if (!data || bytes == 0) return (pt::uint64_t)-1;
+
+			// Auto-open for backward compatibility (Doom passes rate as arg3)
+			if (AC97::owner_task_id < 0) {
+				Task* t = TaskScheduler::get_current_task();
+				if (!t) return (pt::uint64_t)-1;
+				pt::uint32_t rate = static_cast<pt::uint32_t>(arg3);
+				if (rate == 0) rate = 48000;
+				if (!AC97::open(rate, 2, 0)) return (pt::uint64_t)-1;
+				AC97::owner_task_id = (pt::int32_t)t->id;
+			}
+
+			return (pt::uint64_t)AC97::queue_pcm(data, bytes);
 		}
 
-		case SYS_AUDIO_PLAYING:
+		case SYS_AUDIO_PLAYING: {
 			if (!AC97::is_present()) return (pt::uint64_t)-1;
-			return AC97::is_playing() ? 1 : 0;
+			AC97::poll_dma();
+			if (AC97::owner_task_id >= 0 && !AC97::has_free_slot())
+				return 1;
+			return 0;
+		}
 
 		case SYS_WRITE_SERIAL: {
 			const char* buf = reinterpret_cast<const char*>(arg1);
@@ -651,6 +665,31 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			t->fd_table[fd].type = FdType::FILE;
 			klog("syscall: SYS_OPEN_RW: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
+		}
+
+		case SYS_AUDIO_OPEN: {
+			if (!AC97::is_present()) return (pt::uint64_t)-1;
+			Task* t = TaskScheduler::get_current_task();
+			if (!t) return (pt::uint64_t)-1;
+			if (AC97::owner_task_id >= 0 && AC97::owner_task_id != (pt::int32_t)t->id)
+				return (pt::uint64_t)-1;
+			pt::uint32_t rate     = (pt::uint32_t)arg1;
+			pt::uint8_t  channels = (pt::uint8_t)arg2;
+			pt::uint8_t  format   = (pt::uint8_t)arg3;
+			if (!AC97::open(rate, channels, format))
+				return (pt::uint64_t)-1;
+			AC97::owner_task_id = (pt::int32_t)t->id;
+			klog("syscall: SYS_AUDIO_OPEN: rate=%d ch=%d by task %d\n", rate, channels, t->id);
+			return 0;
+		}
+
+		case SYS_AUDIO_CLOSE: {
+			Task* t = TaskScheduler::get_current_task();
+			if (!t || AC97::owner_task_id != (pt::int32_t)t->id)
+				return (pt::uint64_t)-1;
+			AC97::close();
+			klog("syscall: SYS_AUDIO_CLOSE: by task %d\n", t->id);
+			return 0;
 		}
 
 		default:
