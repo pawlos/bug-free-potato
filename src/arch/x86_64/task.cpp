@@ -9,6 +9,7 @@
 #include "device/timer.h"
 #include "device/keyboard.h"
 #include "window.h"
+#include "device/ac97.h"
 
 // Mask to extract the physical frame address from a leaf PTE.
 // Clears the low 12 flag bits AND the high bits (including NX bit 63),
@@ -965,6 +966,12 @@ void TaskScheduler::task_exit(int exit_code)
         }
         current->window_id = INVALID_WID;
         current->owns_window = false;
+
+        // Release audio device if this task owns it
+        if (AC97::owner_task_id == (pt::int32_t)current->id) {
+            AC97::close();
+            klog("[SCHEDULER] Released audio device from task %d\n", current->id);
+        }
 
         // Zero page table pointers so lazy cleanup in create_task()
         // won't dereference stale values.  The actual frames leak, but
