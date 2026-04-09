@@ -8,7 +8,7 @@ DVLX_ELF     = dist/userspace/devilutionx.elf
 CXXFLAGS_DVLX = -ffreestanding -fno-stack-protector -fno-builtin \
                 -fno-asynchronous-unwind-tables \
                 -m64 -nostdlib -fno-rtti -fno-exceptions -std=c++20 \
-                -O2 -w -fpermissive \
+                -O2 -w -fpermissive -D__potatOS__ \
                 -include $(DVLX_DIR)/dvlx_compat.h \
                 -isystem src/userspace/libc \
                 -I src/userspace/libc/SDL2 \
@@ -24,6 +24,7 @@ CXXFLAGS_DVLX = -ffreestanding -fno-stack-protector -fno-builtin \
 CFLAGS_DVLX_C = -ffreestanding -fno-stack-protector -fno-builtin \
                 -fno-asynchronous-unwind-tables \
                 -m64 -nostdlib -O2 -w \
+                -D__potatOS__ \
                 -isystem src/userspace/libc \
                 -I $(DVLX_DIR) \
                 -I $(DVLX_3RD_DIR)/libmpq-src

@@ -608,11 +608,24 @@ static void screen_to_client(int *mx, int *my)
     }
 }
 
+/* ── Pushed event queue (for SDL_PushEvent) ────────────────────────────── */
+#define PUSH_QUEUE_SIZE 32
+static SDL_Event g_push_queue[PUSH_QUEUE_SIZE];
+static int g_push_head = 0;
+static int g_push_tail = 0;
+
 int SDL_PollEvent(SDL_Event *event)
 {
     if (!event) return 0;
 
-    /* Drain pending text input event first (queued from prior key press) */
+    /* Drain pushed events first (from SDL_PushEvent) */
+    if (g_push_head != g_push_tail) {
+        *event = g_push_queue[g_push_tail];
+        g_push_tail = (g_push_tail + 1) % PUSH_QUEUE_SIZE;
+        return 1;
+    }
+
+    /* Drain pending text input event (queued from prior key press) */
     if (g_pending_textinput) {
         *event = g_pending_textinput_ev;
         g_pending_textinput = 0;
@@ -1940,7 +1953,11 @@ void SDL_PauseAudioDevice(SDL_AudioDeviceID dev, int pause_on)
 
 int SDL_PushEvent(SDL_Event *event)
 {
-    (void)event;
+    if (!event) return -1;
+    int next = (g_push_head + 1) % PUSH_QUEUE_SIZE;
+    if (next == g_push_tail) return -1;  /* queue full */
+    g_push_queue[g_push_head] = *event;
+    g_push_head = next;
     return 1;
 }
 
