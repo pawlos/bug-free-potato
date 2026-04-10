@@ -23,8 +23,8 @@ AC97_BDL_Entry* AC97::bdl      = nullptr;
 pt::uint8_t* AC97::dma_buf[AC97_MAX_BDL_ENTRIES] = {};
 static pt::uint32_t cached_sample_rate = 0;
 pt::int32_t  AC97::owner_task_id  = -1;
-AC97_DMASlot AC97::slots[2]       = {};
-pt::uint8_t  AC97::active_slot    = 0;
+pt::uint8_t  AC97::ring_head      = 0;
+bool         AC97::dma_running    = false;
 pt::uint8_t  AC97::audio_channels = 2;
 
 // ---------------------------------------------------------------------------
@@ -246,17 +246,16 @@ bool AC97::initialize() {
         }
     }
 
-    for (int i = 0; i < 2; i++) {
-        slots[i].buffer = static_cast<pt::uint8_t*>(
-            VMM::Instance()->kcalloc(AC97_DMA_BUFFER_BYTES));
-        if (!slots[i].buffer) {
-            klog("[AC97] Failed to allocate DMA slot %d buffer\n", i);
-            return false;
-        }
-        slots[i].length  = 0;
-        slots[i].filled  = false;
-        slots[i].playing = false;
+    // Pre-program every BDL entry to point at its own DMA buffer. queue_pcm
+    // only ever updates num_samples/flags on the hot path.
+    for (pt::uint8_t i = 0; i < AC97_MAX_BDL_ENTRIES; i++) {
+        bdl[i].phys_addr   = static_cast<pt::uint32_t>(
+            VMM::virt_to_phys(dma_buf[i]));
+        bdl[i].num_samples = 0;
+        bdl[i].flags       = 0;
     }
+    ring_head   = 0;
+    dma_running = false;
 
     initialized = true;
     klog("[AC97] Ready (%d x %d KB DMA buffers)\n",
@@ -295,6 +294,18 @@ void AC97::set_volume(pt::uint8_t percent) {
 }
 
 // ---------------------------------------------------------------------------
+// clear_bdl_contents: zero num_samples/flags on every BDL entry so any stale
+// data left over from play_pcm/play_beep can't leak into the new stream.
+// We deliberately keep phys_addr intact (set once at initialize()).
+// ---------------------------------------------------------------------------
+static inline void clear_bdl_contents(AC97_BDL_Entry* bdl) {
+    for (pt::uint8_t i = 0; i < AC97_MAX_BDL_ENTRIES; i++) {
+        bdl[i].num_samples = 0;
+        bdl[i].flags       = 0;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // open: configure streaming mode (rate, channels, format)
 // ---------------------------------------------------------------------------
 bool AC97::open(pt::uint32_t rate, pt::uint8_t channels, pt::uint8_t format) {
@@ -302,9 +313,15 @@ bool AC97::open(pt::uint32_t rate, pt::uint8_t channels, pt::uint8_t format) {
     (void)format;
     set_sample_rate(rate);
     audio_channels = channels;
-    slots[0].filled = false; slots[0].playing = false; slots[0].length = 0;
-    slots[1].filled = false; slots[1].playing = false; slots[1].length = 0;
-    active_slot = 0;
+
+    // Put the channel in a known state and wipe any previous BDL contents
+    // (the boot sound from play_pcm, a prior player session, etc.). Leaving
+    // stale num_samples on entries 4..31 was the cause of the "1s of music
+    // then the boot sound" artifact.
+    reset_channel();
+    clear_bdl_contents(bdl);
+    ring_head   = 0;
+    dma_running = false;
     return true;
 }
 
@@ -314,70 +331,109 @@ bool AC97::open(pt::uint32_t rate, pt::uint8_t channels, pt::uint8_t format) {
 void AC97::close() {
     if (!initialized) return;
     stop();
-    slots[0].filled = false; slots[0].playing = false; slots[0].length = 0;
-    slots[1].filled = false; slots[1].playing = false; slots[1].length = 0;
-    active_slot = 0;
+    clear_bdl_contents(bdl);
+    ring_head     = 0;
+    dma_running   = false;
     owner_task_id = -1;
 }
 
 // ---------------------------------------------------------------------------
-// poll_dma: check if current slot finished, advance to next if queued
+// poll_dma: just observes halt state — the ring keeps itself going.
 // ---------------------------------------------------------------------------
 void AC97::poll_dma() {
-    if (!initialized) return;
-    if (!slots[0].playing && !slots[1].playing) return;
+    if (!initialized || !dma_running) return;
 
     pt::uint16_t status = nabm_read_word(AC97_NABM_PCM_OUT_STATUS);
-    if (!(status & AC97_STS_DCH)) return; // Still playing
-
-    slots[active_slot].playing = false;
-    slots[active_slot].filled  = false;
-    slots[active_slot].length  = 0;
-
-    nabm_write_word(AC97_NABM_PCM_OUT_STATUS, AC97_STS_LVBCI | AC97_STS_BCIS | AC97_STS_FIFOE);
-
-    pt::uint8_t next = 1 - active_slot;
-    if (slots[next].filled) {
-        active_slot = next;
-        slots[next].playing = true;
-        start_dma(slots[next].buffer, slots[next].length);
+    if (status & AC97_STS_DCH) {
+        // Hardware halted — either we finished cleanly or we under-ran.
+        // Drop out of running state so the next queue_pcm() restarts cleanly.
+        dma_running = false;
+        // W1C the latched interrupt/error bits.
+        nabm_write_word(AC97_NABM_PCM_OUT_STATUS,
+                        AC97_STS_LVBCI | AC97_STS_BCIS | AC97_STS_FIFOE);
     }
 }
 
 // ---------------------------------------------------------------------------
-// has_free_slot: true if at least one slot is available for queuing
+// has_free_slot: at least one ring entry is writable right now.
+//
+// We cap the queue depth at AC97_QUEUE_LIMIT chunks ahead of CIV to bound
+// latency. CIV is read raw from the hardware (0..31) and ring_head is kept
+// in the same 0..31 space, so a modular distance gives the queue length
+// regardless of wraparound.
 // ---------------------------------------------------------------------------
 bool AC97::has_free_slot() {
-    return !slots[0].filled || !slots[1].filled;
+    if (!initialized) return false;
+    if (!dma_running) return true;
+
+    poll_dma();
+    if (!dma_running) return true;
+
+    pt::uint8_t civ    = nabm_read_byte(AC97_NABM_PCM_OUT_CIV) & 0x1F;
+    pt::uint8_t queued = (ring_head - civ + AC97_MAX_BDL_ENTRIES)
+                         & (AC97_MAX_BDL_ENTRIES - 1);
+    return queued < AC97_QUEUE_LIMIT;
 }
 
 // ---------------------------------------------------------------------------
-// queue_pcm: copy data into a free slot and start playback if idle
+// queue_pcm: drop data into the next ring entry and keep the hardware running.
+//
+// Hot path: just update num_samples on BDL[ring_head] and advance LVI. The
+// hardware walks 0 → 1 → … → 31 → 0 continuously as long as LVI stays ahead
+// of CIV, so streaming playback has no gaps between chunks.
+//
+// Cold start (underrun or first write after open): reset the channel, which
+// rewinds CIV to 0, then program BDL base + LVI and set RPBM. We also rewind
+// ring_head to 0 so our software write pointer tracks the hardware.
 // ---------------------------------------------------------------------------
 pt::uint32_t AC97::queue_pcm(const pt::uint8_t* data, pt::uint32_t length) {
     if (!initialized || !data || length == 0) return 0;
 
     poll_dma();
 
-    int free_idx = -1;
-    if (!slots[0].filled) free_idx = 0;
-    else if (!slots[1].filled) free_idx = 1;
-    else return 0;
+    if (dma_running) {
+        pt::uint8_t civ    = nabm_read_byte(AC97_NABM_PCM_OUT_CIV) & 0x1F;
+        pt::uint8_t queued = (ring_head - civ + AC97_MAX_BDL_ENTRIES)
+                             & (AC97_MAX_BDL_ENTRIES - 1);
+        if (queued >= AC97_QUEUE_LIMIT) return 0;
+    } else {
+        // Coming back from an underrun or cold open: we're about to restart
+        // the channel. Wipe any old BDL contents and rewind to entry 0 so
+        // the hardware (which just had CIV reset to 0 by reset_channel) and
+        // our software ring_head agree.
+        clear_bdl_contents(bdl);
+        ring_head = 0;
+    }
 
-    if (length > AC97_DMA_BUFFER_BYTES)
-        length = AC97_DMA_BUFFER_BYTES;
+    if (length > AC97_DMA_BUFFER_BYTES) length = AC97_DMA_BUFFER_BYTES;
 
-    const pt::uint8_t* src = data;
-    pt::uint8_t* dst = slots[free_idx].buffer;
-    for (pt::uint32_t i = 0; i < length; i++) dst[i] = src[i];
+    // Copy PCM into the target DMA buffer.
+    pt::uint8_t* dst = dma_buf[ring_head];
+    for (pt::uint32_t i = 0; i < length; i++) dst[i] = data[i];
 
-    slots[free_idx].length = length;
-    slots[free_idx].filled = true;
+    // Only num_samples changes — phys_addr was set at initialize().
+    bdl[ring_head].num_samples = static_cast<pt::uint16_t>(length / 2);
+    bdl[ring_head].flags       = AC97_BDL_FLAG_IOC;
 
-    if (!slots[0].playing && !slots[1].playing) {
-        active_slot = (pt::uint8_t)free_idx;
-        slots[free_idx].playing = true;
-        start_dma(slots[free_idx].buffer, slots[free_idx].length);
+    asm volatile("mfence" ::: "memory");
+
+    pt::uint8_t new_lvi = ring_head;
+    ring_head = (ring_head + 1) & (AC97_MAX_BDL_ENTRIES - 1);
+
+    if (!dma_running) {
+        // Cold start: zero CIV via RR and program the BDL base address.
+        reset_channel();
+        pt::uint32_t bdl_phys = static_cast<pt::uint32_t>(VMM::virt_to_phys(bdl));
+        nabm_write_dword(AC97_NABM_PCM_OUT_BDL_BASE, bdl_phys);
+        nabm_write_byte(AC97_NABM_PCM_OUT_LVI, new_lvi);
+        nabm_write_word(AC97_NABM_PCM_OUT_STATUS,
+                        AC97_STS_LVBCI | AC97_STS_BCIS | AC97_STS_FIFOE);
+        nabm_write_byte(AC97_NABM_PCM_OUT_CTL, AC97_CTL_RPBM);
+        dma_running = true;
+    } else {
+        // Hot path: just advance LVI so the hardware keeps walking. This
+        // happens while the hardware is mid-buffer, so it never halts.
+        nabm_write_byte(AC97_NABM_PCM_OUT_LVI, new_lvi);
     }
 
     return length;

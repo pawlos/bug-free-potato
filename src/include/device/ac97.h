@@ -80,16 +80,18 @@ constexpr pt::uint16_t AC97_BDL_FLAG_LAST = 0x8000;  // Last buffer in list
 constexpr pt::uint16_t AC97_BDL_FLAG_IOC  = 0x4000;  // Interrupt on completion
 
 // AC97 hardware limits
-constexpr pt::uint8_t  AC97_MAX_BDL_ENTRIES  = 32;
+constexpr pt::uint8_t  AC97_MAX_BDL_ENTRIES  = 32;    // 5-bit CIV in the hardware
 constexpr pt::uint32_t AC97_DMA_BUFFER_BYTES = 0x8000;  // 32 KB per DMA buffer
 
-// Double-buffered DMA slot
-struct AC97_DMASlot {
-    pt::uint8_t* buffer;     // Pre-allocated DMA buffer (AC97_DMA_BUFFER_BYTES)
-    pt::uint32_t length;     // Bytes of valid PCM data in this slot
-    bool         filled;     // True if userspace has written data here
-    bool         playing;    // True if DMA is currently playing this slot
-};
+// Streaming ring buffer:
+//  - We use the full 32-entry BDL as our ring (matches the hardware's CIV
+//    modulo 32), which makes wrap-around a natural no-op — `ring_head` counts
+//    the same way CIV does, so we never have to reason about a separate
+//    "skip zone" of stale entries.
+//  - AC97_QUEUE_LIMIT caps how many chunks we'll buffer ahead of CIV.
+//    Smaller = lower latency (important for game SFX), larger = more underrun
+//    head-room for slow producers. 4 × 32 KB ≈ 680 ms is a safe default.
+constexpr pt::uint8_t  AC97_QUEUE_LIMIT      = 4;
 
 class AC97 {
 public:
@@ -178,7 +180,8 @@ private:
     // Reset PCM-Out channel registers
     static void reset_channel();
 
-    static AC97_DMASlot  slots[2];
-    static pt::uint8_t   active_slot;
-    static pt::uint8_t   audio_channels;
+    // Streaming ring buffer state (double-buffered DMA via BDL entries 0..N-1)
+    static pt::uint8_t   ring_head;       // next BDL entry to fill (0..AC97_RING_SIZE-1)
+    static bool          dma_running;     // true while RPBM bit is set
+    static pt::uint8_t   audio_channels;  // 1=mono, 2=stereo
 };
