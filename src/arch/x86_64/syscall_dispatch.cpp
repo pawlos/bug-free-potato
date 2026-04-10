@@ -18,6 +18,16 @@
 
 extern pt::uintptr_t g_syscall_rsp;
 
+// Per-syscall trace logging. Compile with -DSYSCALL_LOG to enable the noisy
+// "syscall: SYS_..." messages (SYS_OPEN/SYS_CLOSE/SYS_MMAP and friends).
+// Without it the syscall dispatcher stays quiet while other subsystems can
+// still use klog(). Only use for debugging — it floods the serial log fast.
+#ifdef SYSCALL_LOG
+#define sclog(...) klog(__VA_ARGS__)
+#else
+#define sclog(...) ((void)0)
+#endif
+
 ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
                                       pt::uint64_t arg2, pt::uint64_t arg3,
                                       pt::uint64_t arg4, pt::uint64_t arg5)
@@ -122,15 +132,15 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
-				klog("syscall: SYS_OPEN: no free fd (task %d '%s')\n", t->id, t->name);
+				sclog("syscall: SYS_OPEN: no free fd (task %d '%s')\n", t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
 			if (!VFS::open_file(filename, &t->fd_table[fd])) {
-				klog("syscall: SYS_OPEN: '%s' not found (task %d '%s')\n", filename, t->id, t->name);
+				sclog("syscall: SYS_OPEN: '%s' not found (task %d '%s')\n", filename, t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
 			t->fd_table[fd].type = FdType::FILE;
-			klog("syscall: SYS_OPEN: '%s' -> fd %d\n", filename, fd);
+			sclog("syscall: SYS_OPEN: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
 		case SYS_READ: {
@@ -186,7 +196,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 					vmm.kfree(pipe);
 				f->open = false;
 			}
-			klog("syscall: SYS_CLOSE: fd %d\n", fd);
+			sclog("syscall: SYS_CLOSE: fd %d\n", fd);
 			return 0;
 		}
 		case SYS_MMAP: {
@@ -196,7 +206,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			pt::uintptr_t va = ct->user_heap_top;
 			TaskScheduler::map_user_pages(ct, va, size);
 			ct->user_heap_top += size;
-			klog("syscall: SYS_MMAP size=%d -> va=%lx\n", (int)size, va);
+			sclog("syscall: SYS_MMAP size=%d -> va=%lx\n", (int)size, va);
 			return va;
 		}
 		case SYS_MUNMAP: {
@@ -326,13 +336,13 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				}
 			}
 			if (rd_fd == -1 || wr_fd == -1) {
-				klog("syscall: SYS_PIPE: no free fd slots\n");
+				sclog("syscall: SYS_PIPE: no free fd slots\n");
 				return (pt::uint64_t)-1;
 			}
 			// Allocate and zero-init a PipeBuffer.
 			PipeBuffer* pipe = reinterpret_cast<PipeBuffer*>(vmm.kcalloc(sizeof(PipeBuffer)));
 			if (!pipe) {
-				klog("syscall: SYS_PIPE: out of memory\n");
+				sclog("syscall: SYS_PIPE: out of memory\n");
 				return (pt::uint64_t)-1;
 			}
 			pipe->ref_count     = 2;
@@ -352,7 +362,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			// Return fds to caller.
 			pipefd[0] = rd_fd;
 			pipefd[1] = wr_fd;
-			klog("syscall: SYS_PIPE: rd=%d wr=%d\n", rd_fd, wr_fd);
+			sclog("syscall: SYS_PIPE: rd=%d wr=%d\n", rd_fd, wr_fd);
 			return 0;
 		}
 
@@ -419,15 +429,15 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 				if (!t->fd_table[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
-				klog("syscall: SYS_CREATE: no free fd (task %d '%s')\n", t->id, t->name);
+				sclog("syscall: SYS_CREATE: no free fd (task %d '%s')\n", t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
 			if (!VFS::open_file_write(filename, &t->fd_table[fd])) {
-				klog("syscall: SYS_CREATE: '%s' failed\n", filename);
+				sclog("syscall: SYS_CREATE: '%s' failed\n", filename);
 				return (pt::uint64_t)-1;
 			}
 			t->fd_table[fd].type = FdType::FILE;
-			klog("syscall: SYS_CREATE: '%s' -> fd %d\n", filename, fd);
+			sclog("syscall: SYS_CREATE: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
 
@@ -497,7 +507,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			f->open  = true;
 			f->type  = FdType::TCP_SOCK;
 			tcp_sock_set(f->fs_data, sock);
-			klog("syscall: SYS_SOCK_CONNECT: -> fd %d\n", fd);
+			sclog("syscall: SYS_SOCK_CONNECT: -> fd %d\n", fd);
 			return (pt::uint64_t)fd;
 		}
 
@@ -659,11 +669,11 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			}
 			if (fd == -1) return (pt::uint64_t)-1;
 			if (!VFS::open_file_readwrite(filename, &t->fd_table[fd])) {
-				klog("syscall: SYS_OPEN_RW: '%s' not found\n", filename);
+				sclog("syscall: SYS_OPEN_RW: '%s' not found\n", filename);
 				return (pt::uint64_t)-1;
 			}
 			t->fd_table[fd].type = FdType::FILE;
-			klog("syscall: SYS_OPEN_RW: '%s' -> fd %d\n", filename, fd);
+			sclog("syscall: SYS_OPEN_RW: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
 
@@ -679,7 +689,7 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			if (!AC97::open(rate, channels, format))
 				return (pt::uint64_t)-1;
 			AC97::owner_task_id = (pt::int32_t)t->id;
-			klog("syscall: SYS_AUDIO_OPEN: rate=%d ch=%d by task %d\n", rate, channels, t->id);
+			sclog("syscall: SYS_AUDIO_OPEN: rate=%d ch=%d by task %d\n", rate, channels, t->id);
 			return 0;
 		}
 
@@ -688,12 +698,12 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			if (!t || AC97::owner_task_id != (pt::int32_t)t->id)
 				return (pt::uint64_t)-1;
 			AC97::close();
-			klog("syscall: SYS_AUDIO_CLOSE: by task %d\n", t->id);
+			sclog("syscall: SYS_AUDIO_CLOSE: by task %d\n", t->id);
 			return 0;
 		}
 
 		default:
-			klog("syscall: unknown nr=%llu\n", nr);
+			sclog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;
 	}
 }
