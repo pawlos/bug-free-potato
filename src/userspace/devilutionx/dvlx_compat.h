@@ -6,7 +6,6 @@
 
 /* Disable features we don't support */
 #define NONET 1
-#define NOEXIT 1
 #define NDEBUG 1
 
 /* Additional controller types for game_controller.cpp */
