@@ -74,7 +74,9 @@ typedef Uint32 SDL_AudioDeviceID;
 typedef Uint16 SDL_AudioFormat;
 #define AUDIO_U8     0x0008
 #define AUDIO_S8     0x8008
+#define AUDIO_S16LSB 0x8010
 #define AUDIO_S16SYS 0x8010
+#define AUDIO_S16    AUDIO_S16LSB
 #define SDL_AUDIO_ALLOW_ANY_CHANGE 0
 
 typedef struct SDL_AudioSpec {

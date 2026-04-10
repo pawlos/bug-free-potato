@@ -52,6 +52,7 @@ double pow(double x, double y);
 
 double ldexp(double x, int exp);
 double frexp(double x, int *exp);
+double copysign(double x, double y);
 
 /* ── float functions ─────────────────────────────────────────────────────── */
 float sinf(float x);
@@ -79,6 +80,7 @@ float expf(float x);
 float powf(float x, float y);
 
 float ldexpf(float x, int exp);
+float copysignf(float x, float y);
 
 #ifdef __cplusplus
 }

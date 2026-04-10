@@ -252,3 +252,18 @@ float log10f(float x)           { return (float)log10((double)x); }
 float expf  (float x)           { return (float)exp  ((double)x); }
 float powf  (float x, float y)  { return (float)pow  ((double)x, (double)y); }
 float ldexpf(float x, int n)    { return (float)ldexp((double)x, n); }
+
+/* ── copysign ────────────────────────────────────────────────────────────── */
+double copysign(double x, double y) {
+    /* IEEE-754 double: sign bit is bit 63. Bit-blit x's magnitude with y's sign. */
+    union { double d; unsigned long long u; } ax = { x };
+    union { double d; unsigned long long u; } ay = { y };
+    ax.u = (ax.u & 0x7FFFFFFFFFFFFFFFull) | (ay.u & 0x8000000000000000ull);
+    return ax.d;
+}
+float copysignf(float x, float y) {
+    union { float f; unsigned int u; } ax = { x };
+    union { float f; unsigned int u; } ay = { y };
+    ax.u = (ax.u & 0x7FFFFFFFu) | (ay.u & 0x80000000u);
+    return ax.f;
+}

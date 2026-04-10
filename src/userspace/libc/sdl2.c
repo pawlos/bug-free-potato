@@ -614,8 +614,15 @@ static SDL_Event g_push_queue[PUSH_QUEUE_SIZE];
 static int g_push_head = 0;
 static int g_push_tail = 0;
 
+/* Audio mixer hook — overridden by aulib_potato.cpp when DevilutionX links
+ * in the Aulib shim. Default is a no-op so apps without audio link cleanly. */
+__attribute__((weak)) void __sdl2_audio_tick(void) { }
+
 int SDL_PollEvent(SDL_Event *event)
 {
+    /* Keep the Aulib mixer fed every time the game polls for events. */
+    __sdl2_audio_tick();
+
     if (!event) return 0;
 
     /* Drain pushed events first (from SDL_PushEvent) */

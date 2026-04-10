@@ -44,8 +44,8 @@ DVLX_EXCLUDE := $(wildcard \
     $(DVLX_SRC_DIR)/dvlnet/protocol_zt.cpp \
     $(DVLX_SRC_DIR)/dvlnet/zerotier_lwip.cpp \
     $(DVLX_SRC_DIR)/dvlnet/zerotier_native.cpp \
-    $(DVLX_SRC_DIR)/engine/sound.cpp \
-    $(DVLX_SRC_DIR)/utils/soundsample.cpp \
+    $(DVLX_SRC_DIR)/engine/sound_stubs.cpp \
+    $(DVLX_SRC_DIR)/effects_stubs.cpp \
     $(DVLX_SRC_DIR)/utils/push_aulib_decoder.cpp \
     $(DVLX_SRC_DIR)/storm/storm_svid.cpp \
     $(DVLX_SRC_DIR)/utils/screen_reader.cpp \
@@ -65,10 +65,11 @@ DVLX_LIBMPQ_SRCS := $(DVLX_3RD_DIR)/libmpq-src/libmpq/common.c \
                      $(DVLX_3RD_DIR)/libmpq-src/libmpq/mpq.c \
                      $(DVLX_3RD_DIR)/libmpq-src/libmpq/wave.c
 
-# Our platform/compat sources (C++ runtime, stubs, fmt)
+# Our platform/compat sources (C++ runtime, stubs, fmt, Aulib shim)
 DVLX_POTATO_SRCS := $(DVLX_DIR)/cxxrt.cpp \
                      $(DVLX_DIR)/dvlx_stubs.cpp \
-                     $(DVLX_DIR)/dvlx_fmt.cpp
+                     $(DVLX_DIR)/dvlx_fmt.cpp \
+                     $(DVLX_DIR)/aulib_potato.cpp
 
 # C-only stubs (avoid C++ header conflicts)
 DVLX_POTATO_C_SRCS := $(DVLX_DIR)/dvlx_wchar.c
