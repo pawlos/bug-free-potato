@@ -12,10 +12,16 @@
 /* Pull in our sol stubs (need complete types) */
 #include <sol/sol.hpp>
 
-/* ── debug tracing ── */
+/* ── debug tracing ──
+ * MPQ and asset-loader traces lived here during the DevilutionX port bring-up
+ * (commits around the libmpq/PKWare debugging phase). They spammed the serial
+ * log and are no longer needed now that loading works. If you need to revive
+ * them, compile with -DDVLX_TRACE_MPQ and restore the --wrap=libmpq__*
+ * linker flags in mk/devilutionx.mk — the wrappers are kept under the
+ * ifdef below. */
+#ifdef DVLX_TRACE_MPQ
 extern "C" int serial_printf(const char *fmt, ...);
 
-/* Wrap libmpq functions to trace MPQ operations */
 struct mpq_archive_s;
 extern "C" int32_t __real_libmpq__archive_open(mpq_archive_s **archive, const char *filename, int64_t offset);
 extern "C" int32_t __wrap_libmpq__archive_open(mpq_archive_s **archive, const char *filename, int64_t offset)
@@ -37,7 +43,6 @@ extern "C" int32_t __wrap_libmpq__file_number_from_hash(mpq_archive_s *a, uint32
     return err;
 }
 
-/* Wrap libmpq__file_size_unpacked and block_open to trace extraction */
 extern "C" int32_t __real_libmpq__file_size_unpacked(mpq_archive_s*, uint32_t, int64_t*);
 extern "C" int32_t __wrap_libmpq__file_size_unpacked(mpq_archive_s *a, uint32_t fnum, int64_t *size)
 {
@@ -58,7 +63,6 @@ extern "C" int32_t __real_libmpq__block_read_with_temporary_buffer(mpq_archive_s
 extern "C" int32_t __wrap_libmpq__block_read_with_temporary_buffer(mpq_archive_s *a, uint32_t fnum, uint32_t blocknum, uint8_t *out, int64_t outsize, uint8_t *tmp, int64_t tmpsize, int64_t *transferred)
 {
     int32_t err = __real_libmpq__block_read_with_temporary_buffer(a, fnum, blocknum, out, outsize, tmp, tmpsize, transferred);
-    /* Check if output buffer has any non-zero data */
     int nonzero = 0;
     for (int64_t i = 0; i < outsize && i < 1024; i++) {
         if (out[i] != 0) { nonzero++; }
@@ -76,14 +80,12 @@ extern "C" int32_t __wrap_libmpq__block_read_with_temporary_buffer(mpq_archive_s
     return err;
 }
 
-/* Also wrap file_hash_s to see what filenames produce which hashes */
 extern "C" void __real_libmpq__file_hash_s(const char*, size_t, uint32_t*, uint32_t*, uint32_t*);
 extern "C" void __wrap_libmpq__file_hash_s(const char *fn, size_t len, uint32_t *h1, uint32_t *h2, uint32_t *h3)
 {
     __real_libmpq__file_hash_s(fn, len, h1, h2, h3);
     static int cnt = 0;
     if (cnt < 15) {
-        /* Print filename (may contain backslashes) */
         char buf[64];
         size_t n = len < 60 ? len : 60;
         for (size_t i = 0; i < n; i++) buf[i] = fn[i];
@@ -92,6 +94,7 @@ extern "C" void __wrap_libmpq__file_hash_s(const char *fn, size_t len, uint32_t 
         cnt++;
     }
 }
+#endif /* DVLX_TRACE_MPQ */
 
 /* ── main wrapper: provide clean argc/argv (kernel doesn't set up the stack) ── */
 namespace devilution { int DiabloMain(int argc, char **argv); }
