@@ -14,6 +14,18 @@ CFLAGS_Q2 = -ffreestanding -fno-stack-protector -fno-builtin \
 $(Q2_SRC_DIR)/qcommon/qcommon.h:
 	git clone --depth=1 https://github.com/id-Software/Quake-2.git $(Q2_SRC_DIR)
 	sed -i 's/sizeof (pv)/sizeof (*pv)/' $(Q2_SRC_DIR)/ref_soft/r_poly.c
+	# Fix id's silent-8-bit-SFX bug in the portable C mixer fallback.
+	# The original id Q2 source has `leftvol >> 11` / `rightvol >> 11` in
+	# S_PaintChannelFrom8, which collapses every non-zero volume (clipped to
+	# 255 just above) into row 0 of snd_scaletable — and row 0 has
+	# scale=0*8*256*s_volume=0, so every 8-bit sample paints pure silence.
+	# The inline x86 asm version right below uses `leftvol >> 3` (via
+	# `and eax,0xF8 ; shl eax,7`), so id's shipping x86 binaries never hit
+	# this bug. Every 64-bit port and non-x86 rebuild does.
+	# See memory/specs/2026-04-10-q2-silent-sfx-root-cause.md for the full
+	# analysis. Without this patch, Q2 SFX are silent on potatOS.
+	sed -i 's/ch->leftvol >> 11/ch->leftvol >> 3/; s/ch->rightvol >> 11/ch->rightvol >> 3/' \
+	    $(Q2_SRC_DIR)/client/snd_mix.c
 
 Q2_QCOMMON_SRCS := $(addprefix $(Q2_SRC_DIR)/qcommon/, \
     cmd.c cmodel.c common.c crc.c cvar.c files.c md4.c net_chan.c pmove.c)

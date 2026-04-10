@@ -543,7 +543,7 @@ void IN_Move(usercmd_t *cmd)
  * ====================================================================== */
 
 #define SND_SPEED       11025
-#define DMA_SAMPLES     8192
+#define DMA_SAMPLES     16384      /* 8192 frames ≈ 743 ms of head-room */
 #define DMA_BYTES       (DMA_SAMPLES * 2)
 #define SUBMIT_PAIRS    1024
 #define SUBMIT_SAMPLES  (SUBMIT_PAIRS * 2)
@@ -553,6 +553,24 @@ static short g_dma_buf[DMA_SAMPLES];
 static short g_sub_buf[SUBMIT_SAMPLES];
 static unsigned g_dma_pos;
 static unsigned long long g_submit_us;
+
+/*
+ * Q2 expects a classic SoundBlaster-style DMA ring buffer: the mixer writes
+ * samples directly into dma.buffer at offset (paintedtime % dma.samples), and
+ * SNDDMA_GetDMAPos tells Q2 where the hardware is currently reading from.
+ *
+ * We don't have a directly-mapped hardware ring — the kernel takes submitted
+ * chunks through sys_audio_write() and plays them out of its own AC97 DMA
+ * double-buffer. We model the "DAC position" with a monotonic wall-clock
+ * estimator anchored on the first submit: once audio starts, we pretend the
+ * DAC advances at exactly SND_SPEED, capped at "samples actually submitted".
+ *
+ * dma.samples (the Q2 mixer ring) is sized to comfortably hold
+ *   mixahead (s_mixahead × rate) + kernel queue depth + slack.
+ * At 11 025 Hz with s_mixahead=0.2 and a 4-chunk (× SUBMIT_SAMPLES) kernel
+ * queue, 16 384 stereo samples (= 743 ms) is plenty.
+ */
+static unsigned long long g_playback_start_us = 0;
 
 qboolean SNDDMA_Init(void)
 {
@@ -568,8 +586,9 @@ qboolean SNDDMA_Init(void)
     dma.samplepos        = 0;
     dma.buffer           = (byte *)g_dma_buf;
 
-    g_dma_pos   = 0;
-    g_submit_us = 0;
+    g_dma_pos           = 0;
+    g_submit_us         = 0;
+    g_playback_start_us = 0;
 
     Com_Printf("Sound: potatOS AC97 backend, %d Hz stereo 16-bit\n", SND_SPEED);
     return true;
@@ -577,13 +596,19 @@ qboolean SNDDMA_Init(void)
 
 int SNDDMA_GetDMAPos(void)
 {
-    if (g_dma_pos == 0) return 0;
+    if (g_playback_start_us == 0) return 0;
+
     unsigned long long now_us  = sys_get_micros();
-    unsigned long long elapsed = now_us - g_submit_us;
-    unsigned long long played  = elapsed * (SND_SPEED * 2ULL) / 1000000ULL;
-    if (played > SUBMIT_SAMPLES) played = SUBMIT_SAMPLES;
-    unsigned abs_pos = (g_dma_pos - SUBMIT_SAMPLES) + (unsigned)played;
-    return (int)(abs_pos & (DMA_SAMPLES - 1));
+    unsigned long long elapsed = now_us - g_playback_start_us;
+
+    // DAC position in stereo samples, assuming continuous playback since the
+    // first submit. Capped at g_dma_pos so we never claim to have played more
+    // than what we actually handed the kernel.
+    unsigned long long played = elapsed * ((unsigned long long)SND_SPEED * 2ULL) / 1000000ULL;
+    if (played > (unsigned long long)g_dma_pos)
+        played = g_dma_pos;
+
+    return (int)((unsigned)played & (DMA_SAMPLES - 1));
 }
 
 void SNDDMA_Shutdown(void) { }
@@ -603,6 +628,9 @@ void SNDDMA_Submit(void)
 
     g_dma_pos  += SUBMIT_SAMPLES;
     g_submit_us = sys_get_micros();
+    if (g_playback_start_us == 0)
+        g_playback_start_us = g_submit_us;
+
     sys_audio_write(g_sub_buf, SUBMIT_BYTES, SND_SPEED);
 }
 
