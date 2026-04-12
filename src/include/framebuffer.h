@@ -12,7 +12,6 @@ class Framebuffer
     pt::uint32_t  m_height;
     pt::uint32_t  m_bpp;
     pt::uint32_t  m_stride;
-    pt::uintptr_t *vga_font;
     bool          m_dirty;      // true if back buffer has changed since last flush
 
     // Cursor state (composited during Flush, not drawn to back buffer)
@@ -29,8 +28,6 @@ class Framebuffer
                                    m_cursor_x(0), m_cursor_y(0),
                                    m_cursor_visible(false)
     {
-        vga_font = static_cast<pt::uintptr_t *>(VMM::Instance()->kmalloc(0x4096));
-        if (!vga_font) kernel_panic("Can't allocate memory!", NotAbleToAllocateMemory);
     }
     void PutPixel(
         pt::uint32_t x, pt::uint32_t y,
@@ -63,8 +60,6 @@ public:
             vmm.kfree(reinterpret_cast<void*>(m_back));
             m_back = 0;
         }
-        vmm.kfree(vga_font);
-        this->vga_font = nullptr;
     }
     static Framebuffer* get_instance();
 
