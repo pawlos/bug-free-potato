@@ -123,6 +123,29 @@ pt::uint32_t FAT32::cluster_to_sector(pt::uint32_t cluster) {
     return data_start_sector + (cluster - 2) * bpb.sectors_per_cluster;
 }
 
+// Build cluster map lazily on first seek (not at open time, to avoid
+// fragmenting the heap during boot asset loading).
+static void ensure_cluster_map(FAT32State* state, pt::uint32_t file_size,
+                                pt::uint32_t bytes_per_cluster,
+                                pt::uint32_t* fat_tbl, pt::uint32_t total_cls)
+{
+    if (state->cluster_map || bytes_per_cluster == 0 || file_size == 0)
+        return;
+    pt::uint32_t n = (file_size + bytes_per_cluster - 1) / bytes_per_cluster;
+    if (n < 32) return;
+    pt::uint32_t* map = static_cast<pt::uint32_t*>(
+        vmm.kmalloc(n * sizeof(pt::uint32_t)));
+    if (!map) return;
+    pt::uint32_t c = state->first_cluster;
+    for (pt::uint32_t i = 0; i < n; i++) {
+        map[i] = c;
+        if (!fat_tbl || c < 2 || c >= total_cls + 2) break;
+        c = fat_tbl[c] & 0x0FFFFFFF;
+    }
+    state->cluster_map = map;
+    state->cluster_map_count = n;
+}
+
 // ── 8.3 name formatting ───────────────────────────────────────────────────
 
 void FAT32::format_filename_83(const char* input, char* output) {
@@ -294,7 +317,8 @@ bool FAT32::scan_directory(pt::uint32_t start_cluster,
                     st->current_cluster_idx = 0;
                     st->dir_entry_sector    = sector + s;
                     st->dir_entry_offset    = (pt::uint16_t)(e * 32);
-                    st->_pad[0] = st->_pad[1] = 0;
+                    st->cluster_map = nullptr;
+                    st->cluster_map_count = 0;
 
                     // Copy 8.3 name into out->filename
                     int k = 0;
@@ -680,16 +704,16 @@ pt::uint32_t FAT32::read_file(File* file, void* buffer,
     FAT32State* state = fat32_state(file);
     pt::uint32_t current_cluster;
 
-    // seek_file keeps current_cluster/current_cluster_idx in sync with
-    // current_position, so we only need to walk the delta from the cache.
-    if (cluster_idx >= state->current_cluster_idx) {
+    // Use cluster map for O(1) lookup if available.
+    if (state->cluster_map && cluster_idx < state->cluster_map_count) {
+        current_cluster = state->cluster_map[cluster_idx];
+    } else if (cluster_idx >= state->current_cluster_idx) {
         current_cluster = state->current_cluster;
         for (pt::uint32_t i = state->current_cluster_idx;
              i < cluster_idx && !is_eoc(current_cluster); i++) {
             current_cluster = get_next_cluster(current_cluster);
         }
     } else {
-        // Shouldn't happen after seek_file update, but handle gracefully.
         current_cluster = state->first_cluster;
         for (pt::uint32_t i = 0;
              i < cluster_idx && !is_eoc(current_cluster); i++) {
@@ -760,28 +784,40 @@ pt::uint32_t FAT32::seek_file(File* file, pt::int32_t offset, int whence) {
     // Allow past-EOF — write_file will extend the file as needed.
     file->current_position = new_pos;
 
-    // Eagerly update the cluster cache so read_file can start immediately
-    // from the right cluster without any forward/backward navigation.
-    // We always walk from first_cluster to guarantee correctness across
-    // repeated seek-and-read patterns on a shared file handle (e.g. PAK).
-    // Only update cache if within allocated clusters (past-EOF skipped).
+    // Update the cluster cache so read_file starts from the right cluster.
     FAT32State* state = fat32_state(file);
     pt::uint32_t bytes_per_cluster =
         (pt::uint32_t)bpb.sectors_per_cluster * bpb.bytes_per_sector;
     if (new_pos <= file->file_size && bytes_per_cluster > 0) {
+        // Lazily build cluster map on first seek (not at open time).
+        ensure_cluster_map(state, file->file_size, bytes_per_cluster,
+                           fat_table, total_clusters);
         pt::uint32_t new_cluster_idx = new_pos / bytes_per_cluster;
-        pt::uint32_t cluster = state->first_cluster;
-        for (pt::uint32_t i = 0; i < new_cluster_idx && !is_eoc(cluster); i++)
-            cluster = get_next_cluster(cluster);
-        state->current_cluster     = cluster;
-        state->current_cluster_idx = new_cluster_idx;
+        if (state->cluster_map && new_cluster_idx < state->cluster_map_count) {
+            state->current_cluster     = state->cluster_map[new_cluster_idx];
+            state->current_cluster_idx = new_cluster_idx;
+        } else {
+            pt::uint32_t cluster = state->first_cluster;
+            for (pt::uint32_t i = 0; i < new_cluster_idx && !is_eoc(cluster); i++)
+                cluster = get_next_cluster(cluster);
+            state->current_cluster     = cluster;
+            state->current_cluster_idx = new_cluster_idx;
+        }
     }
 
     return new_pos;
 }
 
 void FAT32::close_file(File* file) {
-    if (file) file->open = false;
+    if (file) {
+        FAT32State* st = fat32_state(file);
+        if (st->cluster_map) {
+            vmm.kfree(st->cluster_map);
+            st->cluster_map = nullptr;
+            st->cluster_map_count = 0;
+        }
+        file->open = false;
+    }
 }
 
 // ── Write helpers ─────────────────────────────────────────────────────────
@@ -881,7 +917,8 @@ bool FAT32::create_dir_entry_in(pt::uint32_t dir_cluster, const char* filename, 
                 st->current_cluster_idx = 0;
                 st->dir_entry_sector  = sector + s;
                 st->dir_entry_offset  = (pt::uint16_t)(e * 32);
-                st->_pad[0] = st->_pad[1] = 0;
+                st->cluster_map = nullptr;
+                st->cluster_map_count = 0;
 
                 int k = 0;
                 for (int i = 0; i < 8 && fmt[i] != ' '; i++) out->filename[k++] = fmt[i];

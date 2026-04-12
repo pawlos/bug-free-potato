@@ -83,7 +83,8 @@ struct FAT32State {
     pt::uint32_t current_cluster_idx;  // which cluster index current_cluster is
     pt::uint32_t dir_entry_sector;     // disk sector holding this file's dir entry
     pt::uint16_t dir_entry_offset;     // byte offset of the entry within that sector
-    pt::uint8_t  _pad[2];
+    pt::uint32_t cluster_map_count;    // entries in cluster_map (0 = not built yet)
+    pt::uint32_t* cluster_map;         // heap array built lazily on first seek
 };
 static_assert(sizeof(FAT32State) <= 32, "FAT32State overflows File::fs_data");
 
