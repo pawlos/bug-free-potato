@@ -99,9 +99,14 @@ public:
                 break;
             if (entry->type == 1)
             {
-                if (entry->length > top_size)
+                // Skip regions that don't contain phys_start.
+                if (phys_start < entry->base_addr ||
+                    phys_start >= entry->base_addr + entry->length)
+                    continue;
+                pt::size_t usable = entry->length - (phys_start - entry->base_addr);
+                if (usable > top_size)
                 {
-                    top_size = entry->length - (phys_start - entry->base_addr);
+                    top_size = usable;
                     addr = phys_start + KERNEL_OFFSET;
                 }
             }
