@@ -120,4 +120,46 @@ $(DVLX_ELF): $(DVLX_OBJS) $(DVLX_3RD_OBJS) $(DVLX_LIBMPQ_OBJS) $(DVLX_POTATO_OBJ
 	      /usr/lib/gcc/x86_64-linux-gnu/12/libgcc.a \
 	      --end-group
 
+# Clone and patch upstream source if not present.
+$(DVLX_SRC_DIR)/diablo.cpp:
+	@if [ ! -d $(DVLX_DIR)/devilutionx-src ]; then \
+	    git clone --depth=1 https://github.com/diasurgical/devilutionX.git $(DVLX_DIR)/devilutionx-src; \
+	fi
+	@# ── Threading/mutex stubs: reuse DJGPP single-threaded paths ──
+	sed -i 's/^#ifdef __DJGPP__$$/#if defined(__DJGPP__) || defined(__potatOS__)/' \
+	    $(DVLX_SRC_DIR)/utils/sdl_mutex.h
+	sed -i 's/#if defined(__DJGPP__)/#if defined(__DJGPP__) || defined(__potatOS__)/g' \
+	    $(DVLX_SRC_DIR)/utils/sdl_thread.h
+	sed -i 's/#if !defined(__DJGPP__)/#if !defined(__DJGPP__) \&\& !defined(__potatOS__)/' \
+	    $(DVLX_SRC_DIR)/utils/sdl_thread.cpp
+	sed -i 's/^#ifdef __DJGPP__$$/#if defined(__DJGPP__) || defined(__potatOS__)/' \
+	    $(DVLX_SRC_DIR)/interfac.cpp
+	@# ── Sound stubs: remove DSB references, GetSFXLength returns 0 ──
+	cd $(DVLX_SRC_DIR) && sed -i \
+	    's/pSFX->pSnd->DSB\.IsLoaded()/pSFX->pSnd->isPlaying()/g; \
+	     s/pSFX->pSnd->DSB\.PlayWithVolumeAndPan.*//; \
+	     s/sfx\.pSnd->DSB\.IsLoaded()/sfx.pSnd->isPlaying()/g; \
+	     s/sfx\.pSnd->DSB\.Stop().*//; \
+	     s/return sfx\.pSnd->DSB\.GetLength()/return 0/; \
+	     s/!pSFX->pSnd->DSB\.IsLoaded()/false/' Source/effects.cpp
+	@# ── Title screen: skip Hellfire widescreen art for non-Hellfire ──
+	cd $(DVLX_SRC_DIR) && sed -i '/ArtBackgroundWidescreen = LoadOptionalClx("ui_art..hf_titlew/c\\tif (!gbIsHellfire) ArtBackgroundWidescreen = std::nullopt; else ArtBackgroundWidescreen = LoadOptionalClx("ui_art\\\\hf_titlew.clx");' \
+	    Source/DiabloUI/title.cpp
+	cd $(DVLX_SRC_DIR) && sed -i '/#include "DiabloUI\/diabloui.h"/i #include "game_mode.hpp"' \
+	    Source/DiabloUI/title.cpp
+	@# ── Exit path: call diablo_quit(0) on potatOS ──
+	cd $(DVLX_SRC_DIR) && sed -i '/GamemenuNewGame(bActivate);/{n;s/#ifndef NOEXIT/#ifdef __potatOS__\n\tdiablo_quit(0);\n#elif !defined(NOEXIT)/;}' \
+	    Source/gamemenu.cpp
+	cd $(DVLX_SRC_DIR) && sed -i '/#include "utils\/language.h"/a #ifdef __potatOS__\n#include "diablo.h"\n#endif' \
+	    Source/menu.cpp
+	cd $(DVLX_SRC_DIR) && sed -i '/mainmenu_wait_for_button_sound/a \\t\t\t#ifdef __potatOS__\n\t\t\tdiablo_quit(0);\n\t\t\t#endif' \
+	    Source/menu.cpp
+	@# ── Minitext: guard against GetSFXLength returning 0 ──
+	cd $(DVLX_SRC_DIR) && sed -i '/^#else$$/,/sfxFrames = numLines/{ s/.*Sound is disabled.*//; s/uint32_t sfxFrames = numLines \* 3000;/uint32_t sfxFrames = 0;/ }' \
+	    Source/minitext.cpp
+	cd $(DVLX_SRC_DIR) && sed -i '/assert(sfxFrames != 0);/i \\tif (sfxFrames == 0)\n\t\tsfxFrames = numLines * 3000;' \
+	    Source/minitext.cpp
+
+$(DVLX_OBJS): $(DVLX_SRC_DIR)/diablo.cpp
+
 devilutionx: $(DVLX_ELF)
