@@ -120,6 +120,13 @@ struct Task {
     pt::uintptr_t syscall_frame_rsp;
 };
 
+// Per-task syscall profiling counters (separate from Task to keep struct small).
+static constexpr pt::size_t NUM_SYSCALLS = 53;
+struct SyscallPerfData {
+    pt::uint64_t counts[NUM_SYSCALLS];
+    pt::uint64_t usec[NUM_SYSCALLS];
+};
+
 // Kernel RSP captured in _syscall_stub immediately after PUSHALL.
 // Points to the PUSHALL+iretq frame; used by fork_task and exec_task
 // to inspect/clone/patch the calling user task's register state.
@@ -130,6 +137,12 @@ extern pt::uintptr_t g_syscall_rsp;
 // cleared by the assembly after loading.  0 = no switch pending.
 // Must be declared extern so idt.asm can reference it via [extern g_next_cr3].
 extern pt::uintptr_t g_next_cr3;
+
+// Syscall profiler state — set by "perf record", cleared by "perf stop".
+extern bool g_perf_recording;
+
+// Human-readable syscall names indexed by syscall number.
+extern const char* const g_syscall_names[];
 
 class TaskScheduler {
 public:
@@ -244,6 +257,12 @@ public:
     // prot: bit 0 = exec, bit 1 = write, bit 2 = read (matches PROT_*).
     // Returns 0 on success, -1 on error.
     static int mprotect_pages(pt::uintptr_t va, pt::size_t size, int prot);
+
+    // Zero all per-task syscall perf counters.
+    static void perf_reset_counters();
+
+    // Print per-task syscall profiling results to the active VTerm.
+    static void perf_dump();
 
 private:
     static Task tasks[MAX_TASKS];

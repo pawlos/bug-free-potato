@@ -60,6 +60,7 @@ private:
     void execute_kill(const char* cmd);
     void execute_uptime(const char* cmd);
     void execute_neofetch(const char* cmd);
+    void execute_perf(const char* cmd);
 };
 
 extern Shell shell;

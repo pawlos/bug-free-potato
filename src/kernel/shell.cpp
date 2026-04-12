@@ -53,6 +53,7 @@ constexpr char kill_cmd[]     = "kill ";
 constexpr char uptime_cmd[]   = "uptime";
 constexpr char neofetch_cmd[] = "neofetch";
 constexpr char cd_cmd[]       = "cd";
+constexpr char perf_cmd[]     = "perf";
 
 void print_help() {
     vterm_printf("Available commands:\n");
@@ -88,6 +89,8 @@ void print_help() {
     vterm_printf("  kill <pid>       - Kill a user task by PID\n");
     vterm_printf("  uptime           - Show time since boot\n");
     vterm_printf("  neofetch         - Display system info\n");
+    vterm_printf("  perf record      - Start recording syscall stats\n");
+    vterm_printf("  perf stop        - Stop recording and show results\n");
     vterm_printf("  help             - Show this help\n");
     vterm_printf("  quit             - Exit kernel\n");
 }
@@ -1003,6 +1006,27 @@ void Shell::execute_cancel(const char* cmd) {
     }
 }
 
+void Shell::execute_perf(const char* cmd) {
+    const char* arg = cmd + 4;
+    // skip whitespace
+    while (*arg == ' ') arg++;
+
+    if (!memcmp(arg, "record", 6) && (arg[6] == '\0' || arg[6] == ' ')) {
+        TaskScheduler::perf_reset_counters();
+        g_perf_recording = true;
+        vterm_printf("perf: recording started\n");
+    } else if (!memcmp(arg, "stop", 4) && (arg[4] == '\0' || arg[4] == ' ')) {
+        if (!g_perf_recording) {
+            vterm_printf("perf: not recording\n");
+            return;
+        }
+        g_perf_recording = false;
+        TaskScheduler::perf_dump();
+    } else {
+        vterm_printf("Usage: perf record | perf stop\n");
+    }
+}
+
 bool Shell::execute(const char* cmd) {
     // Add to history first
     add_to_history(cmd);
@@ -1111,6 +1135,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, neofetch_cmd, 8) && (cmd[8] == '\0' || cmd[8] == ' ')) {
         execute_neofetch(cmd);
+    }
+    else if (!memcmp(cmd, perf_cmd, 4) && (cmd[4] == '\0' || cmd[4] == ' ')) {
+        execute_perf(cmd);
     }
     else if (!memcmp(cmd, quit_cmd, sizeof(quit_cmd)))
     {
@@ -1278,7 +1305,7 @@ int Shell::complete(const char* buf, int buf_len,
         "play", "disk", "help", "echo", "clear", "timers",
         "cancel", "shutdown", "reboot", "task", "write", "rm",
         "exec", "net", "ping", "dhcp", "nslookup", "wget",
-        "ps", "kill", "uptime", "neofetch", nullptr
+        "ps", "kill", "uptime", "neofetch", "perf", nullptr
     };
 
     int count = 0;

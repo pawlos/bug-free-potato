@@ -10,6 +10,8 @@
 #include "device/keyboard.h"
 #include "window.h"
 #include "device/ac97.h"
+#include "vterm.h"
+#include "syscall.h"
 
 // Mask to extract the physical frame address from a leaf PTE.
 // Clears the low 12 flag bits AND the high bits (including NX bit 63),
@@ -1758,4 +1760,168 @@ int TaskScheduler::mprotect_pages(pt::uintptr_t va, pt::size_t size, int prot)
         asm volatile("invlpg [%0]" : : "r"(addr) : "memory");
     }
     return 0;
+}
+
+// ── Syscall profiler ────────────────────────────────────────────────────
+
+bool g_perf_recording = false;
+
+// Heap-allocated on first "perf record"; freed on "perf stop" after dump.
+SyscallPerfData* g_perf_data = nullptr;
+
+const char* const g_syscall_names[] = {
+    "SYS_WRITE",          // 0
+    "SYS_EXIT",           // 1
+    "SYS_READ_KEY",       // 2
+    "SYS_OPEN",           // 3
+    "SYS_READ",           // 4
+    "SYS_CLOSE",          // 5
+    "SYS_MMAP",           // 6
+    "SYS_MUNMAP",         // 7
+    "SYS_YIELD",          // 8
+    "SYS_GET_TICKS",      // 9
+    "SYS_GET_TIME",       // 10
+    "SYS_FILL_RECT",      // 11
+    "SYS_DRAW_TEXT",      // 12
+    "SYS_FB_WIDTH",       // 13
+    "SYS_FORK",           // 14
+    "SYS_EXEC",           // 15
+    "SYS_WAITPID",        // 16
+    "SYS_PIPE",           // 17
+    "SYS_LSEEK",          // 18
+    "SYS_FB_HEIGHT",      // 19
+    "SYS_DRAW_PIXELS",    // 20
+    "SYS_GET_KEY_EVENT",  // 21
+    "SYS_CREATE",         // 22
+    "SYS_SLEEP",          // 23
+    "SYS_CREATE_WINDOW",  // 24
+    "SYS_DESTROY_WINDOW", // 25
+    "SYS_GET_WIN_EVENT",  // 26
+    "SYS_READDIR",        // 27
+    "SYS_MEM_FREE",       // 28
+    "SYS_DISK_SIZE",      // 29
+    "SYS_REMOVE",         // 30
+    "SYS_SOCK_CONNECT",   // 31
+    "SYS_GET_MOUSE_EVT",  // 32
+    "SYS_GET_MICROS",     // 33
+    "SYS_AUDIO_WRITE",    // 34
+    "SYS_AUDIO_PLAYING",  // 35
+    "SYS_WRITE_SERIAL",   // 36
+    "SYS_SET_WIN_TITLE",  // 37
+    "SYS_BIND_VTERM",     // 38
+    "SYS_GETPID",         // 39
+    "SYS_STAT",           // 40
+    "SYS_MPROTECT",       // 41
+    "SYS_LIST_WINDOWS",   // 42
+    "SYS_LIST_TASKS",     // 43
+    "SYS_GET_MOUSE_POS",  // 44
+    "SYS_POLL_START_KEY", // 45
+    "SYS_RESIZE_WINDOW",  // 46
+    "SYS_GET_WIN_POS",    // 47
+    "SYS_SET_FS_BASE",    // 48
+    "SYS_MKDIR",          // 49
+    "SYS_OPEN_RW",        // 50
+    "SYS_AUDIO_OPEN",     // 51
+    "SYS_AUDIO_CLOSE",    // 52
+};
+
+void TaskScheduler::perf_reset_counters()
+{
+    if (g_perf_data)
+        vmm.kfree(g_perf_data);
+    g_perf_data = static_cast<SyscallPerfData*>(
+        vmm.kcalloc(MAX_TASKS * sizeof(SyscallPerfData)));
+}
+
+// Print str right-padded to width with spaces.
+static void pad_right(const char* str, int width) {
+    int len = 0;
+    while (str[len]) len++;
+    vterm_printf("%s", str);
+    for (int i = len; i < width; i++)
+        vterm_printf(" ");
+}
+
+// Print a uint64 left-padded (right-aligned) to width.
+static void pad_num(pt::uint64_t val, int width) {
+    // decToString the value, then pad.
+    char buf[21];
+    int pos = 0;
+    if (val == 0) {
+        buf[pos++] = '0';
+    } else {
+        // Build digits in reverse.
+        char tmp[21];
+        int tpos = 0;
+        pt::uint64_t v = val;
+        while (v > 0) { tmp[tpos++] = '0' + (char)(v % 10); v /= 10; }
+        for (int j = tpos - 1; j >= 0; j--) buf[pos++] = tmp[j];
+    }
+    buf[pos] = '\0';
+    for (int i = pos; i < width; i++)
+        vterm_printf(" ");
+    vterm_printf("%s", buf);
+}
+
+void TaskScheduler::perf_dump()
+{
+    if (!g_perf_data) return;
+
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        Task& t = tasks[i];
+        if (t.state == TASK_DEAD && t.id == 0)
+            continue;
+
+        SyscallPerfData& pd = g_perf_data[i];
+
+        // Check if this task has any recorded syscalls.
+        pt::uint64_t total_calls = 0;
+        for (pt::size_t s = 0; s < NUM_SYSCALLS; s++)
+            total_calls += pd.counts[s];
+        if (total_calls == 0)
+            continue;
+
+        const char* name = t.name[0] ? t.name : "(kernel)";
+        vterm_printf("\nTask %d (%s):\n", t.id, name);
+        klog("[PERF] Task %d (%s):\n", t.id, name);
+        vterm_printf("  ");
+        pad_right("SYSCALL", 22);
+        pad_right("COUNT", 10);
+        pad_right("USEC", 10);
+        pad_right("AVG", 8);
+        vterm_printf("\n");
+        klog("[PERF]   SYSCALL\tCOUNT\tUSEC\tAVG\n");
+
+        // Simple insertion-sort by usec descending (at most 53 entries).
+        pt::size_t order[NUM_SYSCALLS];
+        for (pt::size_t s = 0; s < NUM_SYSCALLS; s++)
+            order[s] = s;
+        for (pt::size_t a = 0; a < NUM_SYSCALLS; a++) {
+            for (pt::size_t b = a + 1; b < NUM_SYSCALLS; b++) {
+                if (pd.usec[order[b]] > pd.usec[order[a]]) {
+                    pt::size_t tmp = order[a];
+                    order[a] = order[b];
+                    order[b] = tmp;
+                }
+            }
+        }
+
+        for (pt::size_t idx = 0; idx < NUM_SYSCALLS; idx++) {
+            pt::size_t s = order[idx];
+            if (pd.counts[s] == 0)
+                break;
+            pt::uint64_t avg = pd.counts[s] ? pd.usec[s] / pd.counts[s] : 0;
+            vterm_printf("  ");
+            pad_right(g_syscall_names[s], 22);
+            pad_num(pd.counts[s], 10);
+            pad_num(pd.usec[s], 10);
+            pad_num(avg, 8);
+            vterm_printf("\n");
+            klog("[PERF]   %s\t%llu\t%llu\t%llu\n",
+                 g_syscall_names[s], pd.counts[s], pd.usec[s], avg);
+        }
+    }
+
+    vmm.kfree(g_perf_data);
+    g_perf_data = nullptr;
 }

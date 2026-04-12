@@ -28,18 +28,10 @@ extern pt::uintptr_t g_syscall_rsp;
 #define sclog(...) ((void)0)
 #endif
 
-ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
+static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
                                       pt::uint64_t arg2, pt::uint64_t arg3,
                                       pt::uint64_t arg4, pt::uint64_t arg5)
 {
-	// Snapshot g_syscall_rsp into the current task BEFORE any blocking
-	// operation (e.g. waitpid) can cause another task's SYS_EXIT to
-	// overwrite the global with a different task's kernel stack RSP.
-	{
-		Task* ct = TaskScheduler::get_current_task();
-		if (ct) ct->syscall_frame_rsp = g_syscall_rsp;
-	}
-
 	switch (nr) {
 		case SYS_WRITE: {
 			int fd = (int)(pt::int8_t)arg1;
@@ -706,4 +698,34 @@ ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
 			sclog("syscall: unknown nr=%llu\n", nr);
 			return (pt::uint64_t)-1;
 	}
+}
+
+ASMCALL pt::uint64_t syscall_handler(pt::uint64_t nr, pt::uint64_t arg1,
+                                      pt::uint64_t arg2, pt::uint64_t arg3,
+                                      pt::uint64_t arg4, pt::uint64_t arg5)
+{
+	// Snapshot g_syscall_rsp into the current task BEFORE any blocking
+	// operation (e.g. waitpid) can cause another task's SYS_EXIT to
+	// overwrite the global with a different task's kernel stack RSP.
+	Task* ct = TaskScheduler::get_current_task();
+	if (ct) ct->syscall_frame_rsp = g_syscall_rsp;
+
+	pt::uint64_t t0 = 0;
+	if (g_perf_recording && ct && nr < NUM_SYSCALLS)
+		t0 = get_microseconds();
+
+	pt::uint64_t result = syscall_dispatch(nr, arg1, arg2, arg3, arg4, arg5);
+
+	if (t0) {
+		extern SyscallPerfData* g_perf_data;
+		if (g_perf_data) {
+			pt::uint64_t t1 = get_microseconds();
+			if (t1 > t0) {
+				g_perf_data[ct->id].counts[nr]++;
+				g_perf_data[ct->id].usec[nr] += t1 - t0;
+			}
+		}
+	}
+
+	return result;
 }
