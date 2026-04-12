@@ -36,13 +36,14 @@ pt::uint64_t get_microseconds() {
 	pt::uint64_t t;
 	pt::uint16_t pit_count;
 
-	asm volatile("cli");
+	pt::uint64_t flags;
+	asm volatile("pushfq; pop %0; cli" : "=r"(flags));
 	t = ticks;
 	// Send latch command for channel 0 to port 0x43, then read 16-bit count.
 	IO::outb(ModeCommandRegister, 0x00);
 	pit_count  = (pt::uint16_t)IO::inb(Channel0DataPort);
 	pit_count |= (pt::uint16_t)IO::inb(Channel0DataPort) << 8;
-	asm volatile("sti");
+	asm volatile("push %0; popfq" : : "r"(flags) : "cc");
 
 	// PIT is in mode 3 (square wave): the count decrements by 2 per clock.
 	// Divide by 2 to map into [0, DIVISOR), where DIVISOR = 1193180 / 50.
