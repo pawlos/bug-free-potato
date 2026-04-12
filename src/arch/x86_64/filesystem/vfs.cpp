@@ -2,6 +2,7 @@
 #include "fs/fat12.h"
 #include "fs/fat32.h"
 #include "device/disk.h"
+#include "device/disk_cache.h"
 #include "kernel.h"
 
 // Placement new: construct an object in pre-allocated storage without relying
@@ -23,6 +24,8 @@ bool VFS::mount() {
         klog("[VFS] No disk present\n");
         return false;
     }
+
+    disk_cache_init();
 
     if (!Disk::read_sector(0, vfs_sector_buf)) {
         klog("[VFS] Failed to read boot sector\n");

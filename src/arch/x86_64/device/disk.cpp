@@ -1,4 +1,5 @@
 #include "device/disk.h"
+#include "device/disk_cache.h"
 #include "device/ide.h"
 #include "kernel.h"
 
@@ -23,33 +24,18 @@ void Disk::initialize() {
 }
 
 bool Disk::read_sector(pt::uint32_t lba, void* buffer) {
-    if (!present) {
-        return false;
-    }
-    
-    if (IDE::is_drive_present(0)) {
-        return IDE::read_sectors(0, lba, 1, buffer);
-    }
-    
-    return false;
+    if (!present) return false;
+    return disk_cache_read(lba, buffer);
 }
 
 bool Disk::read_sectors(pt::uint32_t lba, pt::uint8_t count, void* buffer) {
-    if (!present) {
-        return false;
-    }
-    
-    if (IDE::is_drive_present(0)) {
-        return IDE::read_sectors(0, lba, count, buffer);
-    }
-    
-    return false;
+    if (!present) return false;
+    return disk_cache_read_multi(lba, count, buffer);
 }
 
 bool Disk::write_sector(pt::uint32_t lba, const void* buffer) {
-    if (!present) {
-        return false;
-    }
+    if (!present) return false;
+    disk_cache_invalidate();
     return IDE::write_sectors(0, lba, 1, buffer);
 }
 
