@@ -221,6 +221,7 @@ GLOBAL isr1
 [extern isr0_handler]
 isr0:
     PUSHALL
+    mov rdi, rsp
     call isr0_handler
     POPALL
     iretq

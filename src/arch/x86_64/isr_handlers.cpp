@@ -2,8 +2,17 @@
 #include "virtual.h"
 #include "task.h"
 
-ASMCALL void isr0_handler()
+ASMCALL void isr0_handler(pt::uint64_t* frame)
 {
+	// PUSHALL: r15[0]..rax[14], then iretq frame: RIP[15] CS[16] RFLAGS[17] RSP[18] SS[19]
+	pt::uint64_t rip = frame[15];
+	pt::uint64_t cs  = frame[16];
+	if (cs & 3) {
+		klog("[#DE] User-mode divide-by-zero at RIP=%lx RSP=%lx — killing task\n",
+		     rip, frame[18]);
+		TaskScheduler::task_exit(136);  // 128 + SIGFPE(8)
+		return;
+	}
 	kernel_panic("Divide by zero", 0);
 }
 
