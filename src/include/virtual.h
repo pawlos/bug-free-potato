@@ -88,7 +88,6 @@ public:
         this->frame_bitmap = nullptr;
         this->frame_bitmap_size = 0;
         this->frame_allocator_ready = false;
-        this->cached_mmap = mmap;
 
         pt::size_t top_size = 0;
         pt::uintptr_t addr = 0;
@@ -123,12 +122,18 @@ public:
         firstFreeMemoryRegion->nextFreeChunk = nullptr;
         firstFreeMemoryRegion->prevFreeChunk = nullptr;
         firstFreeMemoryRegion->free = true;
+
+        // Eagerly initialize the frame allocator while `mmap` is still valid.
+        // Deferring this until first allocate_frame() is unsafe: `mmap` points
+        // into BootInfo::memory_entry[], which (in kernel_main) lives on the
+        // caller's stack — subsequent function calls can overwrite it before
+        // the first allocate_frame(), making a lazy init see a zero-entry map.
+        initialize_frame_allocator(mmap);
     }
 
 private:
-    // Frame allocator state - lazy initialized
+    // Frame allocator state
     pt::uint8_t* frame_bitmap;
     pt::size_t frame_bitmap_size;
     bool frame_allocator_ready;
-    memory_map_entry** cached_mmap;
 };

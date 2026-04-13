@@ -398,15 +398,11 @@ void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
 
 pt::uintptr_t VMM::allocate_frame()
 {
-    // Lazy initialize if needed
-    if (!frame_allocator_ready)
-    {
-        initialize_frame_allocator(cached_mmap);
-    }
-
+    // Frame allocator is initialized eagerly in the VMM ctor, so this flag
+    // must be true by the time any caller reaches us.
     if (!frame_allocator_ready || frame_bitmap == nullptr)
     {
-        kernel_panic("Frame allocator initialization failed", NotAbleToAllocateMemory);
+        kernel_panic("Frame allocator not initialized", NotAbleToAllocateMemory);
     }
 
     // Disable interrupts for the bitmap scan-and-set.  Without this,
