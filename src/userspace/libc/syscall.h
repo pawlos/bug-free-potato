@@ -67,6 +67,9 @@ static inline long syscall(long nr, ...) { (void)nr; return 0; }
 #define SYS_OPEN_RW         50  /* rdi=filename; open existing for r+w; returns fd/-1   */
 #define SYS_AUDIO_OPEN      51  /* rdi=rate, rsi=channels, rdx=format; returns 0/-1    */
 #define SYS_AUDIO_CLOSE     52  /* no args; returns 0/-1                               */
+#define SYS_UDP_OPEN        53  /* rdi=port (0=ephemeral); returns fd or -1            */
+#define SYS_UDP_SENDTO      54  /* rdi=fd, rsi=buf, rdx=len, rcx=dst_ip, r8=dst_port   */
+#define SYS_UDP_RECVFROM    55  /* rdi=fd, rsi=buf, rdx=len, rcx=*peer, r8=timeout     */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -368,3 +371,33 @@ static inline long sys_resize_window(long x, long y, long w, long h)
    Returns client_ox | (client_oy << 16), or -1 if no window. */
 static inline long sys_get_window_pos(void)
     { return __sc0(SYS_GET_WINDOW_POS); }
+
+/* ── UDP userspace sockets ─────────────────────────────────────────────── */
+
+/* Open a UDP socket bound to a local port.  port=0 requests ephemeral.
+   Returns fd on success, -1 on failure. */
+static inline int sys_udp_open(unsigned short port)
+    { return (int)__sc1(SYS_UDP_OPEN, (long)port); }
+
+/* Send a datagram from fd to dst_ip:dst_port.  len ≤ 1500.
+   Returns bytes sent, or -1 on error.
+   ip byte layout matches kernel convention (make_ip / g_my_ip):
+     10.0.2.3  →  0x0302000A  (a.b.c.d stored low→high). */
+static inline long sys_udp_sendto(int fd, const void *buf, unsigned long len,
+                                  unsigned int dst_ip, unsigned short dst_port)
+    { return __sc5(SYS_UDP_SENDTO, (long)fd, (long)buf, (long)len,
+                   (long)dst_ip, (long)dst_port); }
+
+/* Receive a datagram.  Blocks up to timeout_ticks (0=poll, -1=forever).
+   On success returns bytes copied (truncated if buf smaller than packet),
+   0 on timeout, -1 on error.
+   If *peer is non-NULL, on success writes: (uint64_t)ip | ((uint64_t)port<<32).
+   Caller can unpack:
+     uint32_t ip   = (unsigned int)(peer & 0xFFFFFFFFULL);
+     uint16_t port = (unsigned short)(peer >> 32);
+*/
+static inline long sys_udp_recvfrom(int fd, void *buf, unsigned long len,
+                                    unsigned long long *peer_out,
+                                    long timeout_ticks)
+    { return __sc5(SYS_UDP_RECVFROM, (long)fd, (long)buf, (long)len,
+                   (long)peer_out, (long)timeout_ticks); }
