@@ -90,7 +90,7 @@ $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest \
                pidtest stattest envtest xxd kilo taskbar sysmon \
-               sdl2demo
+               sdl2demo nslookup
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
 SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
@@ -225,6 +225,7 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 	copy_file dist/userspace/xxd.elf         BIN/XXD.ELF; \
 	copy_file dist/userspace/kilo.elf        BIN/KILO.ELF; \
 	copy_file dist/userspace/sdl2demo.elf   BIN/SDL2DEMO.ELF; \
+	copy_file dist/userspace/nslookup.elf   BIN/NSLOOKUP.ELF; \
 	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \
 	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
 	copy_file $(IMGVIEW_ELF)                 BIN/IMGVIEW.ELF; \
