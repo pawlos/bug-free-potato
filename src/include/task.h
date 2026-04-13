@@ -121,7 +121,7 @@ struct Task {
 };
 
 // Per-task syscall profiling counters (separate from Task to keep struct small).
-static constexpr pt::size_t NUM_SYSCALLS = 53;
+static constexpr pt::size_t NUM_SYSCALLS = 56;
 struct SyscallPerfData {
     pt::uint64_t counts[NUM_SYSCALLS];
     pt::uint64_t usec[NUM_SYSCALLS];

@@ -56,3 +56,6 @@ constexpr pt::uint64_t SYS_MKDIR           = 49; // rdi=path; create directory (
 constexpr pt::uint64_t SYS_OPEN_RW        = 50; // rdi=filename; open existing for read+write; returns fd or -1
 constexpr pt::uint64_t SYS_AUDIO_OPEN    = 51; // rdi=rate, rsi=channels, rdx=format; returns 0 or -1
 constexpr pt::uint64_t SYS_AUDIO_CLOSE   = 52; // no args; returns 0 or -1
+constexpr pt::uint64_t SYS_UDP_OPEN      = 53; // rdi=port (0=ephemeral); returns fd or -1
+constexpr pt::uint64_t SYS_UDP_SENDTO    = 54; // rdi=fd, rsi=buf, rdx=len, rcx=dst_ip, r8=dst_port; returns bytes sent or -1
+constexpr pt::uint64_t SYS_UDP_RECVFROM  = 55; // rdi=fd, rsi=buf, rdx=len, rcx=*peer (uint64: ip|port<<32), r8=timeout_ticks; returns bytes or 0/-1

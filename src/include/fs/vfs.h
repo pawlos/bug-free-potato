@@ -7,6 +7,7 @@ enum class FdType : pt::uint8_t {
     PIPE_RD  = 1,   // pipe read end
     PIPE_WR  = 2,   // pipe write end
     TCP_SOCK = 3,   // TCP socket (pointer to TcpSocket stored in fs_data)
+    UDP_SOCK = 4,   // UDP socket (pointer to UdpSocket stored in fs_data)
 };
 
 // Result structure for stat_file: file size + FAT timestamps.

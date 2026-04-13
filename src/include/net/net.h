@@ -259,3 +259,52 @@ int tcp_read(TcpSocket* s, pt::uint8_t* buf, pt::uint32_t len,
 
 // Active close (FIN handshake); frees the socket slot
 void tcp_close(TcpSocket* s);
+
+// ---------------------------------------------------------------------------
+// UDP userspace socket API
+// ---------------------------------------------------------------------------
+constexpr int UDP_MAX_SOCKETS = 4;
+constexpr int UDP_MAX_DGRAM   = 1500;     // Ethernet MTU
+constexpr int UDP_RX_SLOTS    = 4;        // per-socket pending datagrams
+
+struct UdpPacket {
+    pt::uint32_t src_ip;          // host layout (little-endian uint32), matches g_my_ip
+    pt::uint16_t src_port;        // host byte order
+    pt::uint16_t len;             // payload bytes in data[]
+    pt::uint8_t  data[UDP_MAX_DGRAM];
+};
+
+struct UdpSocket {
+    bool         in_use;
+    pt::uint16_t local_port;      // host byte order
+    UdpPacket    rx[UDP_RX_SLOTS];
+    pt::uint8_t  head;            // index of oldest pending
+    pt::uint8_t  count;           // 0..UDP_RX_SLOTS
+    void*        waiter;          // Task* blocked in recvfrom, or nullptr
+};
+
+// Store/load UdpSocket* inside File::fs_data
+static inline UdpSocket* udp_sock_get(const pt::uint8_t* d) {
+    UdpSocket* p; __builtin_memcpy(&p, d, sizeof(p)); return p;
+}
+static inline void udp_sock_set(pt::uint8_t* d, UdpSocket* p) {
+    __builtin_memcpy(d, &p, sizeof(p));
+}
+
+// Returns socket pointer (use udp_sock_set to store) or nullptr on failure.
+// port=0 requests an ephemeral port.
+UdpSocket* udp_user_open(pt::uint16_t port);
+
+// Returns bytes sent, or -1 on error. len ≤ UDP_MAX_DGRAM.
+int udp_user_sendto(UdpSocket* s, const pt::uint8_t* buf, pt::uint32_t len,
+                    pt::uint32_t dst_ip, pt::uint16_t dst_port);
+
+// Blocks up to timeout_ticks for a datagram.
+// Returns bytes copied (may be less than packet if buf is smaller — truncation),
+// 0 on timeout, -1 on error. Writes peer info to *out_ip/*out_port if non-null.
+int udp_user_recvfrom(UdpSocket* s, pt::uint8_t* buf, pt::uint32_t len,
+                      pt::uint32_t* out_ip, pt::uint16_t* out_port,
+                      pt::int64_t timeout_ticks);
+
+// Release the socket slot; wakes a blocked waiter with -1.
+void udp_user_close(UdpSocket* s);

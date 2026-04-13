@@ -79,6 +79,9 @@ static void ipv4_send(pt::uint32_t dst_ip, pt::uint8_t proto,
 static void dhcp_handle(const pt::uint8_t* data, pt::uint32_t len);
 static void dns_handle(pt::uint32_t src_ip,
                        const pt::uint8_t* data, pt::uint32_t len);
+static void udp_user_dispatch(pt::uint32_t src_ip, pt::uint16_t src_port,
+                              pt::uint16_t dst_port,
+                              const pt::uint8_t* payload, pt::uint16_t len);
 void tcp_handle(pt::uint32_t src_ip, const pt::uint8_t* data, pt::uint32_t len);
 
 // ---------------------------------------------------------------------------
@@ -335,11 +338,16 @@ static void udp_handle(pt::uint32_t src_ip,
     if (payload_len > len - sizeof(UdpHdr))
         payload_len = (pt::uint16_t)(len - sizeof(UdpHdr));
 
-    switch (bswap16(udp->dst_port)) {
-        case 68:   dhcp_handle(payload, payload_len);         break;
-        case 1024: dns_handle(src_ip, payload, payload_len);  break;
+    pt::uint16_t dst_port = bswap16(udp->dst_port);
+    pt::uint16_t src_port = bswap16(udp->src_port);
+
+    switch (dst_port) {
+        case 68:   dhcp_handle(payload, payload_len);         return;
+        case 1024: dns_handle(src_ip, payload, payload_len);  return;
         default:   break;
     }
+
+    udp_user_dispatch(src_ip, src_port, dst_port, payload, payload_len);
 }
 
 // ---------------------------------------------------------------------------
@@ -736,6 +744,144 @@ static void dns_handle(pt::uint32_t /*src_ip*/,
         offset += rdlen;
     }
     klog("[DNS] no A record in answer section\n");
+}
+
+// ===========================================================================
+// UDP userspace socket implementation
+// ---------------------------------------------------------------------------
+// UdpSocket is ~6 KB (large rx buffers). Keeping 4 of them inline in .bss
+// bloats the kernel image enough to push its end past the heap start
+// (phys 0x200000), clobbering multiboot memory-map entries and breaking
+// the lazy frame-allocator init. Instead we keep only pointers in .bss and
+// kmalloc each UdpSocket on first SYS_UDP_OPEN (reused on subsequent opens).
+// ===========================================================================
+
+static UdpSocket*   g_udp_sockets[UDP_MAX_SOCKETS] = {};  // all nullptr initially
+static pt::uint16_t g_udp_ephemeral_next = 49200;          // avoids DNS(1024)/DHCP(68)
+
+// Returns true if any active user socket is bound to port.
+static bool udp_port_in_use(pt::uint16_t port) {
+    for (int i = 0; i < UDP_MAX_SOCKETS; i++) {
+        UdpSocket* s = g_udp_sockets[i];
+        if (s && s->in_use && s->local_port == port) return true;
+    }
+    return false;
+}
+
+UdpSocket* udp_user_open(pt::uint16_t port) {
+    int slot = -1;
+    for (int i = 0; i < UDP_MAX_SOCKETS; i++) {
+        UdpSocket* s = g_udp_sockets[i];
+        if (!s || !s->in_use) { slot = i; break; }
+    }
+    if (slot < 0) return nullptr;
+
+    pt::uint16_t bind_port = port;
+    if (bind_port == 0) {
+        for (int tries = 0; tries < 1024; tries++) {
+            pt::uint16_t p = g_udp_ephemeral_next++;
+            if (g_udp_ephemeral_next == 0) g_udp_ephemeral_next = 49200;
+            if (!udp_port_in_use(p) && p != 68 && p != 1024) {
+                bind_port = p;
+                break;
+            }
+        }
+        if (bind_port == 0) return nullptr;
+    } else {
+        if (udp_port_in_use(bind_port) || bind_port == 68 || bind_port == 1024)
+            return nullptr;
+    }
+
+    // Lazy-allocate the slot on first use; reuse the buffer on subsequent opens.
+    if (!g_udp_sockets[slot]) {
+        void* mem = vmm.kmalloc(sizeof(UdpSocket));
+        if (!mem) return nullptr;
+        __builtin_memset(mem, 0, sizeof(UdpSocket));
+        g_udp_sockets[slot] = static_cast<UdpSocket*>(mem);
+    }
+    UdpSocket* s = g_udp_sockets[slot];
+    s->in_use     = true;
+    s->local_port = bind_port;
+    s->head       = 0;
+    s->count      = 0;
+    s->waiter     = nullptr;
+    klog("[UDP] user_open slot=%d port=%d\n", slot, (int)bind_port);
+    return s;
+}
+
+int udp_user_sendto(UdpSocket* s, const pt::uint8_t* buf, pt::uint32_t len,
+                    pt::uint32_t dst_ip, pt::uint16_t dst_port) {
+    if (!s || !s->in_use) return -1;
+    if (len > (pt::uint32_t)UDP_MAX_DGRAM) return -1;
+
+    static pt::uint8_t tx[sizeof(UdpHdr) + UDP_MAX_DGRAM];
+    UdpHdr* udp = reinterpret_cast<UdpHdr*>(tx);
+    udp->src_port = bswap16(s->local_port);
+    udp->dst_port = bswap16(dst_port);
+    udp->length   = bswap16((pt::uint16_t)(sizeof(UdpHdr) + len));
+    udp->checksum = 0;
+
+    for (pt::uint32_t i = 0; i < len; i++)
+        tx[sizeof(UdpHdr) + i] = buf[i];
+
+    ipv4_send_from(g_my_ip, dst_ip, 17, tx,
+                   (pt::uint16_t)(sizeof(UdpHdr) + len));
+    return (int)len;
+}
+
+// Called from udp_handle (forward-declared near top) when a datagram arrives
+// on a port that isn't claimed by DHCP/DNS. Looks up a matching user socket
+// and enqueues the packet. Drops if ring is full (newest-drop).
+static void udp_user_dispatch(pt::uint32_t src_ip, pt::uint16_t src_port,
+                              pt::uint16_t dst_port,
+                              const pt::uint8_t* payload, pt::uint16_t len) {
+    for (int i = 0; i < UDP_MAX_SOCKETS; i++) {
+        UdpSocket* s = g_udp_sockets[i];
+        if (!s || !s->in_use || s->local_port != dst_port) continue;
+        if (s->count >= UDP_RX_SLOTS) return;   // drop newest
+        pt::uint8_t idx = (pt::uint8_t)((s->head + s->count) % UDP_RX_SLOTS);
+        UdpPacket* p = &s->rx[idx];
+        p->src_ip   = src_ip;
+        p->src_port = src_port;
+        p->len      = (len > UDP_MAX_DGRAM) ? (pt::uint16_t)UDP_MAX_DGRAM : len;
+        for (pt::uint16_t k = 0; k < p->len; k++) p->data[k] = payload[k];
+        s->count++;
+        return;
+    }
+}
+
+int udp_user_recvfrom(UdpSocket* s, pt::uint8_t* buf, pt::uint32_t len,
+                      pt::uint32_t* out_ip, pt::uint16_t* out_port,
+                      pt::int64_t timeout_ticks) {
+    if (!s || !s->in_use) return -1;
+
+    pt::uint64_t t0 = get_ticks();
+    while (s->count == 0) {
+        if (timeout_ticks == 0) return 0;           // poll: no data
+        if (timeout_ticks > 0 &&
+            (pt::int64_t)(get_ticks() - t0) >= timeout_ticks)
+            return 0;                                // timeout expired
+        TaskScheduler::task_yield();
+        if (!s->in_use) return -1;                   // closed while waiting
+    }
+
+    UdpPacket* p = &s->rx[s->head];
+    pt::uint32_t copy = (len < p->len) ? len : p->len;
+    for (pt::uint32_t i = 0; i < copy; i++) buf[i] = p->data[i];
+    if (out_ip)   *out_ip   = p->src_ip;
+    if (out_port) *out_port = p->src_port;
+
+    s->head = (pt::uint8_t)((s->head + 1) % UDP_RX_SLOTS);
+    s->count--;
+    return (int)copy;
+}
+
+void udp_user_close(UdpSocket* s) {
+    if (!s) return;
+    s->in_use = false;
+    s->count  = 0;
+    s->head   = 0;
+    s->local_port = 0;
 }
 
 // ===========================================================================

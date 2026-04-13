@@ -178,6 +178,9 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			} else if (f->type == FdType::TCP_SOCK) {
 				tcp_close(tcp_sock_get(f->fs_data));
 				f->open = false;
+			} else if (f->type == FdType::UDP_SOCK) {
+				udp_user_close(udp_sock_get(f->fs_data));
+				f->open = false;
 			} else {
 				// PIPE_RD or PIPE_WR
 				PipeBuffer* pipe = pipe_get_buf(f->fs_data);
@@ -692,6 +695,59 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			AC97::close();
 			sclog("syscall: SYS_AUDIO_CLOSE: by task %d\n", t->id);
 			return 0;
+		}
+
+		case SYS_UDP_OPEN: {
+			pt::uint16_t port = (pt::uint16_t)arg1;
+			Task* t = TaskScheduler::get_current_task();
+			int fd = -1;
+			for (int i = 3; i < (int)Task::MAX_FDS; i++)
+				if (!t->fd_table[i].open) { fd = i; break; }
+			if (fd == -1) return (pt::uint64_t)-1;
+			UdpSocket* sock = udp_user_open(port);
+			if (!sock) return (pt::uint64_t)-1;
+			File* f = &t->fd_table[fd];
+			f->open = true;
+			f->type = FdType::UDP_SOCK;
+			udp_sock_set(f->fs_data, sock);
+			sclog("syscall: SYS_UDP_OPEN: port=%d -> fd %d\n", (int)port, fd);
+			return (pt::uint64_t)fd;
+		}
+
+		case SYS_UDP_SENDTO: {
+			int fd = (int)(pt::int8_t)arg1;
+			const pt::uint8_t* buf = reinterpret_cast<const pt::uint8_t*>(arg2);
+			pt::uint32_t len = (pt::uint32_t)arg3;
+			pt::uint32_t dst_ip = (pt::uint32_t)arg4;
+			pt::uint16_t dst_port = (pt::uint16_t)arg5;
+			Task* t = TaskScheduler::get_current_task();
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+				return (pt::uint64_t)-1;
+			File* f = &t->fd_table[fd];
+			if (f->type != FdType::UDP_SOCK) return (pt::uint64_t)-1;
+			UdpSocket* sock = udp_sock_get(f->fs_data);
+			int n = udp_user_sendto(sock, buf, len, dst_ip, dst_port);
+			return (pt::uint64_t)(pt::int64_t)n;
+		}
+
+		case SYS_UDP_RECVFROM: {
+			int fd = (int)(pt::int8_t)arg1;
+			pt::uint8_t* buf = reinterpret_cast<pt::uint8_t*>(arg2);
+			pt::uint32_t len = (pt::uint32_t)arg3;
+			pt::uint64_t* out_peer = reinterpret_cast<pt::uint64_t*>(arg4);
+			pt::int64_t timeout = (pt::int64_t)arg5;
+			Task* t = TaskScheduler::get_current_task();
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+				return (pt::uint64_t)-1;
+			File* f = &t->fd_table[fd];
+			if (f->type != FdType::UDP_SOCK) return (pt::uint64_t)-1;
+			UdpSocket* sock = udp_sock_get(f->fs_data);
+			pt::uint32_t ip = 0;
+			pt::uint16_t port = 0;
+			int n = udp_user_recvfrom(sock, buf, len, &ip, &port, timeout);
+			if (n > 0 && out_peer)
+				*out_peer = (pt::uint64_t)ip | ((pt::uint64_t)port << 32);
+			return (pt::uint64_t)(pt::int64_t)n;
 		}
 
 		default:
