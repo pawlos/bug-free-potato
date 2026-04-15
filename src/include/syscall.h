@@ -59,3 +59,7 @@ constexpr pt::uint64_t SYS_AUDIO_CLOSE   = 52; // no args; returns 0 or -1
 constexpr pt::uint64_t SYS_UDP_OPEN      = 53; // rdi=port (0=ephemeral); returns fd or -1
 constexpr pt::uint64_t SYS_UDP_SENDTO    = 54; // rdi=fd, rsi=buf, rdx=len, rcx=dst_ip, r8=dst_port; returns bytes sent or -1
 constexpr pt::uint64_t SYS_UDP_RECVFROM  = 55; // rdi=fd, rsi=buf, rdx=len, rcx=*peer (uint64: ip|port<<32), r8=timeout_ticks; returns bytes or 0/-1
+constexpr pt::uint64_t SYS_THREAD_CREATE = 56; // rdi=entry_fn, rsi=arg, rdx=stack_size; returns tid or -1
+constexpr pt::uint64_t SYS_THREAD_EXIT   = 57; // rdi=retval; terminate calling thread
+constexpr pt::uint64_t SYS_FUTEX         = 58; // rdi=op, rsi=addr, rdx=val; WAIT=0 WAKE=1; returns 0/-1 or wake count
+constexpr pt::uint64_t SYS_THREAD_JOIN   = 59; // rdi=tid, rsi=retval_ptr; block until thread exits; returns 0 or -1

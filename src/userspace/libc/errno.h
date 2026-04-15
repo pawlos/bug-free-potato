@@ -1,7 +1,16 @@
 #pragma once
 
-/* Minimal errno — values match Linux x86_64 for C++ <system_error> compat. */
-extern int errno;
+/* Thread-local errno: stored at ThreadControl::errno_val (%fs:12).
+ * __errno_location() reads the self-pointer from %fs:0, then returns
+ * a pointer to the errno slot 12 bytes into that block.
+ * The #define makes `errno` a writable lvalue, matching POSIX semantics. */
+static inline int *__errno_location(void)
+{
+    void *tc;
+    __asm__("movq %%fs:0, %0" : "=r"(tc));
+    return (int *)((char *)tc + 12);
+}
+#define errno (*__errno_location())
 
 #define EPERM           1
 #define ENOENT          2

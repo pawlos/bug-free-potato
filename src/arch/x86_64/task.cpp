@@ -156,6 +156,11 @@ void TaskScheduler::initialize()
         tasks[i].window_id        = INVALID_WID;
         tasks[i].owns_window      = false;
         tasks[i].vterm_id         = INVALID_VT;
+        tasks[i].fd_table         = nullptr;
+        tasks[i].owns_page_tables = true;
+        tasks[i].join_tid         = INVALID_TID;
+        tasks[i].thread_result    = nullptr;
+        tasks[i].fs_base          = 0;
     }
 
     // Kernel is task 0; it has no allocated stack (uses the boot stack).
@@ -240,8 +245,13 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
     new_task->priority       = 1;  // normal priority by default
     new_task->remaining_ticks = SCHEDULER_QUANTUM;
 
-    // Allocate per-task file descriptor table on the heap.
-    new_task->fd_table = static_cast<File*>(vmm.kcalloc(Task::MAX_FDS * sizeof(File)));
+    // Allocate ref-counted file descriptor table on the heap.
+    new_task->fd_table = static_cast<FdTable*>(vmm.kcalloc(sizeof(FdTable)));
+    new_task->fd_table->refcount = 1;
+    new_task->owns_page_tables = true;
+    new_task->join_tid         = INVALID_TID;
+    new_task->thread_result    = nullptr;
+    new_task->fs_base          = 0;
 
     // Give the new task a clean FPU/SSE state (copy of post-fninit snapshot).
     memcpy(new_task->fxsave_area, default_fxsave, 512);
@@ -471,6 +481,20 @@ pt::uintptr_t TaskScheduler::do_switch_to_next(pt::uintptr_t current_rsp)
     asm volatile("fxsave %0"  : "=m"(tasks[old_id].fxsave_area)  :: "memory");
     asm volatile("fxrstor %0" :      : "m"(tasks[next_id].fxsave_area) : "memory");
 
+    // Save outgoing task's FS_BASE (MSR 0xC0000100) for thread-local storage.
+    // Restore incoming task's FS_BASE so each thread sees its own TLS pointer.
+    {
+        pt::uint32_t lo, hi;
+        asm volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(0xC0000100U));
+        tasks[old_id].fs_base = (pt::uint64_t)lo | ((pt::uint64_t)hi << 32);
+    }
+    {
+        pt::uint64_t base = tasks[next_id].fs_base;
+        asm volatile("wrmsr" :: "c"(0xC0000100U),
+                     "a"((pt::uint32_t)(base & 0xFFFFFFFF)),
+                     "d"((pt::uint32_t)(base >> 32)));
+    }
+
     return tasks[next_id].preempt_rsp;
 }
 
@@ -557,11 +581,14 @@ void TaskScheduler::kill_user_tasks()
 
         klog("[SCHEDULER] kill_user_tasks: killing task %d\n", i);
 
-        // Close any open file descriptors and free the table.
+        // Decrement FdTable refcount; close and free only when last reference.
         if (t->fd_table) {
-            for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
-                close_fd(&t->fd_table[fd]);
-            vmm.kfree(t->fd_table);
+            t->fd_table->refcount--;
+            if (t->fd_table->refcount == 0) {
+                for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
+                    close_fd(&t->fd_table->fds[fd]);
+                vmm.kfree(t->fd_table);
+            }
             t->fd_table = nullptr;
         }
 
@@ -578,14 +605,15 @@ void TaskScheduler::kill_user_tasks()
             t->kernel_stack_base = 0;
         }
 
-        // Free per-task PML4 frame.
-        if (t->cr3 != 0 && t->cr3 != kernel_cr3) {
+        // Free per-task PML4 frame only if this task owns its page tables.
+        if (t->owns_page_tables && t->cr3 != 0 && t->cr3 != kernel_cr3) {
             vmm.free_frame(t->cr3);
             t->cr3 = 0;
         }
 
-        // Free all user page tables and mapped frames.
-        free_user_pagetables(t);
+        // Free all user page tables and mapped frames (only for process owners).
+        if (t->owns_page_tables)
+            free_user_pagetables(t);
 
         t->state = TASK_DEAD;
         task_count--;
@@ -603,11 +631,14 @@ bool TaskScheduler::kill_task(pt::uint32_t pid)
 
     klog("[SCHEDULER] kill_task: killing task %d\n", pid);
 
-    // Close any open file descriptors and free the table.
+    // Decrement FdTable refcount; close and free only when last reference.
     if (t->fd_table) {
-        for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
-            close_fd(&t->fd_table[fd]);
-        vmm.kfree(t->fd_table);
+        t->fd_table->refcount--;
+        if (t->fd_table->refcount == 0) {
+            for (pt::size_t fd = 0; fd < Task::MAX_FDS; fd++)
+                close_fd(&t->fd_table->fds[fd]);
+            vmm.kfree(t->fd_table);
+        }
         t->fd_table = nullptr;
     }
 
@@ -624,14 +655,15 @@ bool TaskScheduler::kill_task(pt::uint32_t pid)
         t->kernel_stack_base = 0;
     }
 
-    // Free per-task PML4 frame.
-    if (t->cr3 != 0 && t->cr3 != kernel_cr3) {
+    // Free per-task PML4 frame (only if this task owns its page tables).
+    if (t->owns_page_tables && t->cr3 != 0 && t->cr3 != kernel_cr3) {
         vmm.free_frame(t->cr3);
         t->cr3 = 0;
     }
 
-    // Free all user page tables and mapped frames.
-    free_user_pagetables(t);
+    // Free all user page tables and mapped frames (only for process owners).
+    if (t->owns_page_tables)
+        free_user_pagetables(t);
 
     // Wake any parent blocked in waitpid.
     for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
@@ -937,11 +969,14 @@ void TaskScheduler::task_exit(int exit_code)
         // Store exit code so waitpid_task() can read it.
         current->exit_code = exit_code;
 
-        // Close any file descriptors left open by this task.
+        // Decrement FdTable refcount; only close FDs and free when last reference.
         if (current->fd_table) {
-            for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
-                close_fd(&current->fd_table[i]);
-            vmm.kfree(current->fd_table);
+            current->fd_table->refcount--;
+            if (current->fd_table->refcount == 0) {
+                for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+                    close_fd(&current->fd_table->fds[i]);
+                vmm.kfree(current->fd_table);
+            }
             current->fd_table = nullptr;
         }
 
@@ -963,6 +998,14 @@ void TaskScheduler::task_exit(int exit_code)
             }
         }
 
+        // Wake any thread blocked in thread_join_task() waiting on us.
+        if (current->join_tid != INVALID_TID &&
+            current->join_tid < MAX_TASKS &&
+            tasks[current->join_tid].state == TASK_BLOCKED) {
+            tasks[current->join_tid].state = TASK_READY;
+            klog("[SCHEDULER] Unblocked joining task %d\n", current->join_tid);
+        }
+
         if (current->window_id != INVALID_WID && current->owns_window) {
             WindowManager::destroy_window(current->window_id);
         }
@@ -975,17 +1018,30 @@ void TaskScheduler::task_exit(int exit_code)
             klog("[SCHEDULER] Released audio device from task %d\n", current->id);
         }
 
-        // Zero page table pointers so lazy cleanup in create_task()
-        // won't dereference stale values.  The actual frames leak, but
-        // it's safe.  (We can't call free_user_pagetables here because
-        // this task's CR3 is still active.)
-        for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++)
-            current->priv_pt[k] = 0;
-        current->num_priv_pts = 0;
-        current->stack_pt     = 0;
-        current->user_pd      = 0;
-        current->user_pdpt    = 0;
-        current->user_heap_top = 0;
+        // For threads (owns_page_tables==false): zero PT pointers but do not
+        // free page table frames — the owner process still needs them.
+        // For processes: zero PT pointers; lazy free happens in create_task().
+        // (We can't call free_user_pagetables here because this task's CR3 is
+        // still active — the frames would leak but that is already the case.)
+        if (!current->owns_page_tables) {
+            // Thread: clear borrowed refs but don't free anything.
+            for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++)
+                current->priv_pt[k] = 0;
+            current->num_priv_pts = 0;
+            current->stack_pt     = 0;
+            current->user_pd      = 0;
+            current->user_pdpt    = 0;
+            current->user_heap_top = 0;
+            current->cr3          = 0;  // don't free this CR3 in create_task lazy cleanup
+        } else {
+            for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++)
+                current->priv_pt[k] = 0;
+            current->num_priv_pts = 0;
+            current->stack_pt     = 0;
+            current->user_pd      = 0;
+            current->user_pdpt    = 0;
+            current->user_heap_top = 0;
+        }
 
         current->state = TASK_DEAD;
         task_count--;
@@ -1219,17 +1275,23 @@ pt::uint32_t TaskScheduler::fork_task(pt::uintptr_t syscall_frame_rsp)
     // Inherit parent's FPU/SSE state so the child resumes with valid x87/SSE context.
     memcpy(child->fxsave_area, parent->fxsave_area, 512);
 
-    // Allocate and copy open file descriptors (shallow copy — positions are independent).
-    child->fd_table = static_cast<File*>(vmm.kcalloc(Task::MAX_FDS * sizeof(File)));
+    // Allocate a fresh FdTable for the child (deep copy; refcount=1).
+    // fork() creates a new process with its own independent FD table.
+    child->fd_table = static_cast<FdTable*>(vmm.kcalloc(sizeof(FdTable)));
+    child->fd_table->refcount = 1;
     if (parent->fd_table) {
         for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
-            child->fd_table[i] = parent->fd_table[i];
+            child->fd_table->fds[i] = parent->fd_table->fds[i];
     }
+    child->owns_page_tables = true;
+    child->join_tid         = INVALID_TID;
+    child->thread_result    = nullptr;
+    child->fs_base          = parent->fs_base;
 
     // Increment ref_count for every pipe FD inherited by the child so that
     // each end is closed independently without premature buffer freeing.
     for (pt::size_t i = 0; i < Task::MAX_FDS; i++) {
-        File* f = &child->fd_table[i];
+        File* f = &child->fd_table->fds[i];
         if (f->open && (f->type == FdType::PIPE_RD || f->type == FdType::PIPE_WR)) {
             PipeBuffer* pipe = pipe_get_buf(f->fs_data);
             pipe->ref_count++;
@@ -1825,6 +1887,13 @@ const char* const g_syscall_names[] = {
     "SYS_AUDIO_CLOSE",    // 52
 };
 
+void TaskScheduler::wake_task(pt::uint32_t id)
+{
+    if (id >= MAX_TASKS) return;
+    if (tasks[id].state == TASK_BLOCKED)
+        tasks[id].state = TASK_READY;
+}
+
 void TaskScheduler::perf_reset_counters()
 {
     if (g_perf_data)
@@ -1924,4 +1993,210 @@ void TaskScheduler::perf_dump()
 
     vmm.kfree(g_perf_data);
     g_perf_data = nullptr;
+}
+
+// ─── create_thread_task ──────────────────────────────────────────────────────
+//
+// Spawn a new thread in the current task's address space.
+// Shares the caller's CR3 and FdTable (refcount incremented).
+// The new thread starts at `entry` with RSP=stack_ptr and RDI=arg.
+// tls_base is stored in the new task's fs_base and activated on first schedule.
+//
+pt::uint32_t TaskScheduler::create_thread_task(pt::uintptr_t entry,
+                                               pt::uintptr_t stack_ptr,
+                                               pt::uint64_t  arg,
+                                               pt::uint64_t  tls_base)
+{
+    if (task_count >= MAX_TASKS) {
+        klog("[THREAD] Max tasks reached\n");
+        return 0xFFFFFFFF;
+    }
+
+    Task* parent = get_current_task();
+    if (!parent || !parent->user_mode) {
+        klog("[THREAD] create_thread_task from non-user task not supported\n");
+        return 0xFFFFFFFF;
+    }
+
+    // Find a free slot.
+    Task* child = nullptr;
+    pt::uint32_t child_id = 0xFFFFFFFF;
+    for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+        if (tasks[i].state == TASK_DEAD) {
+            child    = &tasks[i];
+            child_id = i;
+            break;
+        }
+    }
+    if (!child) {
+        klog("[THREAD] No free task slot\n");
+        return 0xFFFFFFFF;
+    }
+
+    // Lazy cleanup of previous occupant's kernel stack.
+    if (child->kernel_stack_base != 0) {
+        vmm.kfree((void*)child->kernel_stack_base);
+        child->kernel_stack_base = 0;
+    }
+
+    // Allocate new kernel stack for the thread.
+    void* kstack = vmm.kmalloc(TASK_STACK_SIZE);
+    if (!kstack) {
+        klog("[THREAD] Failed to allocate kernel stack\n");
+        return 0xFFFFFFFF;
+    }
+
+    // Build a PUSHALL + iretq frame on the kernel stack.
+    // Frame layout (ascending from preempt_rsp):
+    //   [r15][r14][r13][r12][r11][r10][r9][r8][rdi][rsi][rbp][rdx][rcx][rbx][rax]
+    //   [rip][cs][rflags][user_rsp][ss]
+    pt::uint64_t* stack = (pt::uint64_t*)((pt::uint8_t*)kstack + TASK_STACK_SIZE);
+    *(--stack) = 0x23;        // SS  (user data, DPL=3)
+    *(--stack) = stack_ptr;   // RSP (thread user stack top)
+    *(--stack) = 0x202;       // RFLAGS (IF=1)
+    *(--stack) = 0x1B;        // CS  (user code, DPL=3)
+    *(--stack) = entry;       // RIP (thread entry point)
+    for (int i = 0; i < 15; i++)
+        *(--stack) = 0;
+
+    // Patch RDI (index 8 from preempt_rsp) with the thread argument.
+    // PUSHALL order: rax,rbx,rcx,rdx,rbp,rsi,rdi,r8..r15 → rdi is at [8].
+    stack[8] = arg;
+
+    // Populate child Task struct.
+    child->id                = child_id;
+    child->state             = TASK_READY;
+    child->kernel_stack_base = (pt::uintptr_t)kstack;
+    child->kernel_stack_size = TASK_STACK_SIZE;
+    child->ticks_alive       = 0;
+    child->preempt_rsp       = (pt::uintptr_t)stack;
+    child->cr3               = parent->cr3;       // share parent's CR3
+    child->owns_page_tables  = false;             // thread, not process
+    child->user_mode         = true;
+    child->user_stack_base   = 0;
+    child->user_pdpt         = parent->user_pdpt;
+    child->user_pd           = parent->user_pd;
+    child->stack_pt          = parent->stack_pt;
+    child->user_heap_top     = parent->user_heap_top;
+    child->num_priv_pts      = parent->num_priv_pts;
+    for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++)
+        child->priv_pt[k] = parent->priv_pt[k];
+    child->parent_id         = parent->id;
+    child->waiting_for       = 0xFFFFFFFF;
+    child->join_tid          = INVALID_TID;
+    child->thread_result     = nullptr;
+    child->exit_code         = 0;
+    child->sleep_deadline    = 0;
+    child->syscall_frame_rsp = 0;
+    child->window_id         = INVALID_WID;
+    child->owns_window       = false;
+    child->vterm_id          = parent->vterm_id;
+    child->priority          = parent->priority;
+    child->remaining_ticks   = SCHEDULER_QUANTUM;
+    child->fs_base           = tls_base;
+    memcpy(child->fxsave_area, parent->fxsave_area, 512);
+    child->name[0] = '\0';  // threads don't carry their own display name
+    child->env_buf_len = 0;
+
+    // Share parent's FdTable (refcount increment).
+    child->fd_table = parent->fd_table;
+    parent->fd_table->refcount++;
+
+    task_count++;
+    klog("[THREAD] Created thread %d from task %d, entry=%lx stack=%lx\n",
+         child_id, parent->id, entry, stack_ptr);
+
+    return child_id;
+}
+
+// ─── thread_exit_task ────────────────────────────────────────────────────────
+//
+// Exit the current thread.  Stores result, decrements FdTable refcount,
+// wakes any joiner, marks dead, yields.
+//
+void TaskScheduler::thread_exit_task(void* result)
+{
+    Task* current = get_current_task();
+    if (!current) return;
+
+    klog("[THREAD] Thread %d exiting, result=%p\n", current->id, result);
+
+    current->thread_result = result;
+
+    // Decrement FdTable refcount.
+    if (current->fd_table) {
+        current->fd_table->refcount--;
+        if (current->fd_table->refcount == 0) {
+            for (pt::size_t i = 0; i < Task::MAX_FDS; i++)
+                close_fd(&current->fd_table->fds[i]);
+            vmm.kfree(current->fd_table);
+        }
+        current->fd_table = nullptr;
+    }
+
+    // Do NOT free page tables — they are owned by the parent process.
+    // Clear pointers so lazy cleanup in create_task() doesn't re-free them.
+    for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++) current->priv_pt[k] = 0;
+    current->num_priv_pts = 0;
+    current->stack_pt     = 0;
+    current->user_pd      = 0;
+    current->user_pdpt    = 0;
+    current->user_heap_top = 0;
+    current->cr3          = 0;  // prevent lazy PML4 free in create_task
+
+    // Wake any thread blocked in thread_join_task() waiting on us.
+    if (current->join_tid != INVALID_TID &&
+        current->join_tid < MAX_TASKS) {
+        if (tasks[current->join_tid].state == TASK_BLOCKED) {
+            tasks[current->join_tid].state = TASK_READY;
+            klog("[THREAD] Woke joiner task %d\n", current->join_tid);
+        }
+    }
+
+    // Become ZOMBIE — slot stays reserved until thread_join_task() collects the
+    // result and flips us to TASK_DEAD.  This prevents TID reuse before join.
+    current->state = TASK_ZOMBIE;
+    task_count--;
+    asm volatile("int 0x81");  // yield to scheduler
+    __builtin_unreachable();
+}
+
+// ─── thread_join_task ────────────────────────────────────────────────────────
+//
+// Block until thread `tid` exits; return its thread_result.
+// Returns (uint64_t)-1 if tid is invalid.
+//
+pt::uint64_t TaskScheduler::thread_join_task(pt::uint32_t tid)
+{
+    if (tid >= MAX_TASKS) return (pt::uint64_t)-1;
+
+    Task* target = &tasks[tid];
+
+    // Fast path: thread already zombie (exited, waiting to be joined).
+    if (target->state == TASK_ZOMBIE) {
+        pt::uint64_t result = (pt::uint64_t)(pt::uintptr_t)target->thread_result;
+        target->state = TASK_DEAD;  // release slot for reuse
+        return result;
+    }
+
+    // Error: slot is free or belongs to a completely different task.
+    if (target->state == TASK_DEAD) {
+        return (pt::uint64_t)-1;
+    }
+
+    // Slow path: register as joiner and block until thread exits.
+    if (target->join_tid != INVALID_TID) {
+        klog("[THREAD] thread_join_task: tid %d already has a joiner\n", tid);
+        return (pt::uint64_t)-1;
+    }
+    // Safe on single-core: no task_yield() between the state checks above and
+    // the join_tid write here, so the target thread cannot exit in between.
+    target->join_tid = current_task_id;
+    tasks[current_task_id].state = TASK_BLOCKED;
+    task_yield();  // yield; woken by thread_exit_task when target goes ZOMBIE
+
+    // When we resume, the thread is ZOMBIE and thread_result is set.
+    pt::uint64_t result = (pt::uint64_t)(pt::uintptr_t)target->thread_result;
+    target->state = TASK_DEAD;  // release slot for reuse
+    return result;
 }

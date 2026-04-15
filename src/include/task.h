@@ -8,7 +8,10 @@ enum TaskState {
     TASK_READY = 0,
     TASK_RUNNING = 1,
     TASK_BLOCKED = 2,
-    TASK_DEAD = 3
+    TASK_DEAD = 3,
+    // Thread exited but not yet joined — result is valid; slot must not be reused.
+    // Transitions to TASK_DEAD only when thread_join_task() consumes the result.
+    TASK_ZOMBIE = 4
 };
 
 // Saved CPU context for a task
@@ -33,9 +36,18 @@ struct TaskContext {
     pt::uint64_t rflags;
 } __attribute__((packed));
 
+static constexpr pt::size_t TASK_MAX_FDS = 32;
+constexpr pt::uint32_t INVALID_TID = 0xFFFFFFFF;
+
+// Ref-counted file-descriptor table shared between threads.
+struct FdTable {
+    File         fds[TASK_MAX_FDS];
+    pt::uint32_t refcount;
+};
+
 // Task control block
 struct Task {
-    static constexpr pt::size_t MAX_FDS = 32;
+    static constexpr pt::size_t MAX_FDS = TASK_MAX_FDS;
 
     pt::uint32_t id;
     TaskState state;
@@ -58,9 +70,12 @@ struct Task {
     // overwriting the user's call frames when a syscall fires.
     // 0 for kernel-mode tasks.
     pt::uintptr_t user_stack_base;
-    // Per-task open file descriptors.  slot.open==false means free.
+    // Ref-counted file-descriptor table; shared between threads of the same process.
     // Heap-allocated in create_task() to keep the static Task array small.
-    File* fd_table;
+    FdTable*      fd_table;          // ref-counted, shared between threads
+    bool          owns_page_tables;  // false for threads (borrows creator's CR3)
+    pt::uint32_t  join_tid;          // task waiting to join this one (INVALID_TID if none)
+    void*         thread_result;     // value from SYS_THREAD_EXIT / pthread_exit
 
     // Per-task user-space page-table frames.
     // user_pdpt/user_pd are fresh (not boot-table copies), wired at PML4[0].
@@ -118,10 +133,15 @@ struct Task {
     // global so that a stale g_syscall_rsp (overwritten by a child's SYS_EXIT
     // during waitpid blocking) cannot corrupt the parent's iretq frame patch.
     pt::uintptr_t syscall_frame_rsp;
+
+    // Saved FS segment base (MSR 0xC0000100).
+    // Written by SYS_SET_FS_BASE and by SYS_THREAD_CREATE (for new thread TLS).
+    // Saved/restored on every context switch so each thread has its own TLS pointer.
+    pt::uint64_t fs_base;
 };
 
 // Per-task syscall profiling counters (separate from Task to keep struct small).
-static constexpr pt::size_t NUM_SYSCALLS = 56;
+static constexpr pt::size_t NUM_SYSCALLS = 60;
 struct SyscallPerfData {
     pt::uint64_t counts[NUM_SYSCALLS];
     pt::uint64_t usec[NUM_SYSCALLS];
@@ -240,6 +260,24 @@ public:
     static pt::uint64_t waitpid_task(pt::uint32_t child_id,
                                      int* out_exit_code);
 
+    // create_thread_task: spawn a new thread in the current task's address space.
+    // The new thread shares the caller's CR3 and FdTable (refcount incremented).
+    // entry = user-mode RIP, stack_ptr = initial user RSP, arg = value placed in
+    // RDI when entry is called, tls_base = FS_BASE for the new thread.
+    // Returns new task ID, or 0xFFFFFFFF on failure.
+    static pt::uint32_t create_thread_task(pt::uintptr_t entry,
+                                           pt::uintptr_t stack_ptr,
+                                           pt::uint64_t  arg,
+                                           pt::uint64_t  tls_base);
+
+    // thread_exit_task: exit the current thread (not the whole process).
+    // Stores result, decrements FdTable refcount, wakes any joiner, marks dead.
+    static void thread_exit_task(void* result);
+
+    // thread_join_task: block until thread tid exits, return its thread_result.
+    // Returns (uint64_t)-1 if tid is invalid or already waited on.
+    static pt::uint64_t thread_join_task(pt::uint32_t tid);
+
     // Block the current task for at least ms milliseconds, then resume.
     // Returns immediately if ms == 0.
     static void sleep_task(pt::uint64_t ms);
@@ -263,6 +301,10 @@ public:
 
     // Print per-task syscall profiling results to the active VTerm.
     static void perf_dump();
+
+    // Wake a task blocked on a futex: set state TASK_BLOCKED -> TASK_READY.
+    // Safe to call from syscall context (interrupts may be enabled).
+    static void wake_task(pt::uint32_t id);
 
 private:
     static Task tasks[MAX_TASKS];

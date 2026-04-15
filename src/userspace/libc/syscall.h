@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 /* Linux syscall numbers needed by C++ stdlib (futex for atomics/mutex). */
 #ifndef SYS_futex
@@ -70,6 +71,14 @@ static inline long syscall(long nr, ...) { (void)nr; return 0; }
 #define SYS_UDP_OPEN        53  /* rdi=port (0=ephemeral); returns fd or -1            */
 #define SYS_UDP_SENDTO      54  /* rdi=fd, rsi=buf, rdx=len, rcx=dst_ip, r8=dst_port   */
 #define SYS_UDP_RECVFROM    55  /* rdi=fd, rsi=buf, rdx=len, rcx=*peer, r8=timeout     */
+#define SYS_THREAD_CREATE   56  /* rdi=entry, rsi=stack_ptr, rdx=arg, rcx=tls_base; returns tid or -1 */
+#define SYS_THREAD_EXIT     57  /* rdi=result; terminate calling thread                */
+#define SYS_FUTEX           58  /* rdi=op, rsi=addr, rdx=val; WAIT=0 WAKE=1           */
+#define SYS_THREAD_JOIN     59  /* rdi=tid; returns thread result or (uint64_t)-1     */
+
+/* Futex operation codes (op argument to SYS_FUTEX / sys_futex). */
+#define FUTEX_WAIT 0  /* block if *addr == val; return 0 on wake, -1 if mismatch */
+#define FUTEX_WAKE 1  /* wake up to val threads waiting on addr; return wake count */
 
 /* POSIX-like mprotect prot flags */
 #define PROT_NONE  0
@@ -112,6 +121,17 @@ static inline long __sc3(long nr, long a1, long a2, long a3)
     __asm__ volatile("int $0x80"
                      : "=a"(ret)
                      : "a"(nr), "D"(a1), "S"(a2), "d"(a3)
+                     : "memory");
+    return ret;
+}
+
+static inline long __sc4(long nr, long a1, long a2, long a3, long a4)
+{
+    long ret;
+    register long _a4 __asm__("rcx") = a4;
+    __asm__ volatile("int $0x80"
+                     : "=a"(ret)
+                     : "a"(nr), "D"(a1), "S"(a2), "d"(a3), "r"(_a4)
                      : "memory");
     return ret;
 }
@@ -401,3 +421,30 @@ static inline long sys_udp_recvfrom(int fd, void *buf, unsigned long len,
                                     long timeout_ticks)
     { return __sc5(SYS_UDP_RECVFROM, (long)fd, (long)buf, (long)len,
                    (long)peer_out, (long)timeout_ticks); }
+
+/* ── pthread / thread syscalls ────────────────────────────────────────────── */
+
+/* Create a new thread starting at entry(arg), using the given pre-allocated
+ * stack (stack_ptr should point one past the top of the stack region) and
+ * TLS base (written to FS via SYS_SET_FS_BASE by the kernel on thread start).
+ * Returns the new thread ID, or (uint32_t)-1 on failure. */
+static inline uint32_t sys_thread_create(void *entry, void *stack_ptr,
+                                          void *arg, void *tls_base)
+    { return (uint32_t)__sc4(SYS_THREAD_CREATE, (long)entry, (long)stack_ptr,
+                              (long)arg, (long)tls_base); }
+
+/* Terminate the calling thread, publishing result for sys_thread_join().
+ * Does not return. */
+static inline void sys_thread_exit(void *result)
+    { __sc1(SYS_THREAD_EXIT, (long)result); }
+
+/* Futex: FUTEX_WAIT blocks the thread if *addr == val (returns 0 on wake,
+ * -1 if *addr != val at call time).  FUTEX_WAKE wakes up to val threads
+ * waiting on addr and returns the number actually woken. */
+static inline long sys_futex(int op, uint32_t *addr, uint32_t val)
+    { return __sc3(SYS_FUTEX, (long)op, (long)addr, (long)val); }
+
+/* Wait for thread tid to finish.  Returns the value passed to
+ * sys_thread_exit(), or (uint64_t)-1 on error (bad tid, already joined). */
+static inline uint64_t sys_thread_join(uint32_t tid)
+    { return (uint64_t)__sc1(SYS_THREAD_JOIN, (long)tid); }

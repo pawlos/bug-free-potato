@@ -64,7 +64,8 @@ LIBC_SRCS = src/userspace/libc/stdio.c \
             src/userspace/libc/file.c \
             src/userspace/libc/math.c \
             src/userspace/libc/dirent.c \
-            src/userspace/libc/sdl2.c
+            src/userspace/libc/sdl2.c \
+            src/userspace/libc/pthread.c
 LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
 LIBC_ASM_SRCS = src/userspace/libc/setjmp.asm
 LIBC_ASM_OBJS = $(patsubst src/userspace/libc/%.asm, build/userspace/libc/%.o, $(LIBC_ASM_SRCS))
@@ -90,7 +91,7 @@ $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest \
                pidtest stattest envtest xxd kilo taskbar sysmon \
-               sdl2demo nslookup
+               sdl2demo nslookup pthread_demo
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
 SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
@@ -225,7 +226,8 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 	copy_file dist/userspace/xxd.elf         BIN/XXD.ELF; \
 	copy_file dist/userspace/kilo.elf        BIN/KILO.ELF; \
 	copy_file dist/userspace/sdl2demo.elf   BIN/SDL2DEMO.ELF; \
-	copy_file dist/userspace/nslookup.elf   BIN/NSLOOKUP.ELF; \
+	copy_file dist/userspace/nslookup.elf    BIN/NSLOOKUP.ELF; \
+	copy_file dist/userspace/pthread_demo.elf BIN/PTHREAD_DEMO.ELF; \
 	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \
 	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
 	copy_file $(IMGVIEW_ELF)                 BIN/IMGVIEW.ELF; \

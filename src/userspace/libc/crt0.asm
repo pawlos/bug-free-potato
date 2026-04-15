@@ -14,8 +14,11 @@ section .text
 _start:
     xor     rbp, rbp        ; mark bottom of call chain
 
-    ; Set up FS base for TLS (stack canary at %fs:0x28 used by libstdc++)
+    ; Set up FS base for TLS (stack canary at %fs:0x28 used by libstdc++).
+    ; Write the self-pointer at _tls_block[0] first so that __errno_location()
+    ; (%fs:0 → TC base, TC+12 → errno_val) works for the main thread.
     lea     rdi, [rel _tls_block]
+    mov     [rdi], rdi      ; ThreadControl::tls_self = &_tls_block (self-pointer)
     mov     eax, 48         ; SYS_SET_FS_BASE
     int     0x80
 

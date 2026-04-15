@@ -261,8 +261,6 @@ void srand(unsigned int seed) { rand_state = seed; }
 
 /* ── time ─────────────────────────────────────────────────────────────────── */
 
-/* errno stub (declared in errno.h; Doom links against it) */
-int errno = 0;
 
 time_t time(time_t *t)
 {

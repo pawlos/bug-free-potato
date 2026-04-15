@@ -18,6 +18,15 @@
 
 extern pt::uintptr_t g_syscall_rsp;
 
+// Futex waiter list: one slot per task slot.
+// addr==nullptr means this slot is free.
+struct FutexWaiter {
+    pt::uint32_t* addr;   // userspace VA being waited on (nullptr = free)
+    pt::uint32_t  tid;    // task slot index of the waiting task
+};
+static constexpr pt::size_t FUTEX_MAX_WAITERS = TaskScheduler::MAX_TASKS;
+static FutexWaiter g_futex_waiters[FUTEX_MAX_WAITERS];
+
 // Per-syscall trace logging. Compile with -DSYSCALL_LOG to enable the noisy
 // "syscall: SYS_..." messages (SYS_OPEN/SYS_CLOSE/SYS_MMAP and friends).
 // Without it the syscall dispatcher stays quiet while other subsystems can
@@ -57,10 +66,10 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 				return (pt::uint64_t)n;
 			}
 			Task* t = TaskScheduler::get_current_task();
-			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table->fds[fd].open)
 				return (pt::uint64_t)-1;
 			{
-				File* f = &t->fd_table[fd];
+				File* f = &t->fd_table->fds[fd];
 				if (f->type == FdType::FILE)
 					return (pt::uint64_t)VFS::write_file(f, buf, n);
 				if (f->type == FdType::PIPE_WR) {
@@ -121,17 +130,17 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			// Find a free fd slot; 0/1/2 are reserved for stdin/stdout/stderr.
 			int fd = -1;
 			for (int i = 3; i < (int)Task::MAX_FDS; i++) {
-				if (!t->fd_table[i].open) { fd = i; break; }
+				if (!t->fd_table->fds[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
 				sclog("syscall: SYS_OPEN: no free fd (task %d '%s')\n", t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
-			if (!VFS::open_file(filename, &t->fd_table[fd])) {
+			if (!VFS::open_file(filename, &t->fd_table->fds[fd])) {
 				sclog("syscall: SYS_OPEN: '%s' not found (task %d '%s')\n", filename, t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
-			t->fd_table[fd].type = FdType::FILE;
+			t->fd_table->fds[fd].type = FdType::FILE;
 			sclog("syscall: SYS_OPEN: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
@@ -140,9 +149,9 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			void* buf        = reinterpret_cast<void*>(arg2);
 			pt::uint32_t count = (pt::uint32_t)arg3;
 			Task* t = TaskScheduler::get_current_task();
-			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table->fds[fd].open)
 				return (pt::uint64_t)-1;
-			File* f = &t->fd_table[fd];
+			File* f = &t->fd_table->fds[fd];
 			if (f->type == FdType::FILE)
 				return (pt::uint64_t)VFS::read_file(f, buf, count);
 			if (f->type == FdType::PIPE_RD) {
@@ -170,9 +179,9 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 		case SYS_CLOSE: {
 			int fd = (int)(pt::int8_t)arg1;
 			Task* t = TaskScheduler::get_current_task();
-			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table->fds[fd].open)
 				return (pt::uint64_t)-1;
-			File* f = &t->fd_table[fd];
+			File* f = &t->fd_table->fds[fd];
 			if (f->type == FdType::FILE) {
 				VFS::close_file(f);
 			} else if (f->type == FdType::TCP_SOCK) {
@@ -325,7 +334,7 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			// Find two free fd slots; 0/1/2 are reserved for stdin/stdout/stderr.
 			int rd_fd = -1, wr_fd = -1;
 			for (int i = 3; i < (int)Task::MAX_FDS && (rd_fd == -1 || wr_fd == -1); i++) {
-				if (!t->fd_table[i].open) {
+				if (!t->fd_table->fds[i].open) {
 					if (rd_fd == -1) rd_fd = i;
 					else             wr_fd = i;
 				}
@@ -345,12 +354,12 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			pipe->read_pos      = 0;
 			pipe->write_pos     = 0;
 			// Set up read end.
-			File* rd = &t->fd_table[rd_fd];
+			File* rd = &t->fd_table->fds[rd_fd];
 			rd->open = true;
 			rd->type = FdType::PIPE_RD;
 			pipe_set_buf(rd->fs_data, pipe);
 			// Set up write end.
-			File* wr = &t->fd_table[wr_fd];
+			File* wr = &t->fd_table->fds[wr_fd];
 			wr->open = true;
 			wr->type = FdType::PIPE_WR;
 			pipe_set_buf(wr->fs_data, pipe);
@@ -366,9 +375,9 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			pt::int32_t offset = (pt::int32_t)(pt::int64_t)arg2;
 			int whence = (int)arg3;
 			Task* t = TaskScheduler::get_current_task();
-			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table->fds[fd].open)
 				return (pt::uint64_t)-1;
-			File* f = &t->fd_table[fd];
+			File* f = &t->fd_table->fds[fd];
 			if (f->type != FdType::FILE) return (pt::uint64_t)-1;
 			return (pt::uint64_t)VFS::seek_file(f, offset, whence);
 		}
@@ -421,17 +430,17 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			// Find a free fd slot; 0/1/2 are reserved for stdin/stdout/stderr.
 			int fd = -1;
 			for (int i = 3; i < (int)Task::MAX_FDS; i++) {
-				if (!t->fd_table[i].open) { fd = i; break; }
+				if (!t->fd_table->fds[i].open) { fd = i; break; }
 			}
 			if (fd == -1) {
 				sclog("syscall: SYS_CREATE: no free fd (task %d '%s')\n", t->id, t->name);
 				return (pt::uint64_t)-1;
 			}
-			if (!VFS::open_file_write(filename, &t->fd_table[fd])) {
+			if (!VFS::open_file_write(filename, &t->fd_table->fds[fd])) {
 				sclog("syscall: SYS_CREATE: '%s' failed\n", filename);
 				return (pt::uint64_t)-1;
 			}
-			t->fd_table[fd].type = FdType::FILE;
+			t->fd_table->fds[fd].type = FdType::FILE;
 			sclog("syscall: SYS_CREATE: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
@@ -494,11 +503,11 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			Task* t = TaskScheduler::get_current_task();
 			int fd = -1;
 			for (int i = 3; i < (int)Task::MAX_FDS; i++)
-				if (!t->fd_table[i].open) { fd = i; break; }
+				if (!t->fd_table->fds[i].open) { fd = i; break; }
 			if (fd == -1) return (pt::uint64_t)-1;
 			TcpSocket* sock = tcp_connect(dst_ip, dst_port, 250);
 			if (!sock) return (pt::uint64_t)-1;
-			File* f  = &t->fd_table[fd];
+			File* f  = &t->fd_table->fds[fd];
 			f->open  = true;
 			f->type  = FdType::TCP_SOCK;
 			tcp_sock_set(f->fs_data, sock);
@@ -642,7 +651,10 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 
 		case SYS_SET_FS_BASE: {
 			pt::uint64_t base = arg1;
-			// Set FS base via MSR 0xC0000100
+			// Set FS base via MSR 0xC0000100 and save in task struct so the
+			// scheduler restores it on context switch (needed for TLS).
+			Task* fst = TaskScheduler::get_current_task();
+			if (fst) fst->fs_base = base;
 			asm volatile("wrmsr" :: "c"(0xC0000100U),
 			             "a"((pt::uint32_t)(base & 0xFFFFFFFF)),
 			             "d"((pt::uint32_t)(base >> 32)));
@@ -660,14 +672,14 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			Task* t = TaskScheduler::get_current_task();
 			int fd = -1;
 			for (int i = 3; i < (int)Task::MAX_FDS; i++) {
-				if (!t->fd_table[i].open) { fd = i; break; }
+				if (!t->fd_table->fds[i].open) { fd = i; break; }
 			}
 			if (fd == -1) return (pt::uint64_t)-1;
-			if (!VFS::open_file_readwrite(filename, &t->fd_table[fd])) {
+			if (!VFS::open_file_readwrite(filename, &t->fd_table->fds[fd])) {
 				sclog("syscall: SYS_OPEN_RW: '%s' not found\n", filename);
 				return (pt::uint64_t)-1;
 			}
-			t->fd_table[fd].type = FdType::FILE;
+			t->fd_table->fds[fd].type = FdType::FILE;
 			sclog("syscall: SYS_OPEN_RW: '%s' -> fd %d\n", filename, fd);
 			return (pt::uint64_t)fd;
 		}
@@ -702,11 +714,11 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			Task* t = TaskScheduler::get_current_task();
 			int fd = -1;
 			for (int i = 3; i < (int)Task::MAX_FDS; i++)
-				if (!t->fd_table[i].open) { fd = i; break; }
+				if (!t->fd_table->fds[i].open) { fd = i; break; }
 			if (fd == -1) return (pt::uint64_t)-1;
 			UdpSocket* sock = udp_user_open(port);
 			if (!sock) return (pt::uint64_t)-1;
-			File* f = &t->fd_table[fd];
+			File* f = &t->fd_table->fds[fd];
 			f->open = true;
 			f->type = FdType::UDP_SOCK;
 			udp_sock_set(f->fs_data, sock);
@@ -721,9 +733,9 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			pt::uint32_t dst_ip = (pt::uint32_t)arg4;
 			pt::uint16_t dst_port = (pt::uint16_t)arg5;
 			Task* t = TaskScheduler::get_current_task();
-			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table->fds[fd].open)
 				return (pt::uint64_t)-1;
-			File* f = &t->fd_table[fd];
+			File* f = &t->fd_table->fds[fd];
 			if (f->type != FdType::UDP_SOCK) return (pt::uint64_t)-1;
 			UdpSocket* sock = udp_sock_get(f->fs_data);
 			int n = udp_user_sendto(sock, buf, len, dst_ip, dst_port);
@@ -737,9 +749,9 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			pt::uint64_t* out_peer = reinterpret_cast<pt::uint64_t*>(arg4);
 			pt::int64_t timeout = (pt::int64_t)arg5;
 			Task* t = TaskScheduler::get_current_task();
-			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table[fd].open)
+			if (fd < 0 || fd >= (int)Task::MAX_FDS || !t->fd_table->fds[fd].open)
 				return (pt::uint64_t)-1;
-			File* f = &t->fd_table[fd];
+			File* f = &t->fd_table->fds[fd];
 			if (f->type != FdType::UDP_SOCK) return (pt::uint64_t)-1;
 			UdpSocket* sock = udp_sock_get(f->fs_data);
 			pt::uint32_t ip = 0;
@@ -748,6 +760,90 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			if (n > 0 && out_peer)
 				*out_peer = (pt::uint64_t)ip | ((pt::uint64_t)port << 32);
 			return (pt::uint64_t)(pt::int64_t)n;
+		}
+
+		// ── Threading syscalls ──────────────────────────────────────────────
+
+		case SYS_THREAD_CREATE: {
+			// rdi=entry, rsi=stack_ptr, rdx=arg, rcx=tls_base
+			pt::uintptr_t tentry     = (pt::uintptr_t)arg1;
+			pt::uintptr_t tstack_ptr = (pt::uintptr_t)arg2;
+			pt::uint64_t  targ       = arg3;
+			pt::uint64_t  ttls_base  = arg4;
+			pt::uint32_t tid = TaskScheduler::create_thread_task(
+				tentry, tstack_ptr, targ, ttls_base);
+			return (pt::uint64_t)tid;
+		}
+
+		case SYS_THREAD_EXIT: {
+			// rdi=result_ptr
+			void* result = reinterpret_cast<void*>(arg1);
+			TaskScheduler::thread_exit_task(result);
+			return 0;  // unreachable
+		}
+
+		case SYS_THREAD_JOIN: {
+			// rdi=tid
+			pt::uint32_t join_tid = (pt::uint32_t)arg1;
+			return TaskScheduler::thread_join_task(join_tid);
+		}
+
+		case SYS_FUTEX: {
+			// rdi=op, rsi=addr, rdx=val
+			int op = (int)arg1;
+			pt::uint32_t* addr = reinterpret_cast<pt::uint32_t*>(arg2);
+			pt::uint32_t val = (pt::uint32_t)arg3;
+
+			if (op == 0) {  // FUTEX_WAIT
+				// Atomically: check *addr == val, then block.
+				// Disable interrupts around the check+block to prevent a FUTEX_WAKE
+				// arriving between the check and the sleep (lost-wakeup problem).
+				// Single-core: interrupt disable is sufficient for atomicity.
+				asm volatile("cli");
+				if (*addr != val) {
+					asm volatile("sti");
+					return (pt::uint64_t)-1;
+				}
+				// Find a free waiter slot.
+				int slot = -1;
+				for (int i = 0; i < (int)FUTEX_MAX_WAITERS; i++) {
+					if (g_futex_waiters[i].addr == nullptr) { slot = i; break; }
+				}
+				if (slot == -1) {
+					asm volatile("sti");
+					return (pt::uint64_t)-1;  // no waiter slots
+				}
+				Task* ct = TaskScheduler::get_current_task();
+				g_futex_waiters[slot].addr = addr;
+				g_futex_waiters[slot].tid  = ct->id;
+				// TASK_BLOCKED is set BEFORE sti so that if a timer IRQ fires
+				// between sti and task_yield(), do_switch_to_next will skip this
+				// task and the subsequent FUTEX_WAKE's wake_task() will correctly
+				// transition us to TASK_READY before we next run.  This prevents
+				// the lost-wakeup even if the timer fires in that narrow window.
+				ct->state = TASK_BLOCKED;
+				asm volatile("sti");
+				TaskScheduler::task_yield();  // switch away; safe: state already BLOCKED
+				// Do NOT clear the slot here.  FUTEX_WAKE already cleared it before
+				// calling wake_task().  If we clear it now another thread may have
+				// re-used this slot between the wake and our resumption, and we would
+				// silently destroy that thread's waiter registration.
+				return 0;
+
+			} else if (op == 1) {  // FUTEX_WAKE
+				pt::uint32_t n = val;  // max to wake
+				pt::uint32_t woken = 0;
+				for (int i = 0; i < (int)FUTEX_MAX_WAITERS && woken < n; i++) {
+					if (g_futex_waiters[i].addr == addr) {
+						pt::uint32_t wtid = g_futex_waiters[i].tid;
+						g_futex_waiters[i].addr = nullptr;
+						TaskScheduler::wake_task(wtid);
+						woken++;
+					}
+				}
+				return (pt::uint64_t)woken;
+			}
+			return (pt::uint64_t)-1;
 		}
 
 		default:

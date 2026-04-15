@@ -27,3 +27,6 @@ disk.img
 # OS-specific
 .DS_Store
 Thumbs.db
+
+# Git worktrees
+.worktrees/
