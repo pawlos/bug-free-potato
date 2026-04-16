@@ -161,6 +161,10 @@ extern pt::uintptr_t g_next_cr3;
 // Syscall profiler state — set by "perf record", cleared by "perf stop".
 extern bool g_perf_recording;
 
+// Per-task syscall profiler data — allocated by "perf record", freed by "perf stop".
+// Indexed by task ID (0..MAX_TASKS-1). nullptr when profiler is not active.
+extern SyscallPerfData* g_perf_data;
+
 // Human-readable syscall names indexed by syscall number.
 extern const char* const g_syscall_names[];
 
@@ -316,8 +320,10 @@ private:
     // Returns new preempt_rsp (or current_rsp if no switch).
     static pt::uintptr_t do_switch_to_next(pt::uintptr_t current_rsp);
 
-    // Get task by ID
+public:
+    // Get task by ID — returns nullptr if id is out of range.
     static Task* get_task(pt::uint32_t id);
+private:
 
     // irq0_schedule and yield_schedule are C-linkage functions in idt.cpp
     // that call preempt() and yield_tick() respectively.

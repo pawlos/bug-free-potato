@@ -1,6 +1,7 @@
 #include "fs/vfs.h"
 #include "fs/fat12.h"
 #include "fs/fat32.h"
+#include "fs/procfs.h"
 #include "device/disk.h"
 #include "device/disk_cache.h"
 #include "kernel.h"
@@ -13,8 +14,35 @@ inline void* operator new(__SIZE_TYPE__, void* p) noexcept { return p; }
 // Raw storage for filesystem instances — placement-new'd in VFS::mount().
 static char fat12_storage[sizeof(FAT12)] __attribute__((aligned(__alignof__(FAT12))));
 static char fat32_storage[sizeof(FAT32)] __attribute__((aligned(__alignof__(FAT32))));
+static char procfs_storage[sizeof(ProcFS)] __attribute__((aligned(__alignof__(ProcFS))));
 
 Filesystem* VFS::active_fs = nullptr;
+ProcFS*     VFS::proc_fs   = nullptr;
+
+// ── Path helpers ─────────────────────────────────────────────────────────────
+
+// Returns true if path (after stripping a leading '/') starts with "proc/" or
+// equals "proc".  Sets *rest to the part after "proc/" (empty for root).
+static bool is_proc_path(const char* path, const char** rest) {
+    if (path && path[0] == '/') path++;
+    auto ci = [](char a, char b) {
+        if (a >= 'A' && a <= 'Z') a += 32;
+        if (b >= 'A' && b <= 'Z') b += 32;
+        return a == b;
+    };
+    if (!ci(path[0],'p') || !ci(path[1],'r') || !ci(path[2],'o') || !ci(path[3],'c'))
+        return false;
+    if (path[4] == '\0') { *rest = path + 4; return true; }
+    if (path[4] != '/')  return false;
+    *rest = path + 5;
+    return true;
+}
+
+// Strip leading '/' from a path before forwarding to FAT32.
+static const char* strip_slash(const char* path) {
+    if (path && path[0] == '/') return path + 1;
+    return path;
+}
 
 // Sector buffer for reading BPB during mount detection
 static pt::uint8_t vfs_sector_buf[512] __attribute__((aligned(4)));
@@ -74,11 +102,20 @@ bool VFS::mount() {
         active_fs = new (fat32_storage) FAT32();
     }
 
-    return active_fs->mount();
+    if (!active_fs->mount()) return false;
+
+    // Mount synthetic /proc filesystem.
+    proc_fs = new (procfs_storage) ProcFS();
+    proc_fs->mount();
+    return true;
 }
 
 bool VFS::open_file(const char* filename, File* file) {
+    const char* rest;
+    if (proc_fs && is_proc_path(filename, &rest))
+        return proc_fs->open_file(rest, file);
     if (!active_fs) return false;
+    filename = strip_slash(filename);
     // Try full path first (supports subdirectories)
     if (active_fs->open_file(filename, file))
         return true;
@@ -93,6 +130,8 @@ bool VFS::open_file(const char* filename, File* file) {
 }
 
 pt::uint32_t VFS::read_file(File* file, void* buffer, pt::uint32_t bytes_to_read) {
+    if (file->type == FdType::PROC_FILE)
+        return proc_fs ? proc_fs->read_file(file, buffer, bytes_to_read) : 0;
     if (!active_fs) return 0;
     return active_fs->read_file(file, buffer, bytes_to_read);
 }
@@ -118,19 +157,28 @@ bool VFS::create_directory(const char* path) {
 }
 
 pt::uint32_t VFS::seek_file(File* file, pt::int32_t offset, int whence) {
+    if (file->type == FdType::PROC_FILE)
+        return proc_fs ? proc_fs->seek_file(file, offset, whence) : (pt::uint32_t)-1;
     if (!active_fs) return (pt::uint32_t)-1;
     return active_fs->seek_file(file, offset, whence);
 }
 
 void VFS::close_file(File* file) {
+    if (file->type == FdType::PROC_FILE) {
+        if (proc_fs) proc_fs->close_file(file);
+        return;
+    }
     if (!active_fs) return;
     active_fs->close_file(file);
 }
 
 bool VFS::file_exists(const char* filename) {
+    const char* rest;
+    if (proc_fs && is_proc_path(filename, &rest))
+        return proc_fs->file_exists(rest);
     if (!active_fs) return false;
-    if (active_fs->file_exists(filename))
-        return true;
+    filename = strip_slash(filename);
+    if (active_fs->file_exists(filename)) return true;
     const char* base = filename;
     for (const char* p = filename; *p; p++)
         if (*p == '/') base = p + 1;
@@ -161,14 +209,20 @@ bool VFS::readdir(int idx, char* name_out, pt::uint32_t* size_out) {
 
 int VFS::readdir_ex(const char* path, int idx, char* name_out,
                     pt::uint32_t* size_out, pt::uint8_t* type_out) {
+    const char* rest;
+    if (proc_fs && is_proc_path(path, &rest))
+        return proc_fs->readdir_ex(rest, idx, name_out, size_out, type_out);
     if (!active_fs) return 0;
-    return active_fs->readdir_ex(path, idx, name_out, size_out, type_out);
+    return active_fs->readdir_ex(strip_slash(path), idx, name_out, size_out, type_out);
 }
 
 bool VFS::stat_file(const char* filename, StatResult* out) {
+    const char* rest;
+    if (proc_fs && is_proc_path(filename, &rest))
+        return false;  // proc files have no FAT timestamps
     if (!active_fs) return false;
-    if (active_fs->stat_file(filename, out))
-        return true;
+    filename = strip_slash(filename);
+    if (active_fs->stat_file(filename, out)) return true;
     const char* base = filename;
     for (const char* p = filename; *p; p++)
         if (*p == '/') base = p + 1;
@@ -178,8 +232,13 @@ bool VFS::stat_file(const char* filename, StatResult* out) {
 }
 
 void VFS::list_directory(const char* path) {
+    const char* rest;
+    if (proc_fs && is_proc_path(path, &rest)) {
+        proc_fs->list_directory(rest);
+        return;
+    }
     if (!active_fs) return;
-    active_fs->list_directory(path);
+    active_fs->list_directory(strip_slash(path));
 }
 
 pt::uint32_t VFS::get_bytes_per_cluster() {

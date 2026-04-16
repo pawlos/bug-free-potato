@@ -456,3 +456,19 @@ void VMM::free_frame(pt::uintptr_t frame)
         asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
     }
 }
+
+pt::size_t VMM::get_total_mem() const {
+    if (!frame_allocator_ready || !frame_bitmap) return 0;
+    return frame_bitmap_size * 8 * 4096;
+}
+
+pt::size_t VMM::get_free_mem() const {
+    if (!frame_allocator_ready || !frame_bitmap) return 0;
+    pt::size_t free_frames = 0;
+    for (pt::size_t i = 0; i < frame_bitmap_size; i++) {
+        pt::uint8_t byte = frame_bitmap[i];
+        for (int b = 0; b < 8; b++)
+            if (!(byte & (1 << b))) free_frames++;
+    }
+    return free_frames * 4096;
+}

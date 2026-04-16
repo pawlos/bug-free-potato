@@ -80,6 +80,11 @@ public:
     void free_frame(pt::uintptr_t frame);
     void initialize_frame_allocator(memory_map_entry* mmap[]);
 
+    // Physical memory statistics (uses frame bitmap).
+    // Returns 0 if frame allocator not yet initialized.
+    pt::size_t get_total_mem() const;  // total detected RAM in bytes
+    pt::size_t get_free_mem()  const;  // free physical RAM in bytes
+
     VMM() = default;
 
     VMM(memory_map_entry* mmap[], void *l4_page_address, const pt::uintptr_t phys_start = 0x200000)
