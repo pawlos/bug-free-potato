@@ -195,7 +195,8 @@ public:
     // Pass user_mode=true to start the task at CPL=3 (ring-3).
     static pt::uint32_t create_task(void (*entry_fn)(),
                                     pt::size_t stack_size = TASK_STACK_SIZE,
-                                    bool user_mode = false);
+                                    bool user_mode = false,
+                                    bool start_blocked = false);
 
     // Get current running task
     static Task* get_current_task();

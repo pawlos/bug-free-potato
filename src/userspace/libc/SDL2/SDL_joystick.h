@@ -38,6 +38,8 @@ static inline SDL_JoystickGUID SDL_JoystickGetGUID(SDL_Joystick *j)
 static inline SDL_JoystickGUID SDL_JoystickGetDeviceGUID(int idx)
     { SDL_JoystickGUID g = {{0}}; (void)idx; return g; }
 static inline const char* SDL_JoystickNameForIndex(int idx) { (void)idx; return ""; }
+static inline void SDL_JoystickUpdate(void) {}
+static inline int  SDL_JoystickEventState(int state) { (void)state; return 0; }
 
 
 #ifdef __cplusplus

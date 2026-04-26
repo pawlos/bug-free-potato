@@ -53,6 +53,7 @@ static inline void _exit(int code) { sys_exit(code); __builtin_unreachable(); }
 static inline int truncate(const char *path, long length) { (void)path; (void)length; return -1; }
 static inline int ftruncate(int fd, long length) { (void)fd; (void)length; return -1; }
 static inline pid_t getpid(void) { return (pid_t)sys_getpid(); }
+static inline int unlink(const char *path) { return sys_remove(path); }
 
 #ifdef __cplusplus
 }

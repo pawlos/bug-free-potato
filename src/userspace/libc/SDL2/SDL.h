@@ -17,6 +17,7 @@
 #include "SDL_mouse.h"
 #include "SDL_mutex.h"
 #include "SDL_thread.h"
+#include "SDL_atomic.h"
 #include "SDL_log.h"
 #include "SDL_joystick.h"
 #include "SDL_main.h"
@@ -77,7 +78,38 @@ typedef Uint16 SDL_AudioFormat;
 #define AUDIO_S16LSB 0x8010
 #define AUDIO_S16SYS 0x8010
 #define AUDIO_S16    AUDIO_S16LSB
-#define SDL_AUDIO_ALLOW_ANY_CHANGE 0
+#define SDL_AUDIO_ALLOW_FREQUENCY_CHANGE 0x01
+#define SDL_AUDIO_ALLOW_FORMAT_CHANGE    0x02
+#define SDL_AUDIO_ALLOW_CHANNELS_CHANGE  0x04
+#define SDL_AUDIO_ALLOW_SAMPLES_CHANGE   0x08
+#define SDL_AUDIO_ALLOW_ANY_CHANGE 0x0F
+
+/* Audio conversion: handles format/channel/rate changes (real impl in sdl2.c). */
+typedef struct SDL_AudioCVT {
+    int needed;
+    SDL_AudioFormat src_format;
+    SDL_AudioFormat dst_format;
+    double rate_incr;
+    Uint8 *buf;
+    int len;
+    int len_cvt;
+    int len_mult;
+    double len_ratio;
+    /* potatOS shim extensions: real SDL stores rate/channels via filters[]
+     * pipeline; we keep them as plain fields because we resample inline. */
+    Uint8 src_channels;
+    Uint8 dst_channels;
+    int   src_rate;
+    int   dst_rate;
+    /* unused, kept for binary-compat with code that touches them */
+    void (*filters[10])(struct SDL_AudioCVT *, SDL_AudioFormat);
+    int filter_index;
+} SDL_AudioCVT;
+
+int SDL_BuildAudioCVT(SDL_AudioCVT *cvt,
+    SDL_AudioFormat src_fmt, Uint8 src_ch, int src_rate,
+    SDL_AudioFormat dst_fmt, Uint8 dst_ch, int dst_rate);
+int SDL_ConvertAudio(SDL_AudioCVT *cvt);
 
 typedef struct SDL_AudioSpec {
     int freq;
@@ -97,6 +129,14 @@ int  SDL_QueueAudio(SDL_AudioDeviceID dev, const void *data, Uint32 len);
 Uint32 SDL_GetQueuedAudioSize(SDL_AudioDeviceID dev);
 void SDL_ClearQueuedAudio(SDL_AudioDeviceID dev);
 void SDL_PauseAudioDevice(SDL_AudioDeviceID dev, int pause_on);
+/* Legacy single-device API used by SDL_mixer and Wolf4SDL's CD music path. */
+int  SDL_OpenAudio(const SDL_AudioSpec *desired, SDL_AudioSpec *obtained);
+void SDL_CloseAudio(void);
+void SDL_PauseAudio(int pause_on);
+void SDL_LockAudio(void);
+void SDL_UnlockAudio(void);
+void SDL_LockAudioDevice(SDL_AudioDeviceID dev);
+void SDL_UnlockAudioDevice(SDL_AudioDeviceID dev);
 
 static inline int SDL_GetNumAudioDevices(int iscapture) { (void)iscapture; return 1; }
 static inline const char* SDL_GetAudioDeviceName(int idx, int iscapture) { (void)idx; (void)iscapture; return "potatOS AC97"; }
@@ -141,6 +181,8 @@ SDL_RWops* SDL_AllocRW(void);
 void       SDL_FreeRW(SDL_RWops *area);
 
 int        SDL_SaveBMP_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst);
+static inline int SDL_SaveBMP(SDL_Surface *surface, const char *file)
+    { (void)surface; (void)file; return -1; }
 SDL_Surface* SDL_LoadBMP_RW(SDL_RWops *src, int freesrc);
 
 /* RWops seek constants */
@@ -167,6 +209,24 @@ static inline int SDL_GetDisplayBounds(int idx, SDL_Rect *r)
     { (void)idx; if (r) { r->x=0; r->y=0; r->w=1024; r->h=768; } return 0; }
 static inline void SDL_SetWindowSize(SDL_Window *w, int width, int height)
     { (void)w; (void)width; (void)height; }
+static inline void SDL_SetWindowMinimumSize(SDL_Window *w, int width, int height)
+    { (void)w; (void)width; (void)height; }
+static inline void SDL_SetWindowMaximumSize(SDL_Window *w, int width, int height)
+    { (void)w; (void)width; (void)height; }
+/* Returns SDL_PIXELFORMAT_ARGB8888 = 0x16362004. The shim's window surface is
+ * always 32-bit ARGB. */
+static inline Uint32 SDL_GetWindowPixelFormat(SDL_Window *w) { (void)w; return 0x16362004; }
+static inline SDL_bool SDL_PixelFormatEnumToMasks(Uint32 fmt, int *bpp,
+    Uint32 *r, Uint32 *g, Uint32 *b, Uint32 *a)
+{
+    (void)fmt;
+    if (bpp) *bpp = 32;
+    if (r) *r = 0x00FF0000;
+    if (g) *g = 0x0000FF00;
+    if (b) *b = 0x000000FF;
+    if (a) *a = 0xFF000000;
+    return SDL_TRUE;
+}
 static inline void SDL_SetWindowPosition(SDL_Window *w, int x, int y)
     { (void)w; (void)x; (void)y; }
 static inline void SDL_GetWindowPosition(SDL_Window *w, int *x, int *y)

@@ -193,7 +193,7 @@ void TaskScheduler::initialize()
     klog("[SCHEDULER] Scheduler ready (kernel as task 0)\n");
 }
 
-pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_size, bool user_mode)
+pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_size, bool user_mode, bool start_blocked)
 {
     if (task_count >= MAX_TASKS)
     {
@@ -346,7 +346,10 @@ pt::uint32_t TaskScheduler::create_task(void (*entry_fn)(), pt::size_t stack_siz
         *(--stack) = 0;
 
     new_task->preempt_rsp = (pt::uintptr_t)stack;
-    new_task->state = TASK_READY;  // frame is fully built; safe to schedule now
+    // Caller may need to wire up additional state (e.g., user_pdpt) before the
+    // task is safe to run; in that case it asks for TASK_BLOCKED and flips to
+    // TASK_READY itself once the wiring is done.
+    new_task->state = start_blocked ? TASK_BLOCKED : TASK_READY;
 
     task_count++;
     klog("[SCHEDULER] Created task %d, kstack=%lx user_rsp=%lx entry=%lx\n",
@@ -798,12 +801,14 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename,
     user_pdpt[USER_PDPT_IDX] = user_pd_frame | 0x07;
 
     // 6. Create the task (allocates kernel stack, clones boot PML4).
-    //    The task is set TASK_READY by create_task, but its PML4[0] still
-    //    points to the boot PDPT.  Immediately block it so the scheduler
-    //    cannot run it before we wire user_pdpt into PML4[0] below.
+    //    Start it BLOCKED so the scheduler can't pick it before we wire
+    //    user_pdpt into PML4[0] — otherwise the task would IRET to ring-3
+    //    with the kernel-cloned PML4, hitting the boot identity huge-page
+    //    mapping (U/S=1) at 0x400000 and executing whatever bytes happen
+    //    to live at PA 0x400000 (e.g. kernel heap garbage).
     klog("[ELF_TASK] code frames allocated; calling create_task\n");
     pt::uint32_t task_id = create_task(reinterpret_cast<void(*)()>(entry),
-                                       TASK_STACK_SIZE, true);
+                                       TASK_STACK_SIZE, true, /*start_blocked=*/true);
     if (task_id == 0xFFFFFFFF) {
         // Free all allocated frames on failure.
         for (pt::size_t k = 0; k < num_pts; k++) {
@@ -824,10 +829,9 @@ pt::uint32_t TaskScheduler::create_elf_task(const char* filename,
     }
 
     // 7. Wire new user address space into the task's PML4.
-    //    Block the task while we modify its PML4 to prevent the scheduler
-    //    from running it with the boot identity mapping at PML4[0].
+    //    Task is currently TASK_BLOCKED (start_blocked above); we'll flip it
+    //    to TASK_READY at the end of step 8 once everything is wired up.
     Task* task = &tasks[task_id];
-    task->state = TASK_BLOCKED;
     pt::uint64_t* task_pml4 = reinterpret_cast<pt::uint64_t*>(task->cr3);
     // PML4[0] → user_pdpt (P|W|U): user code, heap, stack.
     task_pml4[USER_PML4_IDX] = user_pdpt_frame | 0x07;
@@ -1016,6 +1020,59 @@ void TaskScheduler::task_exit(int exit_code)
         if (AC97::owner_task_id == (pt::int32_t)current->id) {
             AC97::close();
             klog("[SCHEDULER] Released audio device from task %d\n", current->id);
+        }
+
+        // If we own the address space, reap any child threads that share it
+        // before we leave. Otherwise they keep running with our CR3, and once
+        // create_task() reuses our slot it frees that CR3 / page-table frames
+        // out from under them — the next kernel access via their stale CR3
+        // page-faults (typically deep inside a syscall like sys_audio_write).
+        if (current->owns_page_tables) {
+            for (pt::uint32_t i = 0; i < MAX_TASKS; i++) {
+                if (i == current->id) continue;
+                Task& t = tasks[i];
+                if (t.state == TASK_DEAD) continue;
+                if (t.owns_page_tables) continue;          // separate process
+                if (t.cr3 != current->cr3) continue;       // not our thread
+
+                // Mark the thread dead in place. We can't context-switch into
+                // it to run its own task_exit (it might be blocked on a futex
+                // or sleeping in a syscall), so do the minimum cleanup here:
+                // clear borrowed page-table references and free its kernel
+                // stack so the slot can be reused safely.
+                klog("[SCHEDULER] Reaping thread %d (parent %d exiting)\n",
+                     i, current->id);
+                if (AC97::owner_task_id == (pt::int32_t)t.id) {
+                    AC97::close();
+                }
+                /* Drop our shared FdTable reference. The parent's task_exit
+                 * already decremented its own ref above, so free here only
+                 * fires if the parent had no other live thread holding it. */
+                if (t.fd_table) {
+                    t.fd_table->refcount--;
+                    if (t.fd_table->refcount == 0) {
+                        for (pt::size_t fi = 0; fi < Task::MAX_FDS; fi++)
+                            close_fd(&t.fd_table->fds[fi]);
+                        vmm.kfree(t.fd_table);
+                    }
+                    t.fd_table = nullptr;
+                }
+                t.cr3          = 0;
+                t.user_pdpt    = 0;
+                t.user_pd      = 0;
+                t.stack_pt     = 0;
+                for (pt::size_t k = 0; k < Task::MAX_PRIV_PTS; k++)
+                    t.priv_pt[k] = 0;
+                t.num_priv_pts = 0;
+                t.user_heap_top = 0;
+                if (t.kernel_stack_base != 0) {
+                    vmm.kfree((void*)t.kernel_stack_base);
+                    t.kernel_stack_base = 0;
+                }
+                t.preempt_rsp  = 0;
+                t.state        = TASK_DEAD;
+                task_count--;
+            }
         }
 
         // For threads (owns_page_tables==false): zero PT pointers but do not

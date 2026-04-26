@@ -1918,44 +1918,26 @@ SDL_Surface* IMG_Load_RW(SDL_RWops *src, int freesrc)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Task 7: Audio Stubs + Event Helpers
+ * Task 7: Event Helpers (audio impls live in sdl2_thread.c)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-SDL_AudioDeviceID SDL_OpenAudioDevice(const char *device, int iscapture,
-    const SDL_AudioSpec *desired, SDL_AudioSpec *obtained, int allowed_changes)
+int SDL_WaitEvent(SDL_Event *event)
 {
-    (void)device; (void)iscapture; (void)allowed_changes;
-    if (obtained && desired) {
-        memcpy(obtained, desired, sizeof(SDL_AudioSpec));
+    while (!SDL_PollEvent(event)) {
+        sys_sleep_ms(10);
     }
-    return 1; /* device ID 1 */
+    return 1;
 }
 
-void SDL_CloseAudioDevice(SDL_AudioDeviceID dev)
+int SDL_WaitEventTimeout(SDL_Event *event, int timeout_ms)
 {
-    (void)dev;
-}
-
-int SDL_QueueAudio(SDL_AudioDeviceID dev, const void *data, Uint32 len)
-{
-    (void)dev; (void)data; (void)len;
-    return 0;
-}
-
-Uint32 SDL_GetQueuedAudioSize(SDL_AudioDeviceID dev)
-{
-    (void)dev;
-    return 0;
-}
-
-void SDL_ClearQueuedAudio(SDL_AudioDeviceID dev)
-{
-    (void)dev;
-}
-
-void SDL_PauseAudioDevice(SDL_AudioDeviceID dev, int pause_on)
-{
-    (void)dev; (void)pause_on;
+    int waited = 0;
+    while (!SDL_PollEvent(event)) {
+        if (waited >= timeout_ms) return 0;
+        sys_sleep_ms(10);
+        waited += 10;
+    }
+    return 1;
 }
 
 int SDL_PushEvent(SDL_Event *event)
@@ -1977,19 +1959,8 @@ const Uint8* SDL_GetKeyboardState(int *numkeys)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Task 9: SDLPoP link stubs
+ * Task 9: SDLPoP link stubs (legacy audio API now lives in sdl2_thread.c)
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-/* SDL legacy audio API (non-device) — SDLPoP MIDI uses these */
-int SDL_OpenAudio(const SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
-{
-    if (obtained && desired)
-        memcpy(obtained, desired, sizeof(SDL_AudioSpec));
-    return 0;
-}
-void SDL_LockAudio(void) {}
-void SDL_UnlockAudio(void) {}
-void SDL_PauseAudio(int pause_on) { (void)pause_on; }
 
 int SDL_InitSubSystem(Uint32 flags) { (void)flags; return 0; }
 
@@ -2035,4 +2006,115 @@ int IMG_SavePNG_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst)
     (void)surface;
     if (freedst && dst) SDL_RWclose(dst);
     return -1; /* not implemented */
+}
+
+/* Layer 1 (thread/mutex/cond/sem) and Layer 2 (audio callback) implementations
+ * live in sdl2_thread.c — they include pthread.h, which conflicts with the
+ * host's <pthread.h> pulled in by stb_image.h's #include <stdlib.h>. */
+
+/* ---------------------------------------------------------------------------
+ * SDL_AudioCVT — format/channel/rate conversion.
+ *
+ * Wolf4SDL converts every digi sound (AUDIO_U8 / 1ch / 7042 Hz) up to the
+ * mixer format (AUDIO_S16SYS / 2ch / 44100 Hz) at load time, so each Mix_Chunk
+ * holds output-format PCM ready to mix. Real SDL chains a filter pipeline;
+ * here everything runs inline since the cases we need are bounded.
+ * ------------------------------------------------------------------------- */
+static int audio_bytes_per_sample(SDL_AudioFormat fmt) {
+    return (fmt & 0xFF) / 8;
+}
+
+int SDL_BuildAudioCVT(SDL_AudioCVT *cvt,
+    SDL_AudioFormat src_fmt, Uint8 src_ch, int src_rate,
+    SDL_AudioFormat dst_fmt, Uint8 dst_ch, int dst_rate)
+{
+    if (!cvt) return -1;
+    memset(cvt, 0, sizeof(*cvt));
+    cvt->src_format = src_fmt;
+    cvt->dst_format = dst_fmt;
+    cvt->src_channels = src_ch ? src_ch : 1;
+    cvt->dst_channels = dst_ch ? dst_ch : 1;
+    cvt->src_rate = src_rate;
+    cvt->dst_rate = dst_rate;
+    cvt->rate_incr = (double)dst_rate / (double)src_rate;
+    int src_bps = audio_bytes_per_sample(src_fmt); if (src_bps == 0) src_bps = 1;
+    int dst_bps = audio_bytes_per_sample(dst_fmt); if (dst_bps == 0) dst_bps = 1;
+    cvt->len_ratio = cvt->rate_incr
+                   * ((double)cvt->dst_channels / (double)cvt->src_channels)
+                   * ((double)dst_bps / (double)src_bps);
+    int mult = (int)cvt->len_ratio + 2; /* small safety margin */
+    if (mult < 2) mult = 2;
+    cvt->len_mult = mult;
+    cvt->needed = (src_fmt != dst_fmt
+                   || src_ch  != dst_ch
+                   || src_rate != dst_rate) ? 1 : 0;
+    return cvt->needed;
+}
+
+static Sint16 cvt_read_sample(const Uint8 *src, int frame, int ch,
+                              SDL_AudioFormat fmt, int src_ch)
+{
+    int idx_ch = (src_ch == 1) ? 0 : (ch < src_ch ? ch : src_ch - 1);
+    int bps = audio_bytes_per_sample(fmt);
+    int byte_idx = (frame * src_ch + idx_ch) * bps;
+    if (bps == 1) {
+        int v = (int)src[byte_idx] - 128;
+        return (Sint16)(v * 256);
+    }
+    return *(const Sint16*)(src + byte_idx);
+}
+
+static void cvt_write_sample(Uint8 *dst, int frame, int ch,
+                             SDL_AudioFormat fmt, int dst_ch, Sint16 val)
+{
+    int bps = audio_bytes_per_sample(fmt);
+    int byte_idx = (frame * dst_ch + ch) * bps;
+    if (bps == 1) {
+        int v = (int)val / 256 + 128;
+        if (v < 0) v = 0; else if (v > 255) v = 255;
+        dst[byte_idx] = (Uint8)v;
+    } else {
+        *(Sint16*)(dst + byte_idx) = val;
+    }
+}
+
+int SDL_ConvertAudio(SDL_AudioCVT *cvt)
+{
+    if (!cvt || !cvt->buf) return -1;
+    if (!cvt->needed) { cvt->len_cvt = cvt->len; return 0; }
+
+    int src_bps = audio_bytes_per_sample(cvt->src_format); if (src_bps == 0) src_bps = 1;
+    int dst_bps = audio_bytes_per_sample(cvt->dst_format); if (dst_bps == 0) dst_bps = 1;
+    int src_ch  = cvt->src_channels ? cvt->src_channels : 1;
+    int dst_ch  = cvt->dst_channels ? cvt->dst_channels : 1;
+
+    int src_frames = cvt->len / (src_bps * src_ch);
+    if (src_frames <= 0) { cvt->len_cvt = 0; return 0; }
+
+    int dst_frames = (int)((double)src_frames * cvt->rate_incr);
+    if (dst_frames < 1) dst_frames = 1;
+    int dst_size = dst_frames * dst_ch * dst_bps;
+    int max_size = cvt->len * cvt->len_mult;
+    if (dst_size > max_size) {
+        dst_frames = max_size / (dst_ch * dst_bps);
+        dst_size = dst_frames * dst_ch * dst_bps;
+    }
+
+    /* Read from a copy because we expand in-place into the same buffer. */
+    Uint8 *staging = (Uint8*)malloc(cvt->len);
+    if (!staging) return -1;
+    memcpy(staging, cvt->buf, cvt->len);
+
+    for (int f = 0; f < dst_frames; f++) {
+        int sf = (int)((double)f / cvt->rate_incr);
+        if (sf >= src_frames) sf = src_frames - 1;
+        for (int c = 0; c < dst_ch; c++) {
+            Sint16 v = cvt_read_sample(staging, sf, c, cvt->src_format, src_ch);
+            cvt_write_sample(cvt->buf, f, c, cvt->dst_format, dst_ch, v);
+        }
+    }
+
+    free(staging);
+    cvt->len_cvt = dst_size;
+    return 0;
 }

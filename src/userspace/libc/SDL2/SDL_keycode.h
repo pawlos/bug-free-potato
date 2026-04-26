@@ -140,6 +140,15 @@ typedef Sint32 SDL_Keycode;
 #define SDLK_F13          SDL_SCANCODE_TO_KEYCODE(104)
 #define SDLK_F14          SDL_SCANCODE_TO_KEYCODE(105)
 #define SDLK_F15          SDL_SCANCODE_TO_KEYCODE(106)
+#define SDLK_F16          SDL_SCANCODE_TO_KEYCODE(107)
+#define SDLK_F17          SDL_SCANCODE_TO_KEYCODE(108)
+#define SDLK_F18          SDL_SCANCODE_TO_KEYCODE(109)
+#define SDLK_F19          SDL_SCANCODE_TO_KEYCODE(110)
+#define SDLK_F20          SDL_SCANCODE_TO_KEYCODE(111)
+#define SDLK_F21          SDL_SCANCODE_TO_KEYCODE(112)
+#define SDLK_F22          SDL_SCANCODE_TO_KEYCODE(113)
+#define SDLK_F23          SDL_SCANCODE_TO_KEYCODE(114)
+#define SDLK_F24          SDL_SCANCODE_TO_KEYCODE(115)
 
 typedef enum {
     KMOD_NONE   = 0x0000,
@@ -149,9 +158,15 @@ typedef enum {
     KMOD_RCTRL  = 0x0080,
     KMOD_LALT   = 0x0100,
     KMOD_RALT   = 0x0200,
+    KMOD_LGUI   = 0x0400,
+    KMOD_RGUI   = 0x0800,
+    KMOD_NUM    = 0x1000,
+    KMOD_CAPS   = 0x2000,
+    KMOD_MODE   = 0x4000,
     KMOD_SHIFT  = KMOD_LSHIFT | KMOD_RSHIFT,
     KMOD_CTRL   = KMOD_LCTRL  | KMOD_RCTRL,
     KMOD_ALT    = KMOD_LALT   | KMOD_RALT,
+    KMOD_GUI    = KMOD_LGUI   | KMOD_RGUI,
 } SDL_Keymod;
 
 

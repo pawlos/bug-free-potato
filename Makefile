@@ -65,6 +65,8 @@ LIBC_SRCS = src/userspace/libc/stdio.c \
             src/userspace/libc/math.c \
             src/userspace/libc/dirent.c \
             src/userspace/libc/sdl2.c \
+            src/userspace/libc/sdl2_thread.c \
+            src/userspace/libc/sdl2_mixer.c \
             src/userspace/libc/pthread.c
 LIBC_OBJS = $(patsubst src/userspace/libc/%.c, build/userspace/libc/%.o, $(LIBC_SRCS))
 LIBC_ASM_SRCS = src/userspace/libc/setjmp.asm
@@ -91,7 +93,7 @@ $(LIBC_A): $(LIBC_OBJS) $(LIBC_ASM_OBJS)
 SIMPLE_PROGS = hello fork_test pipe_test fswrite_test keytest \
                sleep_test wm_test snake paktest sh mathtest \
                pidtest stattest envtest xxd kilo taskbar sysmon \
-               sdl2demo nslookup pthread_demo
+               sdl2demo nslookup pthread_demo sdl_thread_demo sdltone
 
 SIMPLE_OBJS = $(patsubst %, build/userspace/%.o, $(SIMPLE_PROGS))
 SIMPLE_BINS = $(patsubst %, dist/userspace/%.elf, $(SIMPLE_PROGS))
@@ -137,6 +139,7 @@ include mk/player.mk
 include mk/devilutionx.mk
 include mk/imgview.mk
 include mk/sdlpop.mk
+include mk/wolf3d.mk
 
 # ── Clean ────────────────────────────────────────────────────────────────
 clean:
@@ -173,7 +176,7 @@ clean-devilutionx:
 clean-sdlpop:
 	-rm -rf $(SDLPOP_BUILD) && rm -f $(SDLPOP_ELF)
 
-clean-games: clean-doom clean-quake clean-quake2 clean-duke3d clean-sdlpop clean-devilutionx
+clean-games: clean-doom clean-quake clean-quake2 clean-duke3d clean-sdlpop clean-devilutionx clean-wolf3d
 
 clean-all: clean clean-games
 
@@ -228,6 +231,8 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 	copy_file dist/userspace/sdl2demo.elf   BIN/SDL2DEMO.ELF; \
 	copy_file dist/userspace/nslookup.elf    BIN/NSLOOKUP.ELF; \
 	copy_file dist/userspace/pthread_demo.elf BIN/PTHREAD_DEMO.ELF; \
+	copy_file dist/userspace/sdl_thread_demo.elf BIN/SDL_THREAD_DEMO.ELF; \
+	copy_file dist/userspace/sdltone.elf      BIN/SDLTONE.ELF; \
 	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \
 	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
 	copy_file $(IMGVIEW_ELF)                 BIN/IMGVIEW.ELF; \
@@ -293,6 +298,11 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 	    done && \
 	    cd ../../../..; \
 	  fi; \
+	fi; \
+	if [ -f $(WOLF3D_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/WOLF3D; \
+	  copy_file $(WOLF3D_ELF) GAMES/WOLF3D/WOLF3D.ELF; \
+	  for f in assets/wolf3d/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/WOLF3D/$$(basename $$f | tr '[:lower:]' '[:upper:]')"; done; \
 	fi
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::

@@ -190,6 +190,20 @@ static inline SDL_Scancode SDL_GetScancodeFromKey(SDL_Keycode key) { (void)key; 
 
 int SDL_PollEvent(SDL_Event *event);
 int SDL_PushEvent(SDL_Event *event);
+int SDL_WaitEvent(SDL_Event *event);
+int SDL_WaitEventTimeout(SDL_Event *event, int timeout);
+static inline int SDL_HasEvents(Uint32 minType, Uint32 maxType) { (void)minType; (void)maxType; return 0; }
+static inline Uint8 SDL_EventState(Uint32 type, int state) { (void)type; (void)state; return 1; }
+/* SDL_QUERY/DISABLE/ENABLE are defined in SDL.h. */
+#ifndef SDL_IGNORE
+#define SDL_IGNORE   0
+#endif
+#ifndef SDL_GETEVENT
+#define SDL_GETEVENT 2
+#endif
+static inline void SDL_PumpEvents(void) {}
+static inline void SDL_FlushEvent(Uint32 type) { (void)type; }
+static inline void SDL_FlushEvents(Uint32 minType, Uint32 maxType) { (void)minType; (void)maxType; }
 Uint32 SDL_GetMouseState(int *x, int *y);
 const Uint8* SDL_GetKeyboardState(int *numkeys);
 static inline Uint16 SDL_GetModState(void) { return 0; }

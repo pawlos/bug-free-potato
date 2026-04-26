@@ -4,12 +4,16 @@ src/userspace/quake/quakegeneric/
 src/userspace/quake2/quake2-src/
 src/userspace/duke3d/chocolate_duke3D/
 src/userspace/sdlpop/SDLPoP-src/
+src/userspace/wolf3d/wolf4sdl-src/
+src/userspace/wolf3d/.cloned
+src/userspace/devilutionx/devilutionx-src/
 
 # Game data (user-supplied, not redistributable)
 assets/doom1.wad
 assets/PAK0.PAK
 assets/quake2/
 assets/duke3d.grp
+assets/wolf3d/
 
 # Build artifacts
 build/
