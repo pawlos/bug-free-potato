@@ -22,6 +22,18 @@ extern "C" {
 #define SDL_WINDOW_ALLOW_HIGHDPI      0x00002000
 #define SDL_WINDOW_INPUT_FOCUS        0x00000200
 #define SDL_WINDOW_MOUSE_FOCUS        0x00000400
+#define SDL_WINDOW_MAXIMIZED          0x00000080
+#define SDL_WINDOW_MINIMIZED          0x00000040
+#define SDL_WINDOW_BORDERLESS         0x00000010
+#define SDL_WINDOW_OPENGL             0x00000002
+#define SDL_WINDOW_INPUT_GRABBED      0x00000100
+#define SDL_WINDOW_MOUSE_CAPTURE      0x00004000
+#define SDL_WINDOW_ALWAYS_ON_TOP      0x00008000
+#define SDL_WINDOW_SKIP_TASKBAR       0x00010000
+#define SDL_WINDOW_UTILITY            0x00020000
+#define SDL_WINDOW_TOOLTIP            0x00040000
+#define SDL_WINDOW_POPUP_MENU         0x00080000
+#define SDL_WINDOW_VULKAN             0x10000000
 
 /* Legacy SDL1 compat */
 #define SDL_FULLSCREEN SDL_WINDOW_FULLSCREEN
@@ -44,6 +56,15 @@ Uint32      SDL_GetWindowID(SDL_Window *window);
 static inline SDL_Window* SDL_GetKeyboardFocus(void) { return (SDL_Window*)0; }
 static inline SDL_Window* SDL_GetMouseFocus(void) { return (SDL_Window*)0; }
 static inline void SDL_SetWindowResizable(SDL_Window *w, SDL_bool resizable) { (void)w; (void)resizable; }
+static inline SDL_bool SDL_GetWindowGrab(SDL_Window *w) { (void)w; return SDL_FALSE; }
+static inline void SDL_GL_GetDrawableSize(SDL_Window *w, int *width, int *height) { SDL_GetWindowSize(w, width, height); }
+struct SDL_Surface;
+static inline void SDL_SetWindowIcon(SDL_Window *w, struct SDL_Surface *icon) { (void)w; (void)icon; }
+static inline int  SDL_SetWindowMouseRect(SDL_Window *w, const SDL_Rect *rect) { (void)w; (void)rect; return 0; }
+static inline void SDL_MinimizeWindow(SDL_Window *w) { (void)w; }
+static inline int  SDL_GetWindowBordersSize(SDL_Window *w, int *top, int *left, int *bottom, int *right)
+    { (void)w; if(top)*top=0; if(left)*left=0; if(bottom)*bottom=0; if(right)*right=0; return 0; }
+static inline void SDL_SetWindowBordered(SDL_Window *w, SDL_bool bordered) { (void)w; (void)bordered; }
 
 struct SDL_Surface; /* forward decl */
 SDL_Surface* SDL_GetWindowSurface(SDL_Window *window);

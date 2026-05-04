@@ -16,6 +16,9 @@ void       SDL_DestroyMutex(SDL_mutex *m);
 int        SDL_LockMutex(SDL_mutex *m);
 int        SDL_TryLockMutex(SDL_mutex *m);
 int        SDL_UnlockMutex(SDL_mutex *m);
+/* SDL1 compatibility aliases (used by ScummVM's SdlMutexInternal) */
+static inline int SDL_mutexP(SDL_mutex *m) { return SDL_LockMutex(m); }
+static inline int SDL_mutexV(SDL_mutex *m) { return SDL_UnlockMutex(m); }
 
 typedef struct SDL_cond SDL_cond;
 

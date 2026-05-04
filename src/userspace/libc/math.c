@@ -188,6 +188,11 @@ double round(double x) {
     return (x >= 0.0) ? floor(x + 0.5) : ceil(x - 0.5);
 }
 
+long      lround   (double x) { return (long)     round(x); }
+long long llround  (double x) { return (long long)round(x); }
+long      lroundf  (float  x) { return (long)     round((double)x); }
+long long llroundf (float  x) { return (long long)round((double)x); }
+
 /* ── fmod ────────────────────────────────────────────────────────────────── */
 
 /* fprem computes the partial remainder; C2 set means "not finished yet",

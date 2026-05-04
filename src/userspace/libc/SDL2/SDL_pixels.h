@@ -48,15 +48,21 @@ typedef struct SDL_Palette {
 typedef struct SDL_PixelFormat {
     Uint32      format;
     SDL_Palette *palette;
-    int         BitsPerPixel;
-    int         BytesPerPixel;
+    Uint8       BitsPerPixel;
+    Uint8       BytesPerPixel;
+    Uint8       padding[2];
     Uint32      Rmask, Gmask, Bmask, Amask;
+    Uint8       Rloss, Gloss, Bloss, Aloss;
+    Uint8       Rshift, Gshift, Bshift, Ashift;
+    int         refcount;
+    struct SDL_PixelFormat *next;
 } SDL_PixelFormat;
 
 SDL_Palette* SDL_AllocPalette(int ncolors);
 void         SDL_FreePalette(SDL_Palette *palette);
 int          SDL_SetPaletteColors(SDL_Palette *palette, const SDL_Color *colors,
                                    int firstcolor, int ncolors);
+static inline const char* SDL_GetPixelFormatName(Uint32 format) { (void)format; return "UNKNOWN"; }
 
 
 #ifdef __cplusplus

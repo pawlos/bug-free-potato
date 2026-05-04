@@ -25,6 +25,21 @@ extern "C" {
 #define INFINITY  __builtin_inff()
 #define NAN       __builtin_nanf("")
 
+/* IEEE 754 classification — implemented via GCC builtins. The macro forms
+ * accept any floating-point type. */
+#define isnan(x)      __builtin_isnan(x)
+#define isinf(x)      __builtin_isinf_sign(x)
+#define isfinite(x)   __builtin_isfinite(x)
+#define isnormal(x)   __builtin_isnormal(x)
+#define signbit(x)    __builtin_signbit(x)
+#define fpclassify(x) __builtin_fpclassify(FP_NAN, FP_INFINITE, FP_NORMAL, FP_SUBNORMAL, FP_ZERO, x)
+#define FP_NAN        0
+#define FP_INFINITE   1
+#define FP_NORMAL     2
+#define FP_SUBNORMAL  3
+#define FP_ZERO       4
+#define NAN       __builtin_nanf("")
+
 /* ── double functions ────────────────────────────────────────────────────── */
 double sin(double x);
 double cos(double x);
@@ -41,6 +56,8 @@ double hypot(double x, double y);
 double floor(double x);
 double ceil(double x);
 double round(double x);
+long   lround(double x);
+long long llround(double x);
 double trunc(double x);
 double fmod(double x, double y);
 
@@ -70,6 +87,8 @@ float hypotf(float x, float y);
 float floorf(float x);
 float ceilf(float x);
 float roundf(float x);
+long  lroundf(float x);
+long long llroundf(float x);
 float truncf(float x);
 float fmodf(float x, float y);
 

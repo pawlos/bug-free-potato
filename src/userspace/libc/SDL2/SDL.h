@@ -41,6 +41,8 @@ extern "C" {
 int  SDL_Init(Uint32 flags);
 void SDL_Quit(void);
 static inline Uint32 SDL_WasInit(Uint32 flags) { (void)flags; return SDL_INIT_EVERYTHING; }
+static inline int  SDL_InitSubSystem(Uint32 flags) { (void)flags; return 0; }
+static inline void SDL_QuitSubSystem(Uint32 flags) { (void)flags; }
 
 /* Message box */
 #define SDL_MESSAGEBOX_ERROR       0x00000010
@@ -64,6 +66,7 @@ static inline SDL_bool SDL_SetHint(const char *name, const char *value)
 #define SDL_HINT_IME_INTERNAL_EDITING "SDL_IME_INTERNAL_EDITING"
 #define SDL_HINT_GAMECONTROLLERCONFIG "SDL_GAMECONTROLLERCONFIG"
 #define SDL_HINT_MOUSE_TOUCH_EVENTS "SDL_MOUSE_TOUCH_EVENTS"
+#define SDL_HINT_TOUCH_MOUSE_EVENTS "SDL_TOUCH_MOUSE_EVENTS"
 #define SDL_HINT_ACCELEROMETER_AS_JOYSTICK "SDL_ACCELEROMETER_AS_JOYSTICK"
 #define SDL_HINT_RENDER_VSYNC "SDL_RENDER_VSYNC"
 #define SDL_HINT_RENDER_SCALE_QUALITY "SDL_RENDER_SCALE_QUALITY"
@@ -127,6 +130,31 @@ SDL_AudioDeviceID SDL_OpenAudioDevice(const char *device, int iscapture,
 void SDL_CloseAudioDevice(SDL_AudioDeviceID dev);
 int  SDL_QueueAudio(SDL_AudioDeviceID dev, const void *data, Uint32 len);
 Uint32 SDL_GetQueuedAudioSize(SDL_AudioDeviceID dev);
+static inline const char *SDL_GetCurrentAudioDriver(void) { return "potato"; }
+static inline int   SDL_GetNumAudioDrivers(void) { return 1; }
+static inline const char *SDL_GetAudioDriver(int i) { (void)i; return "potato"; }
+static inline const char *SDL_GetCurrentVideoDriver(void) { return "potato"; }
+static inline int   SDL_GetNumVideoDrivers(void) { return 1; }
+static inline const char *SDL_GetVideoDriver(int i) { (void)i; return "potato"; }
+static inline int   SDL_GetNumTouchDevices(void) { return 0; }
+static inline int   SDL_OpenURL(const char *url) { (void)url; return -1; }
+/* CPU feature detection — Sky engine never exercises these at runtime. */
+static inline SDL_bool SDL_HasSSE(void)     { return SDL_FALSE; }
+static inline SDL_bool SDL_HasSSE2(void)    { return SDL_FALSE; }
+static inline SDL_bool SDL_HasSSE3(void)    { return SDL_FALSE; }
+static inline SDL_bool SDL_HasSSE41(void)   { return SDL_FALSE; }
+static inline SDL_bool SDL_HasSSE42(void)   { return SDL_FALSE; }
+static inline SDL_bool SDL_HasAVX(void)     { return SDL_FALSE; }
+static inline SDL_bool SDL_HasAVX2(void)    { return SDL_FALSE; }
+static inline SDL_bool SDL_HasAVX512F(void) { return SDL_FALSE; }
+static inline SDL_bool SDL_HasNEON(void)    { return SDL_FALSE; }
+static inline SDL_bool SDL_HasAltiVec(void) { return SDL_FALSE; }
+static inline SDL_bool SDL_HasMMX(void)     { return SDL_FALSE; }
+static inline SDL_bool SDL_HasARMSIMD(void) { return SDL_FALSE; }
+static inline SDL_bool SDL_HasLSX(void)     { return SDL_FALSE; }
+static inline SDL_bool SDL_HasLASX(void)    { return SDL_FALSE; }
+static inline int      SDL_GetSystemRAM(void) { return 64; }
+static inline int      SDL_GetCPUCacheLineSize(void) { return 64; }
 void SDL_ClearQueuedAudio(SDL_AudioDeviceID dev);
 void SDL_PauseAudioDevice(SDL_AudioDeviceID dev, int pause_on);
 /* Legacy single-device API used by SDL_mixer and Wolf4SDL's CD music path. */

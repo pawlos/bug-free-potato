@@ -54,6 +54,17 @@ int  SDL_RenderCopy(SDL_Renderer *renderer, SDL_Texture *texture,
 int  SDL_RenderFillRect(SDL_Renderer *renderer, const SDL_Rect *rect);
 void SDL_RenderPresent(SDL_Renderer *renderer);
 
+typedef enum {
+    SDL_FLIP_NONE       = 0x00000000,
+    SDL_FLIP_HORIZONTAL = 0x00000001,
+    SDL_FLIP_VERTICAL   = 0x00000002
+} SDL_RendererFlip;
+static inline int SDL_RenderCopyEx(SDL_Renderer *renderer, SDL_Texture *texture,
+                                   const SDL_Rect *srcrect, const SDL_Rect *dstrect,
+                                   const double angle, const void *center,
+                                   const SDL_RendererFlip flip)
+    { (void)angle; (void)center; (void)flip; return SDL_RenderCopy(renderer, texture, srcrect, dstrect); }
+
 static inline void SDL_RenderGetScale(SDL_Renderer *r, float *sx, float *sy)
     { (void)r; if (sx) *sx = 1.0f; if (sy) *sy = 1.0f; }
 int SDL_QueryTexture(SDL_Texture *t, Uint32 *fmt, int *access, int *w, int *h);

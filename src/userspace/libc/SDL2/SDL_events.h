@@ -41,6 +41,13 @@ enum {
     SDL_TEXTEDITING      = 0x302,
     SDL_KEYMAPCHANGED    = 0x304,
     SDL_EVENT_KEYMAP_CHANGED = 0x304,
+    SDL_DROPFILE         = 0x1000,
+    SDL_DROPTEXT         = 0x1001,
+    SDL_DROPBEGIN        = 0x1002,
+    SDL_DROPCOMPLETE     = 0x1003,
+    SDL_CLIPBOARDUPDATE  = 0x900,
+    SDL_RENDER_TARGETS_RESET = 0x2000,
+    SDL_RENDER_DEVICE_RESET  = 0x2001,
 };
 
 /* Mouse button constants */
@@ -127,7 +134,17 @@ typedef struct {
     Uint32 timestamp;
     Uint32 windowID;
     Uint8  event;
+    Uint8  padding1, padding2, padding3;
+    Sint32 data1;
+    Sint32 data2;
 } SDL_WindowEvent;
+
+typedef struct {
+    Uint32 type;
+    Uint32 timestamp;
+    char  *file;
+    Uint32 windowID;
+} SDL_DropEvent;
 
 typedef struct {
     Uint32 type;
@@ -180,6 +197,7 @@ typedef union {
     SDL_TouchFingerEvent tfinger;
     SDL_TextInputEvent   text;
     SDL_JoyButtonEvent   jbutton;
+    SDL_DropEvent        drop;
     SDL_ControllerAxisEvent jaxis;
     struct { Uint32 type; Uint32 timestamp; SDL_JoystickID which; Uint8 ball; Sint16 xrel; Sint16 yrel; } jball;
     struct { Uint32 type; Uint32 timestamp; Uint32 which; Uint8 iscapture; } adevice;
@@ -201,6 +219,17 @@ static inline Uint8 SDL_EventState(Uint32 type, int state) { (void)type; (void)s
 #ifndef SDL_GETEVENT
 #define SDL_GETEVENT 2
 #endif
+#ifndef SDL_ADDEVENT
+#define SDL_ADDEVENT 0
+#endif
+#ifndef SDL_PEEKEVENT
+#define SDL_PEEKEVENT 1
+#endif
+typedef int SDL_eventaction;
+static inline int SDL_PeepEvents(SDL_Event *events, int numevents,
+                                 SDL_eventaction action,
+                                 Uint32 minType, Uint32 maxType)
+    { (void)events; (void)numevents; (void)action; (void)minType; (void)maxType; return 0; }
 static inline void SDL_PumpEvents(void) {}
 static inline void SDL_FlushEvent(Uint32 type) { (void)type; }
 static inline void SDL_FlushEvents(Uint32 minType, Uint32 maxType) { (void)minType; (void)maxType; }

@@ -25,7 +25,16 @@ typedef struct SDL_Surface {
     int     blend_mode;  /* SDL_BlendMode */
 } SDL_Surface;
 
-#define SDL_PREALLOC 0x00000001
+#define SDL_PREALLOC      0x00000001
+#define SDL_SWSURFACE     0x00000000  /* SDL1 compat: now meaningless */
+#define SDL_HWSURFACE     0x00000000  /* SDL1 compat */
+#define SDL_RLEACCEL      0x00000002
+#define SDL_SRCCOLORKEY   0x00001000  /* SDL1 compat */
+#define SDL_SRCALPHA      0x00010000  /* SDL1 compat */
+#define SDL_DONTFREE      0x00000004
+/* SDL1-style helper used by some old code paths */
+static inline int SDL_SetAlpha(struct SDL_Surface *surface, Uint32 flags, Uint8 alpha)
+    { (void)surface; (void)flags; (void)alpha; return 0; }
 
 SDL_Surface* SDL_CreateRGBSurface(Uint32 flags, int w, int h, int depth,
                                    Uint32 Rmask, Uint32 Gmask,
