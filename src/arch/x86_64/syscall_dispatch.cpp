@@ -46,23 +46,19 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			int fd = (int)(pt::int8_t)arg1;
 			const char* buf = reinterpret_cast<const char*>(arg2);
 			pt::uint32_t n  = (pt::uint32_t)arg3;
-			if (fd == 1) {
+			if (fd == 1 || fd == 2) {
+				// stdout/stderr always go to the task's vterm (or the
+				// active vterm if none is bound). Windowed graphical
+				// tasks must not get text dumped into their framebuffer.
 				Task* wt = TaskScheduler::get_current_task();
-				bool has_window = wt && wt->window_id != INVALID_WID;
-				bool has_vterm  = wt && wt->vterm_id  != INVALID_VT;
-				VTerm* vt = nullptr;
-				if (!has_window) {
-					vt = has_vterm ? vterm_get(wt->vterm_id) : vterm_active();
-					if (vt) vt->begin_batch();
-				}
-				for (pt::uint32_t i = 0; i < n; i++) {
-					if (has_window) {
-						WindowManager::put_char(wt->window_id, buf[i]);
-					} else if (vt) {
+				bool has_vterm = wt && wt->vterm_id != INVALID_VT;
+				VTerm* vt = has_vterm ? vterm_get(wt->vterm_id) : vterm_active();
+				if (vt) {
+					vt->begin_batch();
+					for (pt::uint32_t i = 0; i < n; i++)
 						vt->put_char(buf[i]);
-					}
+					vt->end_batch();
 				}
-				if (vt) vt->end_batch();
 				return (pt::uint64_t)n;
 			}
 			Task* t = TaskScheduler::get_current_task();

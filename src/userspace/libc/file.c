@@ -9,7 +9,7 @@
 
 static FILE _stdin_impl  = { -1, _FILE_EOF, -1 };
 static FILE _stdout_impl = {  1, _FILE_WRITE, -1 };
-static FILE _stderr_impl = {  1, _FILE_WRITE, -1 };
+static FILE _stderr_impl = {  2, _FILE_WRITE, -1 };
 
 FILE *stdin  = &_stdin_impl;
 FILE *stdout = &_stdout_impl;
