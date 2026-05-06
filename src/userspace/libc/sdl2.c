@@ -853,6 +853,19 @@ Uint32 SDL_MapRGBA(const SDL_PixelFormat *format, Uint8 r, Uint8 g, Uint8 b, Uin
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Internal: allocate and populate an SDL_PixelFormat from bpp + masks */
+/* Compute shift (trailing zero count) and loss (8 - channel bit count) for a mask */
+static void mask_shift_loss(Uint32 mask, Uint8 *shift, Uint8 *loss)
+{
+    if (mask == 0) { *shift = 0; *loss = 8; return; }
+    Uint8 s = 0;
+    Uint32 m = mask;
+    while (!(m & 1)) { m >>= 1; s++; }
+    Uint8 bits = 0;
+    while (m & 1) { bits++; m >>= 1; }
+    *shift = s;
+    *loss  = (bits >= 8) ? 0 : (8 - bits);
+}
+
 static SDL_PixelFormat* create_pixel_format(int bpp, Uint32 Rmask, Uint32 Gmask,
                                             Uint32 Bmask, Uint32 Amask)
 {
@@ -864,6 +877,10 @@ static SDL_PixelFormat* create_pixel_format(int bpp, Uint32 Rmask, Uint32 Gmask,
     fmt->Gmask = Gmask;
     fmt->Bmask = Bmask;
     fmt->Amask = Amask;
+    mask_shift_loss(Rmask, &fmt->Rshift, &fmt->Rloss);
+    mask_shift_loss(Gmask, &fmt->Gshift, &fmt->Gloss);
+    mask_shift_loss(Bmask, &fmt->Bshift, &fmt->Bloss);
+    mask_shift_loss(Amask, &fmt->Ashift, &fmt->Aloss);
     fmt->palette = (SDL_Palette*)0;
 
     /* Detect format enum */
