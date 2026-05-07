@@ -140,6 +140,7 @@ include mk/devilutionx.mk
 include mk/imgview.mk
 include mk/sdlpop.mk
 include mk/wolf3d.mk
+include mk/scummvm.mk
 
 # ── Clean ────────────────────────────────────────────────────────────────
 clean:
@@ -176,7 +177,7 @@ clean-devilutionx:
 clean-sdlpop:
 	-rm -rf $(SDLPOP_BUILD) && rm -f $(SDLPOP_ELF)
 
-clean-games: clean-doom clean-quake clean-quake2 clean-duke3d clean-sdlpop clean-devilutionx clean-wolf3d
+clean-games: clean-doom clean-quake clean-quake2 clean-duke3d clean-sdlpop clean-devilutionx clean-wolf3d clean-scummvm
 
 clean-all: clean clean-games
 
@@ -193,7 +194,13 @@ ASSET_FILES = assets/font.psf \
               assets/potato.txt \
               assets/boot.raw
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYER_ELF) $(IMGVIEW_ELF)
+# Optional game ELFs: depend on them only if they currently exist, so a fresh
+# rebuild of one (e.g. `make scummvm`) re-stages disk.img on the next `make run`
+# without forcing a build of every game we may not have set up.
+OPTIONAL_GAME_ELFS := $(wildcard $(SCUMMVM_ELF) $(DOOM_ELF) $(QUAKE_ELF) $(Q2_ELF) \
+                                  $(DUKE_ELF) $(SDLPOP_ELF) $(DVLX_ELF) $(WOLF3D_ELF))
+
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYER_ELF) $(IMGVIEW_ELF) $(OPTIONAL_GAME_ELFS)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=1024 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -303,6 +310,15 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 	  mmd -i disk.img ::GAMES/WOLF3D; \
 	  copy_file $(WOLF3D_ELF) GAMES/WOLF3D/WOLF3D.ELF; \
 	  for f in assets/wolf3d/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/WOLF3D/$$(basename $$f | tr '[:lower:]' '[:upper:]')"; done; \
+	fi; \
+	if [ -f $(SCUMMVM_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/SCUMMVM; \
+	  copy_file $(SCUMMVM_ELF) GAMES/SCUMMVM/SCUMMVM.ELF; \
+	  for f in assets/scummvm/*; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/SCUMMVM/$$(basename $$f | tr '[:lower:]' '[:upper:]')"; done; \
+	  THEME_DIR=src/userspace/scummvm/scummvm-src/gui/themes; \
+	  for f in $$THEME_DIR/scummmodern.zip $$THEME_DIR/scummclassic.zip $$THEME_DIR/gui-icons.dat $$THEME_DIR/translations.dat; do \
+	    [ -f "$$f" ] && copy_file "$$f" "GAMES/SCUMMVM/$$(basename $$f | tr '[:lower:]' '[:upper:]')"; \
+	  done; \
 	fi
 	@echo "Disk image created with directory hierarchy:"
 	@mdir -i disk.img ::

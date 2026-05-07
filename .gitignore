@@ -7,6 +7,9 @@ src/userspace/sdlpop/SDLPoP-src/
 src/userspace/wolf3d/wolf4sdl-src/
 src/userspace/wolf3d/.cloned
 src/userspace/devilutionx/devilutionx-src/
+src/userspace/scummvm/scummvm-src/
+src/userspace/scummvm/.cloned
+src/userspace/scummvm/.sources
 
 # Game data (user-supplied, not redistributable)
 assets/doom1.wad
@@ -14,6 +17,7 @@ assets/PAK0.PAK
 assets/quake2/
 assets/duke3d.grp
 assets/wolf3d/
+assets/scummvm/
 
 # Build artifacts
 build/
