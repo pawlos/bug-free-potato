@@ -250,7 +250,9 @@ int SDL_RenderCopy(SDL_Renderer *renderer, SDL_Texture *texture,
     sys_draw_pixels(renderer->rgb24_buf, dx, dy, dw, dh);
 
     static int rc_trace = 0;
-    if (rc_trace < 30) {
+    static int rc_call = 0;
+    rc_call++;
+    if (rc_trace < 30 || (rc_call % 60) == 0) {
         rc_trace++;
         /* Count non-black pixels in texture */
         int nonblack = 0;
@@ -259,9 +261,10 @@ int SDL_RenderCopy(SDL_Renderer *renderer, SDL_Texture *texture,
             Uint32 p = texture->pixels[_i];
             if ((p & 0x00FFFFFF) != 0) { nonblack++; }
         }
-        sdl_trace("[SDL] RenderCopy #%d: tex=%dx%d nonblack=%d/%d\n",
-                  rc_trace, texture->w, texture->h, nonblack,
-                  total < 50000 ? total : 50000);
+        sdl_trace("[SDL] RenderCopy #%d (call %d): tex=%dx%d viewport=%d,%d %dx%d nonblack=%d/%d\n",
+                  rc_trace, rc_call, texture->w, texture->h,
+                  dx, dy, dw, dh,
+                  nonblack, total < 50000 ? total : 50000);
     }
 
     return 0;
@@ -327,7 +330,10 @@ int SDL_UpdateTexture(SDL_Texture *texture, const SDL_Rect *rect,
     int src_bpp = (tw > 0) ? pitch / tw : 4;  /* detect source bytes per pixel */
 
     static int ut_trace = 0;
-    if (ut_trace < 20) {
+    static int ut_call = 0;
+    ut_call++;
+    /* Log first 20 calls and then every 60th (~once/sec at 60fps) */
+    if (ut_trace < 20 || (ut_call % 60) == 0) {
         ut_trace++;
         /* Sample source pixels for non-black */
         int nonblack = 0;
@@ -336,8 +342,8 @@ int SDL_UpdateTexture(SDL_Texture *texture, const SDL_Rect *rect,
         for (int _i = 0; _i < total32 && _i < 50000; _i++) {
             if ((sp32[_i] & 0x00FFFFFF) != 0) nonblack++;
         }
-        sdl_trace("[SDL] UpdateTexture #%d: %dx%d pitch=%d bpp=%d nonblack=%d\n",
-                  ut_trace, tw, th, pitch, src_bpp, nonblack);
+        sdl_trace("[SDL] UpdateTexture #%d (call %d): %dx%d pitch=%d bpp=%d nonblack=%d\n",
+                  ut_trace, ut_call, tw, th, pitch, src_bpp, nonblack);
     }
 
     if (src_bpp == 1 && g_active_palette && g_active_palette->ncolors > 0) {
@@ -936,6 +942,17 @@ static int masks_from_format(Uint32 format, int *bpp,
         *bpp = 24; *Rm = 0x00FF0000; *Gm = 0x0000FF00; *Bm = 0x000000FF; return 0;
     case SDL_PIXELFORMAT_BGR24:
         *bpp = 24; *Rm = 0x000000FF; *Gm = 0x0000FF00; *Bm = 0x00FF0000; return 0;
+    /* WORKAROUND: We don't have a real 16bpp/8bpp blit path. Pretend any
+       packed-RGB format that ScummVM/SDL apps request is 32-bit ARGB8888
+       so blits go through the existing 8bpp-palette → 32bpp path. The
+       caller's depth argument is ignored anyway. Pixel-format mismatches
+       between source surfaces and _hwScreen surface are resolved by
+       SDL_BlitSurface's existing per-pixel path. */
+    case SDL_PIXELFORMAT_RGB565:
+    case SDL_PIXELFORMAT_RGB555:
+    case SDL_PIXELFORMAT_RGB444:
+    case SDL_PIXELFORMAT_RGB332:
+        *bpp = 32; *Rm = 0x00FF0000; *Gm = 0x0000FF00; *Bm = 0x000000FF; *Am = 0xFF000000; return 0;
     default:
         *bpp = 32; return -1;
     }
@@ -1254,31 +1271,41 @@ int SDL_BlitSurface(SDL_Surface *src, const SDL_Rect *srcrect,
 {
     if (!src || !dst || !src->pixels || !dst->pixels) return -1;
 
-    if (g_blit_trace_count < 20) {
+    /* Always log paletted-source blits (Sky's game frames) — they're rare.
+       Cap unpaletted blits at 20 to avoid spam from chrome redraws. */
+    int is_paletted = (src->format->palette && src->format->palette->ncolors > 0);
+    int should_log = is_paletted || (g_blit_trace_count < 20);
+    if (should_log) {
         g_blit_trace_count++;
         sdl_trace("[SDL] BlitSurface #%d: src=%dx%d fmt=0x%x bpp=%d pal=%p -> dst=%dx%d fmt=0x%x bpp=%d\n",
                   g_blit_trace_count,
                   src->w, src->h, src->format->format, src->format->BytesPerPixel,
                   src->format->palette,
                   dst->w, dst->h, dst->format->format, dst->format->BytesPerPixel);
-        if (src->format->palette && src->format->palette->ncolors > 0) {
-            /* Sample the first non-zero src pixel and show what it maps to */
+        if (is_paletted) {
+            /* Count total non-zero src pixels (so we know if game frame is empty) */
             Uint8 *sp = (Uint8*)src->pixels;
-            int found = -1;
-            for (int i = 0; i < src->w * src->h && i < 10000; i++) {
-                if (sp[i] != 0) { found = i; break; }
+            int total = src->w * src->h;
+            int sample = total < 50000 ? total : 50000;
+            int nonzero = 0, found = -1;
+            for (int i = 0; i < sample; i++) {
+                if (sp[i] != 0) {
+                    nonzero++;
+                    if (found < 0) found = i;
+                }
             }
             if (found >= 0) {
                 int idx = sp[found];
                 SDL_Color c = src->format->palette->colors[idx];
-                sdl_trace("[SDL]   px[%d]=idx %d -> RGBA(%d,%d,%d,%d)  pal[1]=(%d,%d,%d,%d) pal[128]=(%d,%d,%d,%d)\n",
+                sdl_trace("[SDL]   src nonzero=%d/%d  px[%d]=idx %d -> RGBA(%d,%d,%d,%d)  pal[1]=(%d,%d,%d) pal[128]=(%d,%d,%d)\n",
+                          nonzero, sample,
                           found, idx, c.r, c.g, c.b, c.a,
                           src->format->palette->colors[1].r, src->format->palette->colors[1].g,
-                          src->format->palette->colors[1].b, src->format->palette->colors[1].a,
+                          src->format->palette->colors[1].b,
                           src->format->palette->colors[128].r, src->format->palette->colors[128].g,
-                          src->format->palette->colors[128].b, src->format->palette->colors[128].a);
+                          src->format->palette->colors[128].b);
             } else {
-                sdl_trace("[SDL]   all src pixels are 0 (first 10000)\n");
+                sdl_trace("[SDL]   all src pixels are 0 (sampled %d)\n", sample);
             }
         }
     }
@@ -1977,9 +2004,9 @@ const Uint8* SDL_GetKeyboardState(int *numkeys)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Task 9: SDLPoP link stubs (legacy audio API now lives in sdl2_thread.c)
+ * SDL_InitSubSystem and SDL_SetWindowIcon are static inline stubs in
+ * SDL2/SDL.h and SDL2/SDL_video.h respectively — don't redefine here.
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-int SDL_InitSubSystem(Uint32 flags) { (void)flags; return 0; }
 
 const char* SDL_GetScancodeName(int scancode)
 {
@@ -1989,11 +2016,6 @@ const char* SDL_GetScancodeName(int scancode)
 
 Uint64 SDL_GetPerformanceCounter(void) { return SDL_GetTicks(); }
 Uint64 SDL_GetPerformanceFrequency(void) { return 1000; }
-
-void SDL_SetWindowIcon(SDL_Window *w, SDL_Surface *icon)
-{
-    (void)w; (void)icon;
-}
 
 Sint64 SDL_RWtell(SDL_RWops *ctx)
 {
