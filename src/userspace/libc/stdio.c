@@ -18,9 +18,14 @@
 
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
 {
-    /* write one character, counting even if buf full */
+    /* write one character, counting even if buf full.
+       The argument is evaluated exactly once so callers may pass *fmt++. */
     size_t pos = 0;
-#define EMIT(c) do { if (buf && pos + 1 < size) buf[pos] = (char)(c); pos++; } while(0)
+#define EMIT(c) do { \
+    char _emit_c = (char)(c); \
+    if (buf && pos + 1 < size) { buf[pos] = _emit_c; } \
+    pos++; \
+} while(0)
 #define EMITSTR(s, n) do { \
     for (size_t _k = 0; _k < (n); _k++) EMIT((s)[_k]); } while(0)
 

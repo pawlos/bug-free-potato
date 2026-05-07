@@ -45,7 +45,8 @@ char  *tmpnam(char *s);
 #define L_tmpnam 20
 
 /* Pull in FILE*, fopen, fclose, fread, fprintf etc. — must be last to
-   avoid circular-include ordering issues (file.h includes stdio.h). */
+   avoid circular-include ordering issues (file.h includes stdio.h).
+   file.h also provides static inline setvbuf/setbuf stubs. */
 #include "file.h"
 
 #ifdef __cplusplus

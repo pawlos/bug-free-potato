@@ -43,22 +43,34 @@ struct stat {
     unsigned int st_size;
 };
 
-/* stat: try to open file to see if it exists, report as regular file */
+/* stat: regular files via SYS_STAT; directories detected via SYS_READDIR_EX. */
 static inline int stat(const char *path, struct stat *buf)
 {
+    if (!path) return -1;
     if (buf) {
-        buf->st_mode  = S_IFREG;
+        buf->st_mode  = 0;
         buf->st_mtime = 0;
+        buf->st_ctime = 0;
         buf->st_size  = 0;
     }
-    /* Try opening to check existence and get size */
-    int fd = sys_open(path);
-    if (fd >= 0) {
+    /* Kernel StatResult layout: u32 file_size, u16 ctime, cdate, mtime, mdate. */
+    struct { unsigned int file_size; unsigned short ct, cd, mt, md; } sr;
+    if (sys_stat(path, &sr) == 0) {
         if (buf) {
-            long end = sys_lseek(fd, 0, 2 /* SEEK_END */);
-            if (end >= 0) buf->st_size = (unsigned int)end;
+            buf->st_mode = S_IFREG | 0644;
+            buf->st_size = sr.file_size;
         }
-        sys_close(fd);
+        return 0;
+    }
+    /* Not a file — probe as directory. Empty directories will appear missing. */
+    char nm[256];
+    unsigned int sz = 0;
+    unsigned char ty = 0;
+    if (sys_readdir_ex(0, nm, &sz, path, &ty) == 1) {
+        if (buf) {
+            buf->st_mode = S_IFDIR | 0755;
+            buf->st_size = 0;
+        }
         return 0;
     }
     return -1;

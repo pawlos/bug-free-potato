@@ -16,6 +16,14 @@ static inline int access(const char *path, int mode) {
     (void)mode;
     int fd = sys_open(path);
     if (fd >= 0) { sys_close(fd); return 0; }
+    /* Directories can't be opened with sys_open; probe via readdir_ex.
+       Returns 1 only if the path resolves to a non-empty directory — empty
+       directories will read as nonexistent, but ScummVM enumerates dirs that
+       contain game data so this is fine in practice. */
+    char nm[256];
+    unsigned int sz = 0;
+    unsigned char ty = 0;
+    if (sys_readdir_ex(0, nm, &sz, path, &ty) == 1) return 0;
     return -1;
 }
 
@@ -53,7 +61,18 @@ static inline void _exit(int code) { sys_exit(code); __builtin_unreachable(); }
 static inline int truncate(const char *path, long length) { (void)path; (void)length; return -1; }
 static inline int ftruncate(int fd, long length) { (void)fd; (void)length; return -1; }
 static inline pid_t getpid(void) { return (pid_t)sys_getpid(); }
+static inline pid_t getppid(void) { return 1; }
 static inline int unlink(const char *path) { return sys_remove(path); }
+/* fork/exec stubs — potatOS userspace doesn't implement variadic execlp,
+ * and ScummVM only uses these to spawn xdg-open for logfile viewing.
+ * Returning -1 makes the caller treat the spawn as failed and skip it. */
+static inline pid_t fork(void) { return -1; }
+static inline int execlp(const char *file, const char *arg, ...) { (void)file; (void)arg; return -1; }
+static inline int execvp(const char *file, char *const argv[]) { (void)file; (void)argv; return -1; }
+static inline pid_t waitpid(pid_t pid, int *wstatus, int options)
+    { (void)wstatus; (void)options; return (pid_t)sys_waitpid((int)pid, 0); }
+#define WEXITSTATUS(s) ((s) & 0xff)
+#define WIFEXITED(s)   1
 
 #ifdef __cplusplus
 }

@@ -28,6 +28,10 @@ int    atoi(const char *s);
 long   atol(const char *s);
 long   strtol (const char *s, char **endptr, int base);
 unsigned long strtoul(const char *s, char **endptr, int base);
+/* On x86_64 long == long long == 64 bits, so strtoll/strtoull alias strtol/strtoul. */
+static inline long long          strtoll (const char *s, char **endptr, int base) { return (long long)strtol(s, endptr, base); }
+static inline unsigned long long strtoull(const char *s, char **endptr, int base) { return (unsigned long long)strtoul(s, endptr, base); }
+static inline long long          atoll(const char *s) { return strtoll(s, (char **)0, 10); }
 
 /* misc */
 int    abs(int x);
@@ -38,6 +42,8 @@ int    rand(void);
 void   srand(unsigned int seed);
 void   qsort(void *base, size_t nmemb, size_t size,
              int (*cmp)(const void *, const void *));
+void  *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+               int (*cmp)(const void *, const void *));
 
 /* alloca — stack allocation */
 #define alloca __builtin_alloca

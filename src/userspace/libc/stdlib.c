@@ -402,6 +402,23 @@ void qsort(void *base, size_t nmemb, size_t size,
     }
 }
 
+/* ── bsearch ─────────────────────────────────────────────────────────────── */
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+              int (*cmp)(const void *, const void *))
+{
+    const char *b = (const char *)base;
+    size_t lo = 0, hi = nmemb;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        const void *p = b + mid * size;
+        int c = cmp(key, p);
+        if (c == 0)      return (void *)p;
+        else if (c < 0)  hi = mid;
+        else             lo = mid + 1;
+    }
+    return (void *)0;
+}
+
 /* ── sleep ───────────────────────────────────────────────────────────────── */
 
 unsigned int sleep(unsigned int seconds)

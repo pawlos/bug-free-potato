@@ -80,9 +80,15 @@ int    fgetpos(FILE *stream, fpos_t *pos);
 int    fsetpos(FILE *stream, const fpos_t *pos);
 FILE  *freopen(const char *pathname, const char *mode, FILE *stream);
 FILE  *tmpfile(void);
-int    setvbuf(FILE *stream, char *buf, int mode, size_t size);
-void   setbuf(FILE *stream, char *buf);
 int    fileno(FILE *stream);
+
+/* No-op buffering control: our FILE is unbuffered already, so these are
+   harmless stubs. Returns 0 on success per POSIX. Defined here (after the
+   FILE typedef) rather than in stdio.h because of stdio.h↔file.h circular
+   includes. */
+static inline int  setvbuf(FILE *f, char *buf, int mode, size_t size)
+    { (void)f; (void)buf; (void)mode; (void)size; return 0; }
+static inline void setbuf (FILE *f, char *buf) { (void)f; (void)buf; }
 
 #ifdef __cplusplus
 }
