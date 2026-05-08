@@ -15,10 +15,17 @@ extern "C" {
 #endif
 
 
+#define _FILE_RBUF_SIZE 4096
+
 typedef struct PotatoFILE {
     int fd;
     int flags;
     int unget_char;   /* -1 = no pending char, else the pushed-back byte */
+    /* Read-ahead buffer: amortizes sys_read overhead for byte-by-byte reads.
+       _rbuf_len bytes starting at _rbuf_pos are valid and not yet consumed.  */
+    int _rbuf_pos;
+    int _rbuf_len;
+    unsigned char _rbuf[_FILE_RBUF_SIZE];
 } PotatoFILE;
 
 /* In C builds, FILE = PotatoFILE. In C++ builds where the system

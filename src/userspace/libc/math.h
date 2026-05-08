@@ -67,6 +67,7 @@ double log10(double x);
 double exp(double x);
 double pow(double x, double y);
 
+double modf(double x, double *iptr);
 double ldexp(double x, int exp);
 double frexp(double x, int *exp);
 double copysign(double x, double y);
@@ -98,6 +99,7 @@ float log10f(float x);
 float expf(float x);
 float powf(float x, float y);
 
+float modff(float x, float *iptr);
 float ldexpf(float x, int exp);
 float copysignf(float x, float y);
 

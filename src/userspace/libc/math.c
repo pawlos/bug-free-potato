@@ -234,6 +234,14 @@ double frexp(double x, int *exp) {
     return u.d;
 }
 
+double modf(double x, double *iptr) {
+    *iptr = (x >= 0.0) ? floor(x) : ceil(x);
+    double frac = x - *iptr;
+    /* preserve sign of zero */
+    if (frac == 0.0) { union { double d; unsigned long long i; } u; u.d = x; frac = (u.i >> 63) ? -0.0 : 0.0; }
+    return frac;
+}
+
 /* ── float variants ──────────────────────────────────────────────────────── */
 
 float sinf  (float x)           { return (float)sin  ((double)x); }
@@ -251,6 +259,7 @@ float ceilf (float x)           { return (float)ceil ((double)x); }
 float roundf(float x)           { return (float)round((double)x); }
 float truncf(float x)           { return (float)trunc((double)x); }
 float fmodf (float x, float y)  { return (float)fmod ((double)x, (double)y); }
+float modff (float x, float *iptr) { double i; float f = (float)modf((double)x, &i); *iptr = (float)i; return f; }
 float logf  (float x)           { return (float)log  ((double)x); }
 float log2f (float x)           { return (float)log2 ((double)x); }
 float log10f(float x)           { return (float)log10((double)x); }

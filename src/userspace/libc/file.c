@@ -7,9 +7,37 @@
 
 /* ── standard stream instances ───────────────────────────────────────────── */
 
-static FILE _stdin_impl  = { -1, _FILE_EOF, -1 };
-static FILE _stdout_impl = {  1, _FILE_WRITE, -1 };
-static FILE _stderr_impl = {  2, _FILE_WRITE, -1 };
+static FILE _stdin_impl  = { -1, _FILE_EOF, -1, 0, 0, {0} };
+static FILE _stdout_impl = {  1, _FILE_WRITE, -1, 0, 0, {0} };
+static FILE _stderr_impl = {  2, _FILE_WRITE, -1, 0, 0, {0} };
+
+/* ── internal buffered read ──────────────────────────────────────────────── */
+/* Reads exactly `n` bytes from `f` into `dst`, using the FILE read-ahead
+   buffer to avoid one syscall per byte.  Updates _rbuf_pos/_rbuf_len and
+   sets _FILE_EOF on short read.  Returns bytes read. */
+static size_t _rbuf_read(FILE *f, unsigned char *dst, size_t n)
+{
+    size_t done = 0;
+    while (done < n) {
+        /* serve remaining bytes from the current buffer fill */
+        if (f->_rbuf_pos < f->_rbuf_len) {
+            size_t avail = (size_t)(f->_rbuf_len - f->_rbuf_pos);
+            size_t take  = (n - done < avail) ? (n - done) : avail;
+            const unsigned char *src = f->_rbuf + f->_rbuf_pos;
+            unsigned char *d = dst + done;
+            for (size_t i = 0; i < take; i++) d[i] = src[i];
+            f->_rbuf_pos += (int)take;
+            done += take;
+        } else {
+            /* buffer exhausted — refill with a big read */
+            long got = sys_read(f->fd, (char *)f->_rbuf, _FILE_RBUF_SIZE);
+            if (got <= 0) { f->flags |= _FILE_EOF; break; }
+            f->_rbuf_pos = 0;
+            f->_rbuf_len = (int)got;
+        }
+    }
+    return done;
+}
 
 FILE *stdin  = &_stdin_impl;
 FILE *stdout = &_stdout_impl;
@@ -30,6 +58,8 @@ static FILE *pool_alloc(void)
             _file_used[i] = 1;
             _file_pool[i].flags = 0;
             _file_pool[i].unget_char = -1;
+            _file_pool[i]._rbuf_pos = 0;
+            _file_pool[i]._rbuf_len = 0;
             return &_file_pool[i];
         }
     }
@@ -77,7 +107,29 @@ FILE *fopen(const char *path, const char *mode)
         /* "r": read-only, existing file */
         fd = sys_open(path);
     }
-    if (fd < 0) return (FILE *)0;
+    if (fd < 0) {
+        /* Always log failures — tells us exactly which file SCUMM can't find */
+        serial_printf("[FILE] fopen FAIL: '%s' mode='%s'\n", path ? path : "(null)", mode ? mode : "");
+        return (FILE *)0;
+    }
+    /* Log all non-spam fopen successes (skip .ini/.xml/.dat/.ttf/.zip to reduce noise) */
+    if (path) {
+        const char *p = path;
+        while (*p) p++;
+        int n = (int)(p - path);
+        int is_spam = 0;
+        if (n >= 4) {
+            const char *e = path + n - 4;
+            /* skip theme/config spam */
+            if ((e[0]=='.' && e[1]=='i' && e[2]=='n' && e[3]=='i') ||
+                (e[0]=='.' && e[1]=='x' && e[2]=='m' && e[3]=='l') ||
+                (e[0]=='.' && e[1]=='t' && e[2]=='t' && e[3]=='f') ||
+                (e[0]=='.' && e[1]=='z' && e[2]=='i' && e[3]=='p'))
+                is_spam = 1;
+        }
+        if (!is_spam)
+            serial_printf("[FILE] fopen OK: '%s' fd=%d\n", path, fd);
+    }
 
     FILE *f = pool_alloc();
     if (!f) { sys_close(fd); return (FILE *)0; }
@@ -107,26 +159,18 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *f)
 {
     if (!f || (f->flags & _FILE_EOF) || !size || !nmemb) return 0;
 
-    /* Handle pushed-back character first */
     unsigned char *dst = (unsigned char *)ptr;
     size_t total = size * nmemb;
     size_t done  = 0;
 
+    /* Handle pushed-back character first */
     if (f->unget_char >= 0 && total > 0) {
         dst[done++] = (unsigned char)f->unget_char;
         f->unget_char = -1;
     }
 
-    /* Loop until we fill the buffer or hit true EOF.
-       sys_read may return partial results at FAT32 cluster boundaries. */
-    while (done < total) {
-        long n = sys_read(f->fd, dst + done, total - done);
-        if (n <= 0) {
-            f->flags |= _FILE_EOF;
-            break;
-        }
-        done += (size_t)n;
-    }
+    /* Use the read-ahead buffer (handles both small and large requests) */
+    done += _rbuf_read(f, dst + done, total - done);
 
     return done / size;
 }
@@ -146,7 +190,20 @@ int fseek(FILE *f, long offset, int whence)
 {
     if (!f || f == stdin) return -1;
     if (f == stdout || f == stderr) return -1;
-    f->unget_char = -1;  /* invalidate unget buffer on seek */
+    f->unget_char = -1;  /* invalidate unget buffer */
+
+    /* Convert SEEK_CUR to SEEK_SET to account for read-ahead bytes that
+       the fd has already consumed but the caller hasn't seen yet. */
+    if (whence == SEEK_CUR) {
+        long fd_pos = sys_lseek(f->fd, 0L, SEEK_CUR);
+        long buffered = (long)(f->_rbuf_len - f->_rbuf_pos);
+        offset = (fd_pos - buffered) + offset;
+        whence = SEEK_SET;
+    }
+
+    /* Discard the read-ahead buffer — position is changing */
+    f->_rbuf_pos = f->_rbuf_len = 0;
+
     long r = sys_lseek(f->fd, offset, whence);
     if (r < 0) { f->flags |= _FILE_ERR; return -1; }
     f->flags &= ~_FILE_EOF;
@@ -156,7 +213,10 @@ int fseek(FILE *f, long offset, int whence)
 long ftell(FILE *f)
 {
     if (!f || f == stdin || f == stdout || f == stderr) return -1L;
-    return sys_lseek(f->fd, 0L, SEEK_CUR);
+    /* fd is ahead of the user by the unconsumed read-ahead bytes */
+    long fd_pos  = sys_lseek(f->fd, 0L, SEEK_CUR);
+    long buffered = (long)(f->_rbuf_len - f->_rbuf_pos);
+    return fd_pos - buffered;
 }
 
 void rewind(FILE *f)
@@ -192,8 +252,7 @@ int fgetc(FILE *f)
     if (f->flags & _FILE_EOF) return -1;
     if (f == stdin) return -1;  /* no real stdin */
     unsigned char c;
-    long n = sys_read(f->fd, &c, 1);
-    if (n <= 0) { f->flags |= _FILE_EOF; return -1; }
+    if (_rbuf_read(f, &c, 1) != 1) return -1;
     return (int)c;
 }
 

@@ -419,3 +419,94 @@ Uint32 SDL_GetQueuedAudioSize(SDL_AudioDeviceID dev)
 
 void SDL_ClearQueuedAudio(SDL_AudioDeviceID dev)
 { (void)dev; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SDL_AddTimer / SDL_RemoveTimer — pthread-backed periodic timer.
+ *
+ * ScummVM uses SDL_AddTimer(10, handler, mgr) to drive DefaultTimerManager
+ * at ~100 Hz.  Without this, OPL synthesis, SCUMM script timing, and
+ * any callback registered via TimerManager::installTimerProc never fire,
+ * causing the SCUMM VM to stall in timed-wait loops.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+#define SDL_TIMER_MAX 8
+
+typedef struct {
+    SDL_TimerCallback cb;
+    void             *param;
+    volatile Uint32   interval_ms;
+    volatile int      cancelled;
+    pthread_t         thread;
+    int               in_use;
+} SDLTimerEntry;
+
+static SDLTimerEntry g_sdl_timers[SDL_TIMER_MAX];
+static pthread_mutex_t g_timer_list_lock;
+static int g_timer_list_init = 0;
+
+static void timer_list_ensure_init(void) {
+    if (!g_timer_list_init) {
+        pthread_mutex_init(&g_timer_list_lock, (pthread_mutexattr_t*)0);
+        g_timer_list_init = 1;
+    }
+}
+
+static void *sdl_timer_thread(void *arg)
+{
+    SDLTimerEntry *e = (SDLTimerEntry *)arg;
+    while (!e->cancelled) {
+        Uint32 ms = e->interval_ms;
+        if (ms == 0) ms = 1;
+        sys_sleep_ms(ms);
+        if (e->cancelled) break;
+        Uint32 next = e->cb(e->interval_ms, e->param);
+        if (next == 0) break;
+        e->interval_ms = next;
+    }
+    return (void *)0;
+}
+
+SDL_TimerID SDL_AddTimer(Uint32 interval, SDL_TimerCallback cb, void *param)
+{
+    if (!cb) return 0;
+    timer_list_ensure_init();
+    pthread_mutex_lock(&g_timer_list_lock);
+    int slot = -1;
+    for (int i = 0; i < SDL_TIMER_MAX; i++) {
+        if (!g_sdl_timers[i].in_use) { slot = i; break; }
+    }
+    if (slot < 0) {
+        pthread_mutex_unlock(&g_timer_list_lock);
+        return 0;
+    }
+    SDLTimerEntry *e = &g_sdl_timers[slot];
+    e->cb          = cb;
+    e->param       = param;
+    e->interval_ms = interval ? interval : 1;
+    e->cancelled   = 0;
+    e->in_use      = 1;
+    pthread_create(&e->thread, (pthread_attr_t*)0, sdl_timer_thread, e);
+    pthread_mutex_unlock(&g_timer_list_lock);
+    return (SDL_TimerID)(slot + 1);  /* 1-based so 0 means invalid */
+}
+
+SDL_bool SDL_RemoveTimer(SDL_TimerID id)
+{
+    if (!id) return SDL_FALSE;
+    timer_list_ensure_init();
+    int slot = (int)id - 1;
+    if (slot < 0 || slot >= SDL_TIMER_MAX) return SDL_FALSE;
+    pthread_mutex_lock(&g_timer_list_lock);
+    SDLTimerEntry *e = &g_sdl_timers[slot];
+    if (!e->in_use) {
+        pthread_mutex_unlock(&g_timer_list_lock);
+        return SDL_FALSE;
+    }
+    e->cancelled = 1;
+    pthread_mutex_unlock(&g_timer_list_lock);
+    pthread_join(e->thread, (void**)0);
+    pthread_mutex_lock(&g_timer_list_lock);
+    e->in_use = 0;
+    pthread_mutex_unlock(&g_timer_list_lock);
+    return SDL_TRUE;
+}

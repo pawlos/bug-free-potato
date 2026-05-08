@@ -1,7 +1,7 @@
-# -- ScummVM (Sky engine, SDL2 backend) --------------------------------------
-# Builds a stripped-down ScummVM with the Sky engine only. Uses our SDL2 shim
-# (Wolf4SDL proved end-to-end audio + video). Configure runs once at clone
-# time; the source list is captured into .sources for the per-file rules.
+# -- ScummVM (Sky + SCUMM engines, SDL2 backend) ------------------------------
+# Builds a stripped-down ScummVM with Sky and SCUMM engines. Uses our SDL2
+# shim (Wolf4SDL proved end-to-end audio + video). Configure runs once at
+# clone time; the source list is captured into .sources for the per-file rules.
 SCUMMVM_DIR     = src/userspace/scummvm
 SCUMMVM_SRC_DIR = $(SCUMMVM_DIR)/scummvm-src
 SCUMMVM_BUILD   = build/userspace/scummvm
@@ -29,6 +29,7 @@ CFLAGS_SCUMMVM = -ffreestanding -fno-stack-protector -fno-builtin \
                  -DSDL_BACKEND -DUSE_SDL2 \
                  -DPOSIX -DPOTATOS \
                  -DENABLE_SKY=STATIC_PLUGIN \
+                 -DENABLE_SCUMM=STATIC_PLUGIN \
                  -DDATA_PATH=\"$(SCUMMVM_DATA_PATH)\" \
                  -DPLUGIN_DIRECTORY=\"$(SCUMMVM_DATA_PATH)\"
 
@@ -55,7 +56,7 @@ $(SCUMMVM_MARKER):
 	# Run upstream configure to generate config.h, config.mk, engines.mk,
 	# detection_table.h, plugins_table.h. Disable everything we don't have.
 	cd $(SCUMMVM_SRC_DIR) && ./configure \
-	    --backend=sdl --disable-all-engines --enable-engine=sky \
+	    --backend=sdl --disable-all-engines --enable-engine=sky --enable-engine=scumm \
 	    --disable-mt32emu --disable-lua --disable-cloud \
 	    --disable-system-dialogs --disable-translation \
 	    --disable-detection-full --disable-savegame-timestamp \
@@ -105,7 +106,7 @@ $(SCUMMVM_MARKER):
 	    -e 's|^#define USE_FREETYPE2|#undef USE_FREETYPE2|' \
 	    -e 's|^#define USE_TINYGL|#undef USE_TINYGL|' \
 	    -e 's|^#define USE_ZLIB|#undef USE_ZLIB|' \
-	    -e 's|^#undef USE_SCALERS$|#define USE_SCALERS|' \
+	    -e 's|^#undef USE_SCALERS$$|#define USE_SCALERS|' \
 	    config.h
 	# Capture the source list from upstream's make-by-module logic. After the
 	# config.mk patches above, `make -n` walks every module.mk and emits the

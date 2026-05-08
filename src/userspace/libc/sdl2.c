@@ -12,7 +12,7 @@
 #include "file.h"
 
 /* Define SDL_DEBUG_TRACE to enable serial debug output for rendering pipeline */
-/* #define SDL_DEBUG_TRACE */
+#define SDL_DEBUG_TRACE
 #ifdef SDL_DEBUG_TRACE
 extern int serial_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 #define sdl_trace(...) serial_printf(__VA_ARGS__)
@@ -97,6 +97,12 @@ Uint32 SDL_GetTicks(void)
 
 void SDL_Delay(Uint32 ms)
 {
+#ifdef SDL_DEBUG_TRACE
+    static unsigned sdl_delay_count = 0;
+    sdl_delay_count++;
+    if (sdl_delay_count <= 5 || (sdl_delay_count % 100) == 0)
+        sdl_trace("[SDL] SDL_Delay #%u: %u ms ticks=%u\n", sdl_delay_count, ms, SDL_GetTicks());
+#endif
     sys_sleep_ms(ms);
 }
 
@@ -332,8 +338,8 @@ int SDL_UpdateTexture(SDL_Texture *texture, const SDL_Rect *rect,
     static int ut_trace = 0;
     static int ut_call = 0;
     ut_call++;
-    /* Log first 20 calls and then every 60th (~once/sec at 60fps) */
-    if (ut_trace < 20 || (ut_call % 60) == 0) {
+    /* Log first 100 calls and then every 60th (~once/sec at 60fps) */
+    if (ut_trace < 100 || (ut_call % 60) == 0) {
         ut_trace++;
         /* Sample source pixels for non-black */
         int nonblack = 0;
@@ -626,6 +632,12 @@ __attribute__((weak)) void __sdl2_audio_tick(void) { }
 
 int SDL_PollEvent(SDL_Event *event)
 {
+#ifdef SDL_DEBUG_TRACE
+    static unsigned sdl_poll_count = 0;
+    sdl_poll_count++;
+    if (sdl_poll_count <= 5 || (sdl_poll_count % 500) == 0)
+        sdl_trace("[SDL] SDL_PollEvent #%u\n", sdl_poll_count);
+#endif
     /* Keep the Aulib mixer fed every time the game polls for events. */
     __sdl2_audio_tick();
 
@@ -635,6 +647,9 @@ int SDL_PollEvent(SDL_Event *event)
     if (g_push_head != g_push_tail) {
         *event = g_push_queue[g_push_tail];
         g_push_tail = (g_push_tail + 1) % PUSH_QUEUE_SIZE;
+#ifdef SDL_DEBUG_TRACE
+        sdl_trace("[SDL] SDL_PollEvent -> type=0x%x (pushed)\n", event->type);
+#endif
         return 1;
     }
 
@@ -647,6 +662,12 @@ int SDL_PollEvent(SDL_Event *event)
 
     /* Check keyboard events from window queue */
     long kev = sys_get_key_event();
+#ifdef SDL_DEBUG_TRACE
+    if (kev != -1) {
+        int pressed = (kev & 0x100) != 0;
+        sdl_trace("[SDL] SDL_PollEvent -> KEY %s sc=0x%x\n", pressed ? "DOWN" : "UP", (int)(kev & 0xFF));
+    }
+#endif
     if (kev != -1) {
         int pressed = (kev & 0x100) != 0;
         int ps2_sc  = (int)(kev & 0xFF);
@@ -993,6 +1014,7 @@ SDL_Surface* SDL_CreateRGBSurface(Uint32 flags, int w, int h, int depth,
     s->clip_rect.w = w;
     s->clip_rect.h = h;
     s->refcount = 1;
+    sdl_trace("[SDL] CreateRGBSurface: %dx%d bpp=%d surf=%p px=%p\n", w, h, depth, s, s->pixels);
     return s;
 }
 
@@ -1026,6 +1048,7 @@ SDL_Surface* SDL_CreateRGBSurfaceFrom(void *pixels, int w, int h, int depth,
     s->clip_rect.w = w;
     s->clip_rect.h = h;
     s->refcount = 1;
+    sdl_trace("[SDL] CreateRGBSurfaceFrom: %dx%d bpp=%d surf=%p px=%p (external)\n", w, h, depth, s, s->pixels);
     return s;
 }
 
@@ -1271,19 +1294,23 @@ int SDL_BlitSurface(SDL_Surface *src, const SDL_Rect *srcrect,
 {
     if (!src || !dst || !src->pixels || !dst->pixels) return -1;
 
-    /* Always log paletted-source blits (Sky's game frames) — they're rare.
-       Cap unpaletted blits at 20 to avoid spam from chrome redraws. */
+    /* Log paletted blits for the first 10 frames and every 100th after (game frames).
+       Cap unpaletted blits at 20 to avoid chrome-redraw spam. */
     int is_paletted = (src->format->palette && src->format->palette->ncolors > 0);
-    int should_log = is_paletted || (g_blit_trace_count < 20);
+    static int paletted_count = 0;
+    if (is_paletted) paletted_count++;
+    int should_log = (is_paletted && (paletted_count <= 10 || (paletted_count % 100) == 0))
+                     || (!is_paletted && g_blit_trace_count < 20);
     if (should_log) {
         g_blit_trace_count++;
-        sdl_trace("[SDL] BlitSurface #%d: src=%dx%d fmt=0x%x bpp=%d pal=%p -> dst=%dx%d fmt=0x%x bpp=%d\n",
+        sdl_trace("[SDL] BlitSurface #%d: src=%p %dx%d fmt=0x%x bpp=%d pal=%p px=%p -> dst=%dx%d\n",
                   g_blit_trace_count,
-                  src->w, src->h, src->format->format, src->format->BytesPerPixel,
-                  src->format->palette,
-                  dst->w, dst->h, dst->format->format, dst->format->BytesPerPixel);
+                  src, src->w, src->h, src->format->format, src->format->BytesPerPixel,
+                  src->format->palette, src->pixels,
+                  dst->w, dst->h);
         if (is_paletted) {
-            /* Count total non-zero src pixels (so we know if game frame is empty) */
+            /* Always scan for non-zero pixels — emit FIRST-NONZERO milestone when pixels appear */
+            static int first_nonzero_seen = 0;
             Uint8 *sp = (Uint8*)src->pixels;
             int total = src->w * src->h;
             int sample = total < 50000 ? total : 50000;
@@ -1294,19 +1321,37 @@ int SDL_BlitSurface(SDL_Surface *src, const SDL_Rect *srcrect,
                     if (found < 0) found = i;
                 }
             }
-            if (found >= 0) {
+            if (found >= 0 && !first_nonzero_seen) {
+                first_nonzero_seen = 1;
                 int idx = sp[found];
                 SDL_Color c = src->format->palette->colors[idx];
-                sdl_trace("[SDL]   src nonzero=%d/%d  px[%d]=idx %d -> RGBA(%d,%d,%d,%d)  pal[1]=(%d,%d,%d) pal[128]=(%d,%d,%d)\n",
-                          nonzero, sample,
-                          found, idx, c.r, c.g, c.b, c.a,
-                          src->format->palette->colors[1].r, src->format->palette->colors[1].g,
-                          src->format->palette->colors[1].b,
-                          src->format->palette->colors[128].r, src->format->palette->colors[128].g,
-                          src->format->palette->colors[128].b);
-            } else {
-                sdl_trace("[SDL]   all src pixels are 0 (sampled %d)\n", sample);
+                sdl_trace("[SDL] *** FIRST NONZERO FRAME #%d: nonzero=%d/%d px[%d]=idx %d RGBA(%d,%d,%d,%d)\n",
+                          paletted_count, nonzero, sample, found, idx, c.r, c.g, c.b, c.a);
             }
+            if (should_log) {
+                if (found >= 0) {
+                    int idx = sp[found];
+                    SDL_Color c = src->format->palette->colors[idx];
+                    sdl_trace("[SDL]   src nonzero=%d/%d  px[%d]=idx %d -> RGBA(%d,%d,%d,%d)  pal[1]=(%d,%d,%d) pal[128]=(%d,%d,%d)\n",
+                              nonzero, sample,
+                              found, idx, c.r, c.g, c.b, c.a,
+                              src->format->palette->colors[1].r, src->format->palette->colors[1].g,
+                              src->format->palette->colors[1].b,
+                              src->format->palette->colors[128].r, src->format->palette->colors[128].g,
+                              src->format->palette->colors[128].b);
+                } else {
+                    sdl_trace("[SDL]   all src pixels are 0 (sampled %d)\n", sample);
+                }
+            }
+        } else if (src->format->BytesPerPixel == 4) {
+            /* Sample 32-bit blits (overlay/launcher frames, error dialogs) */
+            Uint32 *sp = (Uint32*)src->pixels;
+            int total = src->w * src->h;
+            int sample = total < 10000 ? total : 10000;
+            int nonblack = 0;
+            for (int i = 0; i < sample; i++)
+                if ((sp[i] & 0x00FFFFFF) != 0) nonblack++;
+            sdl_trace("[SDL]   32bpp src nonblack=%d/%d\n", nonblack, sample);
         }
     }
 
