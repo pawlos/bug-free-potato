@@ -59,8 +59,13 @@ int pthread_create(pthread_t *tid_out, const pthread_attr_t *attr,
     tc->start_fn    = start_fn;
     tc->real_arg    = arg;
 
-    /* Initial RSP for the new thread = one byte past the top of the region. */
-    void *stack_top = (char *)stack_base + PTHREAD_STACK_SIZE;
+    /* Initial RSP for the new thread.  The SysV x86_64 ABI guarantees that
+     * at function entry RSP is `16k + 8` (one return address pushed by CALL).
+     * Since the kernel jumps directly to the trampoline without a CALL, we
+     * subtract 8 from the page-aligned stack top to produce the same layout
+     * — otherwise compiler-emitted MOVAPS at function bodies (which assume
+     * stack-aligned locals after the SUB-RSP prologue) will #GP. */
+    void *stack_top = (char *)stack_base + PTHREAD_STACK_SIZE - 8;
 
     /* Spawn the kernel thread.
      * entry    = thread_trampoline (first RIP)
