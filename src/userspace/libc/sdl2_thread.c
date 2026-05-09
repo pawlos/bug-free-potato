@@ -98,10 +98,18 @@ SDL_threadID SDL_GetThreadID(SDL_Thread *t)
     return t ? (SDL_threadID)t->tid : 0;
 }
 
-/* ── Mutex ──────────────────────────────────────────────────────────────── */
+/* ── Mutex ──────────────────────────────────────────────────────────────── *
+ * SDL2 mutexes are RECURSIVE (real SDL2 uses PTHREAD_MUTEX_RECURSIVE on
+ * POSIX).  ScummVM's Common::Mutex and Audio::MixerImpl rely on this — they
+ * re-enter their own mutex during nested calls (e.g. mixer callback → channel
+ * tear-down → mixer mutex).  Emulate via owner_tid + recursion count on top
+ * of our plain non-recursive pthread_mutex.
+ * ─────────────────────────────────────────────────────────────────────── */
 
 struct SDL_mutex {
     pthread_mutex_t m;
+    uint32_t        owner;   /* tid of holder, 0 if free */
+    uint32_t        count;   /* recursion depth (0 if free) */
 };
 
 SDL_mutex* SDL_CreateMutex(void)
@@ -109,6 +117,8 @@ SDL_mutex* SDL_CreateMutex(void)
     SDL_mutex *m = (SDL_mutex*)malloc(sizeof(*m));
     if (!m) return (SDL_mutex*)0;
     pthread_mutex_init(&m->m, (pthread_mutexattr_t*)0);
+    m->owner = 0;
+    m->count = 0;
     return m;
 }
 
@@ -122,18 +132,41 @@ void SDL_DestroyMutex(SDL_mutex *m)
 int SDL_LockMutex(SDL_mutex *m)
 {
     if (!m) return -1;
-    return pthread_mutex_lock(&m->m);
+    uint32_t self = (uint32_t)pthread_self();
+    if (m->owner == self) {
+        m->count++;
+        return 0;
+    }
+    int rc = pthread_mutex_lock(&m->m);
+    m->owner = self;
+    m->count = 1;
+    return rc;
 }
 
 int SDL_TryLockMutex(SDL_mutex *m)
 {
     if (!m) return -1;
-    return pthread_mutex_trylock(&m->m) == 0 ? 0 : SDL_MUTEX_TIMEDOUT;
+    uint32_t self = (uint32_t)pthread_self();
+    if (m->owner == self) {
+        m->count++;
+        return 0;
+    }
+    if (pthread_mutex_trylock(&m->m) != 0)
+        return SDL_MUTEX_TIMEDOUT;
+    m->owner = self;
+    m->count = 1;
+    return 0;
 }
 
 int SDL_UnlockMutex(SDL_mutex *m)
 {
     if (!m) return -1;
+    if (m->count > 1) {
+        m->count--;
+        return 0;
+    }
+    m->count = 0;
+    m->owner = 0;
     return pthread_mutex_unlock(&m->m);
 }
 
@@ -161,7 +194,16 @@ void SDL_DestroyCond(SDL_cond *c)
 int SDL_CondWait(SDL_cond *c, SDL_mutex *m)
 {
     if (!c || !m) return -1;
-    return pthread_cond_wait(&c->c, &m->m);
+    /* pthread_cond_wait drops the underlying pthread_mutex while waiting and
+     * re-acquires it before returning.  Save & restore the recursion state so
+     * the SDL_mutex looks consistent to its owner thread. */
+    uint32_t saved_count = m->count;
+    m->count = 0;
+    m->owner = 0;
+    int rc = pthread_cond_wait(&c->c, &m->m);
+    m->owner = (uint32_t)pthread_self();
+    m->count = saved_count;
+    return rc;
 }
 
 int SDL_CondSignal(SDL_cond *c)
