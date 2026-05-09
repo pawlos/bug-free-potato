@@ -12,7 +12,7 @@
 #include "file.h"
 
 /* Define SDL_DEBUG_TRACE to enable serial debug output for rendering pipeline */
-#define SDL_DEBUG_TRACE
+/* #define SDL_DEBUG_TRACE */
 #ifdef SDL_DEBUG_TRACE
 extern int serial_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 #define sdl_trace(...) serial_printf(__VA_ARGS__)

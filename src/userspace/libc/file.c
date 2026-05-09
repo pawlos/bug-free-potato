@@ -5,6 +5,15 @@
 #include "stdio.h"
 #include <stdarg.h>
 
+/* Define FILE_DEBUG_TRACE to log every fopen attempt to the serial port.
+   Useful when porting a new game and you need to see which assets it touches. */
+/* #define FILE_DEBUG_TRACE */
+#ifdef FILE_DEBUG_TRACE
+#define file_trace(...) serial_printf(__VA_ARGS__)
+#else
+#define file_trace(...) ((void)0)
+#endif
+
 /* ── standard stream instances ───────────────────────────────────────────── */
 
 static FILE _stdin_impl  = { -1, _FILE_EOF, -1, 0, 0, {0} };
@@ -108,11 +117,11 @@ FILE *fopen(const char *path, const char *mode)
         fd = sys_open(path);
     }
     if (fd < 0) {
-        /* Always log failures — tells us exactly which file SCUMM can't find */
-        serial_printf("[FILE] fopen FAIL: '%s' mode='%s'\n", path ? path : "(null)", mode ? mode : "");
+        file_trace("[FILE] fopen FAIL: '%s' mode='%s'\n", path ? path : "(null)", mode ? mode : "");
         return (FILE *)0;
     }
-    /* Log all non-spam fopen successes (skip .ini/.xml/.dat/.ttf/.zip to reduce noise) */
+#ifdef FILE_DEBUG_TRACE
+    /* Skip noisy theme/config spam (.ini/.xml/.ttf/.zip). */
     if (path) {
         const char *p = path;
         while (*p) p++;
@@ -120,7 +129,6 @@ FILE *fopen(const char *path, const char *mode)
         int is_spam = 0;
         if (n >= 4) {
             const char *e = path + n - 4;
-            /* skip theme/config spam */
             if ((e[0]=='.' && e[1]=='i' && e[2]=='n' && e[3]=='i') ||
                 (e[0]=='.' && e[1]=='x' && e[2]=='m' && e[3]=='l') ||
                 (e[0]=='.' && e[1]=='t' && e[2]=='t' && e[3]=='f') ||
@@ -128,8 +136,9 @@ FILE *fopen(const char *path, const char *mode)
                 is_spam = 1;
         }
         if (!is_spam)
-            serial_printf("[FILE] fopen OK: '%s' fd=%d\n", path, fd);
+            file_trace("[FILE] fopen OK: '%s' fd=%d\n", path, fd);
     }
+#endif
 
     FILE *f = pool_alloc();
     if (!f) { sys_close(fd); return (FILE *)0; }
