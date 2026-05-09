@@ -2,6 +2,7 @@
 #include "string.h"
 #include "syscall.h"
 #include "time.h"
+#include "pthread.h"
 #include <stdarg.h>
 
 /* ── heap allocator ──────────────────────────────────────────────────────── *
@@ -51,29 +52,36 @@ static block_hdr *heap_grow(size_t need)
     return b;
 }
 
-void *malloc(size_t size)
+/* The free list is shared across threads (main + audio worker + SDL timer
+   threads) and must be serialized.  Without this, concurrent malloc/free on
+   the same list corrupts block_hdr.next pointers — which can yield a circular
+   free list, making `for (b = heap_list; b; b = b->next)` an infinite loop. */
+static pthread_mutex_t heap_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void *_malloc_locked(size_t size)
 {
     if (!size) return (void *)0;
     size = ALIGN_UP(size, HEAP_ALIGN);
-    for (block_hdr *b = heap_list; b; b = b->next) {
-        if (!b->used && b->size >= size) {
-            if (b->size >= size + HDR_SIZE + HEAP_ALIGN) {
-                block_hdr *nb = (block_hdr *)((char *)b + HDR_SIZE + size);
-                nb->size = b->size - size - HDR_SIZE;
-                nb->used = 0;
-                nb->next = b->next;
-                b->size  = size;
-                b->next  = nb;
+    for (;;) {
+        for (block_hdr *b = heap_list; b; b = b->next) {
+            if (!b->used && b->size >= size) {
+                if (b->size >= size + HDR_SIZE + HEAP_ALIGN) {
+                    block_hdr *nb = (block_hdr *)((char *)b + HDR_SIZE + size);
+                    nb->size = b->size - size - HDR_SIZE;
+                    nb->used = 0;
+                    nb->next = b->next;
+                    b->size  = size;
+                    b->next  = nb;
+                }
+                b->used = 1;
+                return (char *)b + HDR_SIZE;
             }
-            b->used = 1;
-            return (char *)b + HDR_SIZE;
         }
+        if (!heap_grow(size)) return (void *)0;
     }
-    if (!heap_grow(size)) return (void *)0;
-    return malloc(size);
 }
 
-void free(void *ptr)
+static void _free_locked(void *ptr)
 {
     if (!ptr) return;
     block_hdr *b = (block_hdr *)((char *)ptr - HDR_SIZE);
@@ -87,16 +95,40 @@ void free(void *ptr)
     }
 }
 
+void *malloc(size_t size)
+{
+    pthread_mutex_lock(&heap_lock);
+    void *p = _malloc_locked(size);
+    pthread_mutex_unlock(&heap_lock);
+    return p;
+}
+
+void free(void *ptr)
+{
+    pthread_mutex_lock(&heap_lock);
+    _free_locked(ptr);
+    pthread_mutex_unlock(&heap_lock);
+}
+
 void *realloc(void *ptr, size_t size)
 {
     if (!ptr)  return malloc(size);
     if (!size) { free(ptr); return (void *)0; }
+    pthread_mutex_lock(&heap_lock);
     block_hdr *b = (block_hdr *)((char *)ptr - HDR_SIZE);
-    if (size <= b->size) return ptr;
-    void *np = malloc(size);
-    if (!np) return (void *)0;
-    memcpy(np, ptr, b->size);
-    free(ptr);
+    if (size <= b->size) {
+        pthread_mutex_unlock(&heap_lock);
+        return ptr;
+    }
+    size_t old_size = b->size;
+    void *np = _malloc_locked(size);
+    if (!np) {
+        pthread_mutex_unlock(&heap_lock);
+        return (void *)0;
+    }
+    memcpy(np, ptr, old_size);
+    _free_locked(ptr);
+    pthread_mutex_unlock(&heap_lock);
     return np;
 }
 
