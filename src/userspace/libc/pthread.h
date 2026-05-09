@@ -7,12 +7,14 @@
 typedef uint32_t pthread_t;      /* kernel task ID */
 typedef int      pthread_attr_t; /* reserved for ABI compat, unused */
 
-/* 3-state mutex: 0=free, 1=held (no waiters), 2=held (waiters sleeping) */
+/* 3-state mutex: 0=free, 1=held (no waiters), 2=held (waiters sleeping)
+ * `owner` is purely diagnostic — set on acquire, cleared on release. */
 typedef struct {
     uint32_t state;
+    uint32_t owner;
 } pthread_mutex_t;
 
-#define PTHREAD_MUTEX_INITIALIZER { 0 }
+#define PTHREAD_MUTEX_INITIALIZER { 0, 0 }
 
 typedef int pthread_mutexattr_t; /* unused */
 

@@ -157,8 +157,10 @@ int pthread_mutex_destroy(pthread_mutex_t *m)
 int pthread_mutex_lock(pthread_mutex_t *m)
 {
     /* Attempt uncontended acquire (0 → 1). */
-    if (atomic_cmpxchg(&m->state, 0, 1) == 0)
+    if (atomic_cmpxchg(&m->state, 0, 1) == 0) {
+        m->owner = (uint32_t)pthread_self();
         return 0;
+    }
 
     /* Contended: mark waiters present (state→2) then sleep until state==0.
      * A single XCHG per loop iteration; the while condition retries on spurious
@@ -168,6 +170,7 @@ int pthread_mutex_lock(pthread_mutex_t *m)
         sys_futex(FUTEX_WAIT, &m->state, 2);
         s = atomic_xchg(&m->state, 2);
     }
+    m->owner = (uint32_t)pthread_self();
 
     return 0;
 }
@@ -179,6 +182,7 @@ int pthread_mutex_trylock(pthread_mutex_t *m)
 
 int pthread_mutex_unlock(pthread_mutex_t *m)
 {
+    m->owner = 0;
     /* Atomically clear the mutex; remember whether waiters were sleeping. */
     uint32_t old = atomic_xchg(&m->state, 0);
     if (old == 2)
