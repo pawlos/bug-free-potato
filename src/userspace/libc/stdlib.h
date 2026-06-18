@@ -28,10 +28,15 @@ int    atoi(const char *s);
 long   atol(const char *s);
 long   strtol (const char *s, char **endptr, int base);
 unsigned long strtoul(const char *s, char **endptr, int base);
-/* On x86_64 long == long long == 64 bits, so strtoll/strtoull alias strtol/strtoul. */
-static inline long long          strtoll (const char *s, char **endptr, int base) { return (long long)strtol(s, endptr, base); }
-static inline unsigned long long strtoull(const char *s, char **endptr, int base) { return (unsigned long long)strtoul(s, endptr, base); }
-static inline long long          atoll(const char *s) { return strtoll(s, (char **)0, 10); }
+/* On x86_64 long == long long == 64 bits, so strtoll/strtoull alias strtol/strtoul.
+ * These are PLAIN PROTOTYPES (implemented in stdlib.c), NOT inline definitions:
+ * host <cstdlib> reaches the host <stdlib.h> via #include_next (bypassing this
+ * -isystem shim) and provides its own gnu_inline `atoll`.  A static-inline
+ * definition here collides with that ("redeclared inline without gnu_inline");
+ * a prototype coexists with it cleanly and the symbol comes from stdlib.c. */
+long long          strtoll (const char *s, char **endptr, int base);
+unsigned long long strtoull(const char *s, char **endptr, int base);
+long long          atoll(const char *s);
 
 /* misc */
 int    abs(int x);

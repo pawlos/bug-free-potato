@@ -1,5 +1,10 @@
 #pragma once
-#include "syscall.h"  /* size_t */
+/* NOTE: do NOT include syscall.h here at the top.  syscall.h includes
+ * <stdint.h> and now uses uint32_t/uint64_t (the pthread syscall wrappers).
+ * If a TU reaches <stdint.h> first, the #pragma once would make syscall.h's
+ * re-include a no-op and syscall.h would compile before these typedefs exist.
+ * syscall.h is pulled in at the BOTTOM purely so `#include <stdint.h>` still
+ * transitively provides size_t, the way it did before. */
 
 typedef unsigned char      uint8_t;
 typedef unsigned short     uint16_t;
@@ -59,3 +64,8 @@ typedef unsigned long      uint_least64_t;
 #define UINT16_C(x) (x)
 #define UINT32_C(x) (x ## U)
 #define UINT64_C(x) (x ## UL)
+
+/* Pulled in last (see note at top): keeps size_t available to code that does
+ * `#include <stdint.h>` without re-creating the stdint↔syscall include cycle.
+ * By now every uint*_t typedef above is visible to syscall.h. */
+#include "syscall.h"

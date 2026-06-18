@@ -211,6 +211,24 @@ long atol(const char *s)
     return sign * n;
 }
 
+/* On x86_64 long == long long == 64 bits, so these alias the long variants.
+ * Declared as prototypes in stdlib.h (not inline) to avoid colliding with the
+ * host glibc gnu_inline atoll that <cstdlib> drags in via #include_next. */
+long long strtoll(const char *s, char **endptr, int base)
+{
+    return (long long)strtol(s, endptr, base);
+}
+
+unsigned long long strtoull(const char *s, char **endptr, int base)
+{
+    return (unsigned long long)strtoul(s, endptr, base);
+}
+
+long long atoll(const char *s)
+{
+    return (long long)atol(s);
+}
+
 long strtol(const char *s, char **endptr, int base)
 {
     while (*s == ' ' || *s == '\t') s++;

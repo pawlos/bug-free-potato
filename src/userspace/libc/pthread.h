@@ -74,3 +74,71 @@ int pthread_cond_destroy(pthread_cond_t *c);
 int pthread_cond_wait(pthread_cond_t *c, pthread_mutex_t *m);
 int pthread_cond_signal(pthread_cond_t *c);
 int pthread_cond_broadcast(pthread_cond_t *c);
+
+/* ── Extended POSIX surface for host libstdc++ <bits/gthr-default.h> ───────── *
+ *
+ * The toolchain builds C++ userspace (DevilutionX, ScummVM …) against the HOST
+ * libstdc++ headers (the command line is not -nostdinc++).  Any STL header that
+ * touches threading — <mutex>, <thread>, <shared_mutex>, and even <sstream> /
+ * <memory_resource> via <atomic_wait> — pulls in <bits/gthr-default.h>, which
+ * does `#include <pthread.h>` and expects glibc's full pthread surface.
+ *
+ * Because the build passes `-isystem src/userspace/libc`, THIS header shadows
+ * the host <pthread.h>; so we must declare every type/macro/function gthr
+ * references or those translation units fail to compile (they did, until a
+ * pthread.h was first added to the shim — before that gthr saw the complete
+ * host <pthread.h>).  gthr references these as weak symbols, so declarations
+ * are enough to compile and link: userspace that never starts a std::thread
+ * never calls them.  Keep these as a compile-compat shim, not a full impl.
+ */
+struct timespec;  /* forward decl — only used through pointers below */
+
+/* Thread-specific data keys (gthr __gthread_key_t) */
+typedef uint32_t pthread_key_t;
+int   pthread_key_create(pthread_key_t *key, void (*destructor)(void *));
+int   pthread_key_delete(pthread_key_t key);
+void *pthread_getspecific(pthread_key_t key);
+int   pthread_setspecific(pthread_key_t key, const void *value);
+
+/* One-time initialization (gthr __gthread_once_t) */
+typedef int pthread_once_t;
+#define PTHREAD_ONCE_INIT 0
+int pthread_once(pthread_once_t *once_control, void (*init_routine)(void));
+
+/* Read/write lock (host libstdc++ std::shared_mutex) */
+typedef struct {
+    uint32_t readers;
+    uint32_t writer;
+} pthread_rwlock_t;
+#define PTHREAD_RWLOCK_INITIALIZER { 0, 0 }
+int pthread_rwlock_init(pthread_rwlock_t *rw, const void *attr);
+int pthread_rwlock_destroy(pthread_rwlock_t *rw);
+int pthread_rwlock_rdlock(pthread_rwlock_t *rw);
+int pthread_rwlock_tryrdlock(pthread_rwlock_t *rw);
+int pthread_rwlock_wrlock(pthread_rwlock_t *rw);
+int pthread_rwlock_trywrlock(pthread_rwlock_t *rw);
+int pthread_rwlock_timedrdlock(pthread_rwlock_t *rw, const struct timespec *abstime);
+int pthread_rwlock_timedwrlock(pthread_rwlock_t *rw, const struct timespec *abstime);
+int pthread_rwlock_unlock(pthread_rwlock_t *rw);
+
+/* Recursive-mutex attributes (gthr __gthread_recursive_mutex_t) */
+#define PTHREAD_MUTEX_RECURSIVE 1
+int pthread_mutexattr_init(pthread_mutexattr_t *a);
+int pthread_mutexattr_settype(pthread_mutexattr_t *a, int type);
+int pthread_mutexattr_destroy(pthread_mutexattr_t *a);
+int pthread_mutex_timedlock(pthread_mutex_t *m, const struct timespec *abstime);
+int pthread_mutex_clocklock(pthread_mutex_t *m, int clock,
+                            const struct timespec *abstime);
+int pthread_rwlock_clockrdlock(pthread_rwlock_t *rw, int clock,
+                               const struct timespec *abstime);
+int pthread_rwlock_clockwrlock(pthread_rwlock_t *rw, int clock,
+                               const struct timespec *abstime);
+
+/* Misc thread ops referenced by gthr */
+int pthread_detach(pthread_t tid);
+int pthread_equal(pthread_t a, pthread_t b);
+int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m,
+                           const struct timespec *abstime);
+int pthread_cond_clockwait(pthread_cond_t *c, pthread_mutex_t *m,
+                           int clock, const struct timespec *abstime);
+int sched_yield(void);
