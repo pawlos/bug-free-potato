@@ -5,6 +5,22 @@
 
 constexpr pt::uintptr_t KERNEL_OFFSET = 0xFFFF800000000000ULL;
 
+// ── Physical memory partition ────────────────────────────────────────────
+// The kernel heap and the physical-frame allocator carve from the SAME RAM,
+// so their ranges MUST be disjoint:
+//   • kernel heap     : [HEAP_PHYS_BASE, HEAP_PHYS_LIMIT)   grows upward
+//   • frame allocator : [HEAP_PHYS_LIMIT, top-of-RAM)       allocate_frame()
+// The heap grows by increasing address; the frame allocator hands out frames
+// used for page tables and device DMA structures (e.g. AHCI command lists).
+// If the heap is left uncapped it eventually spills past HEAP_PHYS_LIMIT and
+// silently overwrites frames already in use — corrupting, among other things,
+// the AHCI command-list frame (observed as a wedged port with a bogus ctba).
+// Both the heap cap (VMM ctor) and the frame reservation
+// (initialize_frame_allocator) reference these constants so they can never
+// drift apart.
+constexpr pt::uintptr_t HEAP_PHYS_BASE  = 0x200000;    // 2 MB (kernel binary below)
+constexpr pt::uintptr_t HEAP_PHYS_LIMIT = 0x4000000;   // 64 MB heap ceiling
+
 // Memory utility functions
 void memset(void* dst, pt::uint64_t value, const pt::size_t size);
 void* memcpy(void* dest, const void* src, pt::size_t n);
@@ -119,7 +135,15 @@ public:
         {
             kernel_panic("Unable to find suitable memory region!", NoSuitableRegion);
         }
-        klog("[VMM] Selected memory region %x, size: %x\n", addr, top_size);
+        // Cap the heap at HEAP_PHYS_LIMIT so it can never grow into the
+        // frame-allocator region above it (see the partition note up top).
+        // Without this the heap silently overwrites already-allocated frames
+        // (e.g. AHCI command lists) once cumulative allocations exceed the
+        // limit.  phys_start is well below the limit, so no underflow.
+        if (phys_start + top_size > HEAP_PHYS_LIMIT)
+            top_size = HEAP_PHYS_LIMIT - phys_start;
+        klog("[VMM] Selected memory region %x, size: %x (heap capped at %x)\n",
+             addr, top_size, HEAP_PHYS_LIMIT);
         firstFreeMemoryRegion = reinterpret_cast<kMemoryRegion *>(addr);
         firstFreeMemoryRegion->length = top_size - sizeof(kMemoryRegion);
         firstFreeMemoryRegion->nextChunk = nullptr;

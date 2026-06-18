@@ -357,11 +357,13 @@ void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
         frame_bitmap[i] = 0;
     }
 
-    // Mark the first 16MB as reserved so that allocate_frame() never returns
-    // a physical address that overlaps the kernel binary or the heap.
-    // The kernel binary starts at 1MB; the heap follows immediately and can
-    // grow to several MB, so 16MB gives plenty of headroom.
-    pt::size_t kernel_frames = (16 * 1024 * 1024) / 4096;
+    // Reserve everything below HEAP_PHYS_LIMIT so that allocate_frame() never
+    // returns a physical address that overlaps the kernel binary or the heap.
+    // The kernel binary starts at 1MB and the heap occupies
+    // [HEAP_PHYS_BASE, HEAP_PHYS_LIMIT); the heap is capped to that same limit
+    // in the VMM ctor, so the heap and the frame allocator are strictly
+    // disjoint and can never overwrite each other's memory.
+    pt::size_t kernel_frames = HEAP_PHYS_LIMIT / 4096;
     for (pt::size_t i = 0; i < kernel_frames; i++)
     {
         pt::size_t byte_idx = i / 8;
