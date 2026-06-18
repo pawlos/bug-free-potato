@@ -2,9 +2,6 @@
 
 #include "defs.h"
 
-// Disk abstraction layer
-// Currently supports IDE drives with FAT12 filesystem
-
 class Disk {
 public:
     static void initialize();
@@ -13,6 +10,9 @@ public:
     static bool write_sector(pt::uint32_t lba, const void* buffer);
     static pt::uint32_t get_sector_count();
     static bool is_present();
+
+    // Raw sector I/O (bypasses the cache layer) — used by disk_cache
+    static bool raw_read_sectors(pt::uint32_t lba, pt::uint8_t count, void* buffer);
 
 private:
     static bool present;

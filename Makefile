@@ -50,7 +50,11 @@ build-x86_64: $(kernel_object_files) $(x86_64_object_files)
 	$(LD) -n --no-relax -o dist/x86_64/kernel.bin -T target/x86_64/linker.ld $(kernel_object_files) $(x86_64_object_files)
 
 gdb: all disk.img
-	$(QEMU) -cdrom dist/x86_64/kernel.iso -drive file=disk.img,format=raw,if=ide,media=disk -boot order=d -serial stdio $(QEMU_OPTIONS) -s -S
+	$(QEMU) -cdrom dist/x86_64/kernel.iso \
+	  -device ahci,id=ahci \
+	  -drive id=disk,file=disk.img,format=raw,if=none \
+	  -device ide-hd,drive=disk,bus=ahci.0 \
+	  -boot order=d -serial stdio $(QEMU_OPTIONS) -s -S
 
 # ── Userspace C runtime (libc shim) ──────────────────────────────────────
 CC          = gcc
@@ -326,7 +330,15 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 
 # ── Run targets ──────────────────────────────────────────────────────────
 run: all disk.img
-	$(QEMU) -cdrom dist/x86_64/kernel.iso -drive file=disk.img,format=raw,if=ide,media=disk -boot order=d -serial stdio $(QEMU_OPTIONS)
+	$(QEMU) -cdrom dist/x86_64/kernel.iso \
+	  -device ahci,id=ahci \
+	  -drive id=disk,file=disk.img,format=raw,if=none \
+	  -device ide-hd,drive=disk,bus=ahci.0 \
+	  -boot order=d -serial stdio $(QEMU_OPTIONS)
 
 rundisk: build-x86_64 disk.img
-	$(QEMU) -kernel dist/x86_64/kernel.bin -drive file=disk.img,format=raw,if=ide,media=disk -serial stdio $(QEMU_OPTIONS)
+	$(QEMU) -kernel dist/x86_64/kernel.bin \
+	  -device ahci,id=ahci \
+	  -drive id=disk,file=disk.img,format=raw,if=none \
+	  -device ide-hd,drive=disk,bus=ahci.0 \
+	  -serial stdio $(QEMU_OPTIONS)

@@ -1,5 +1,4 @@
 #include "device/disk_cache.h"
-#include "device/ide.h"
 #include "device/disk.h"
 #include "kernel.h"
 #include "virtual.h"
@@ -72,8 +71,7 @@ static pt::size_t cache_evict_idx()
 bool disk_cache_read(pt::uint32_t lba, void* buffer)
 {
     if (!pool) {
-        // Cache not initialized — fall through to IDE directly.
-        return IDE::read_sectors(0, lba, 1, buffer);
+        return Disk::raw_read_sectors(lba, 1, buffer);
     }
 
     // Check cache.
@@ -93,7 +91,7 @@ bool disk_cache_read(pt::uint32_t lba, void* buffer)
         ra = (pt::uint8_t)(disk_sectors - lba);
     if (ra == 0) ra = 1;
 
-    if (!IDE::read_sectors(0, lba, ra, lines[idx].data))
+    if (!Disk::raw_read_sectors(lba, ra, lines[idx].data))
         return false;
 
     lines[idx].lba   = lba;

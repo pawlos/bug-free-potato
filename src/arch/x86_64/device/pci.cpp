@@ -27,9 +27,10 @@ bool pci::check_device(pci_device* ptr, const pci_query query)
     return false;
    }
   const auto device_id = config_word >> 16;
+  // Dword at offset 0x08 is [0x08 revision][0x09 prog-if][0x0A subclass][0x0B class].
   const auto class_with_subclass = pciConfigReadDWord(query.bus, query.device, 0, 8);
-  const auto class_code =  class_with_subclass >> 24;
-  const auto subclass_code = class_with_subclass & 0xFF;
+  const auto class_code =  (class_with_subclass >> 24) & 0xFF;
+  const auto subclass_code = (class_with_subclass >> 16) & 0xFF;
   ptr->vendor_id = vendor_id;
   ptr->device_id = device_id;
   ptr->class_code = class_code;

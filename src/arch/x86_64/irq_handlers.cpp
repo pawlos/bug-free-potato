@@ -3,6 +3,7 @@
 #include "device/keyboard.h"
 #include "device/pic.h"
 #include "device/timer.h"
+#include "device/ahci.h"
 #include "task.h"
 #include "net/net.h"
 
@@ -56,7 +57,9 @@ ASMCALL void irq12_handler()
 
 ASMCALL void irq11_handler()
 {
+	// Shared IRQ — RTL8139 and AHCI may both be on this line
 	RTL8139::handle_irq();
+	AHCI::check_irq();
 	PIC::irq_ack(11);
 }
 

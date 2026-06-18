@@ -20,4 +20,6 @@ public:
     static void Remap();
     static void UnmaskAll();
     static void irq_ack(pt::uint8_t irq);
+    static void mask_irq(pt::uint8_t irq);
+    static void unmask_irq(pt::uint8_t irq);
 };
