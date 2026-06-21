@@ -197,6 +197,9 @@ public:
     // Called from shared IRQ handler (IRQ11, shared with RTL8139)
     static bool check_irq();
 
+    // Total DMA commands issued (read+write) since boot — for benchmarking.
+    static pt::uint64_t get_command_count();
+
 private:
     // ── Per-port state ───────────────────────────────────────────────
     struct AHCI_PORT_STATE {
@@ -224,6 +227,9 @@ private:
     static AHCI_PORT_STATE ports[AHCI_MAX_PORTS];
     static AHCIDrive       drives[AHCI_MAX_DRIVES];
     static pt::uint8_t     drive_count;
+
+    // Count of DMA commands issued (incremented in issue_command).
+    static pt::uint64_t    command_count;
 
     // ── Low-level register access ────────────────────────────────────
     static pt::uint32_t pci_read_dword(pt::uint8_t offset);

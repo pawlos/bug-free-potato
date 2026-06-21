@@ -40,6 +40,7 @@ private:
     void execute_cat(const char* cmd);
     void execute_play(const char* cmd);
     void execute_disk(const char* cmd);
+    void execute_diskbench(const char* cmd);
     void execute_echo(const char* cmd);
     void execute_clear(const char* cmd);
     void execute_timers(const char* cmd);

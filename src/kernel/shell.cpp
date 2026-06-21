@@ -8,6 +8,8 @@
 #include "device/timer.h"
 #include "device/pci.h"
 #include "device/disk.h"
+#include "device/disk_cache.h"
+#include "device/ahci.h"
 #include "fs/vfs.h"
 #include "device/ac97.h"
 #include "device/acpi.h"
@@ -32,6 +34,7 @@ constexpr char ls_cmd[] = "ls";
 constexpr char cat_cmd[] = "cat ";
 constexpr char play_cmd[] = "play ";
 constexpr char disk_cmd[] = "disk";
+constexpr char diskbench_cmd[] = "diskbench";
 constexpr char help_cmd[] = "help";
 constexpr char echo_cmd[] = "echo ";
 constexpr char clear_cmd[] = "clear";
@@ -385,6 +388,69 @@ void Shell::execute_disk(const char*) {
     } else {
         vterm_printf("No disk present\n");
     }
+}
+
+void Shell::execute_diskbench(const char*) {
+    if (!Disk::is_present()) { vterm_printf("No disk present\n"); return; }
+
+    // Read a fixed 4 MB from a safe region two ways and compare. Reads are
+    // non-destructive, so any in-range LBA works; start past the FAT area.
+    constexpr pt::uint32_t start_lba     = 2048;        // 1 MB in
+    constexpr pt::uint32_t total_sectors = 8192;        // 4 MB
+    constexpr pt::uint64_t total_bytes   = (pt::uint64_t)total_sectors * 512;
+
+    if (start_lba + total_sectors > Disk::get_sector_count()) {
+        vterm_printf("Disk too small for benchmark\n");
+        return;
+    }
+
+    // Page-aligned 32 KB buffer so a 64-sector read needs exactly 8 PRD
+    // entries (== AHCI_PRDT_MAX) rather than 9; the heap is identity-mapped
+    // and physically contiguous, so a 4 KB-aligned VA is 4 KB-aligned PA.
+    pt::uint8_t* raw = (pt::uint8_t*)vmm.kmalloc(64 * 512 + 4096);
+    if (!raw) { vterm_printf("alloc failed\n"); return; }
+    pt::uint8_t* buf =
+        (pt::uint8_t*)(((pt::uintptr_t)raw + 4095) & ~(pt::uintptr_t)4095);
+
+    auto kbps = [&](pt::uint64_t us) -> pt::uint32_t {
+        if (us == 0) us = 1;  // guard div-by-zero
+        return (pt::uint32_t)(total_bytes * 1000000ULL / us / 1024);
+    };
+
+    vterm_printf("diskbench: 4 MB from LBA %d\n", start_lba);
+    bool ok = true;
+
+    // ── Cache path: single-sector reads → 8-sector read-ahead. This is the
+    // path the FAT/ELF loader actually drives (includes a per-sector memcpy).
+    disk_cache_invalidate();
+    pt::uint64_t c0 = AHCI::get_command_count();
+    pt::uint64_t t0 = get_microseconds();
+    for (pt::uint32_t i = 0; i < total_sectors && ok; i++)
+        ok = Disk::read_sector(start_lba + i, buf);
+    if (!ok) { vterm_printf("  cached: read error\n"); vmm.kfree(raw); return; }
+    pt::uint64_t us = get_microseconds() - t0;
+    vterm_printf("  cached %d-sec RA: %d KB/s (%d us, %d cmds)\n",
+                 (pt::uint32_t)READAHEAD_SECTORS, kbps(us), (pt::uint32_t)us,
+                 (pt::uint32_t)(AHCI::get_command_count() - c0));
+
+    // ── Raw sweep: read 4 MB via raw commands of N sectors each (no cache, no
+    // memcpy). Isolates per-command overhead. All sizes fit in <=8 PRDs.
+    const pt::uint8_t sizes[] = { 8, 16, 32, 64 };
+    for (pt::size_t s = 0; s < sizeof(sizes) && ok; s++) {
+        pt::uint8_t chunk = sizes[s];
+        disk_cache_invalidate();
+        c0 = AHCI::get_command_count();
+        t0 = get_microseconds();
+        for (pt::uint32_t i = 0; i < total_sectors && ok; i += chunk)
+            ok = Disk::raw_read_sectors(start_lba + i, chunk, buf);
+        if (!ok) { vterm_printf("  raw %d-sec: read error\n", chunk); break; }
+        us = get_microseconds() - t0;
+        vterm_printf("  raw %d-sec: %d KB/s (%d us, %d cmds)\n",
+                     chunk, kbps(us), (pt::uint32_t)us,
+                     (pt::uint32_t)(AHCI::get_command_count() - c0));
+    }
+
+    vmm.kfree(raw);
 }
 
 void Shell::execute_play(const char* cmd) {
@@ -1066,6 +1132,9 @@ bool Shell::execute(const char* cmd) {
     }
     else if (!memcmp(cmd, ls_cmd, 2) && (cmd[2] == '\0' || cmd[2] == ' ')) {
         execute_ls(cmd);
+    }
+    else if (!memcmp(cmd, diskbench_cmd, sizeof(diskbench_cmd))) {
+        execute_diskbench(cmd);
     }
     else if (!memcmp(cmd, disk_cmd, sizeof(disk_cmd))) {
         execute_disk(cmd);

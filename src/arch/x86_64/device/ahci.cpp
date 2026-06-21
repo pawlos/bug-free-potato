@@ -23,6 +23,7 @@ pt::uintptr_t          AHCI::abar_size = 0;
 AHCI::AHCI_PORT_STATE AHCI::ports[AHCI_MAX_PORTS] = {};
 AHCIDrive       AHCI::drives[AHCI_MAX_DRIVES]      = {};
 pt::uint8_t     AHCI::drive_count                  = 0;
+pt::uint64_t    AHCI::command_count                = 0;
 
 // ── PCI config helpers ───────────────────────────────────────────────────
 pt::uint32_t AHCI::pci_read_dword(pt::uint8_t offset) {
@@ -537,9 +538,14 @@ bool AHCI::issue_command(pt::uint8_t port, pt::uint8_t slot,
     asm volatile("mfence" ::: "memory");
 
     // Issue command
+    command_count++;
     port_write(port, PORT_PxCI, (1u << slot));
 
     return true;
+}
+
+pt::uint64_t AHCI::get_command_count() {
+    return command_count;
 }
 
 // ── initialize: find AHCI controller, init all ports, identify drives ───
