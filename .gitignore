@@ -10,6 +10,8 @@ src/userspace/devilutionx/devilutionx-src/
 src/userspace/scummvm/scummvm-src/
 src/userspace/scummvm/.cloned
 src/userspace/scummvm/.sources
+src/userspace/lua/lua-src/
+src/userspace/lua/.cloned
 
 # Game data (user-supplied, not redistributable)
 assets/doom1.wad

@@ -12,3 +12,10 @@
 
 typedef long ptrdiff_t;
 typedef long double max_align_t;
+
+/* offsetof — part of standard <stddef.h>; this shadows the compiler's
+   freestanding header so we must provide it. Guarded to stay safe for the
+   C++ ports that pull in the host libstdc++ headers. */
+#ifndef offsetof
+#define offsetof(type, member) __builtin_offsetof(type, member)
+#endif

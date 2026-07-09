@@ -5,6 +5,12 @@
 
 typedef void (*sighandler_t)(int);
 
+/* Atomic integer type for signal handlers (standard <signal.h>). */
+#ifndef __sig_atomic_t_defined
+#define __sig_atomic_t_defined
+typedef int sig_atomic_t;
+#endif
+
 #define SIG_DFL ((sighandler_t)0)
 #define SIG_IGN ((sighandler_t)1)
 #define SIG_ERR ((sighandler_t)-1)

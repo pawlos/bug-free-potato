@@ -142,6 +142,7 @@ include mk/duke3d.mk
 include mk/player.mk
 include mk/devilutionx.mk
 include mk/imgview.mk
+include mk/lua.mk
 include mk/sdlpop.mk
 include mk/wolf3d.mk
 include mk/scummvm.mk
@@ -183,7 +184,7 @@ clean-sdlpop:
 
 clean-games: clean-doom clean-quake clean-quake2 clean-duke3d clean-sdlpop clean-devilutionx clean-wolf3d clean-scummvm
 
-clean-all: clean clean-games
+clean-all: clean clean-games clean-lua
 
 # ── Disk image ───────────────────────────────────────────────────────────
 DUKE_GRP ?= assets/duke3d.grp
@@ -204,7 +205,11 @@ ASSET_FILES = assets/font.psf \
 OPTIONAL_GAME_ELFS := $(wildcard $(SCUMMVM_ELF) $(DOOM_ELF) $(QUAKE_ELF) $(Q2_ELF) \
                                   $(DUKE_ELF) $(SDLPOP_ELF) $(DVLX_ELF) $(WOLF3D_ELF))
 
-disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYER_ELF) $(IMGVIEW_ELF) $(OPTIONAL_GAME_ELFS)
+# Optional tool/app ELFs (not games). Built on demand (e.g. `make lua`);
+# wildcard so the disk image picks them up only once built.
+OPTIONAL_TOOL_ELFS := $(wildcard $(LUA_ELF))
+
+disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYER_ELF) $(IMGVIEW_ELF) $(OPTIONAL_GAME_ELFS) $(OPTIONAL_TOOL_ELFS)
 	@echo "Creating FAT32 disk image..."
 	dd if=/dev/zero of=disk.img bs=1M count=1024 2>/dev/null
 	mkfs.vfat -F 32 -n "POTATDISK" disk.img
@@ -248,6 +253,11 @@ disk.img: $(ASSET_FILES) $(TEST_ELF_BIN) $(BLINK_ELF_BIN) $(SIMPLE_BINS) $(PLAYE
 	copy_file dist/userspace/snake.elf       GAMES/SNAKE/SNAKE.ELF; \
 	copy_file $(PLAYER_ELF)                  BIN/PLAYER.ELF; \
 	copy_file $(IMGVIEW_ELF)                 BIN/IMGVIEW.ELF; \
+	copy_file $(LUA_ELF)                     BIN/LUA.ELF; \
+	if [ -f $(LUA_ELF) ]; then \
+	  mmd -i disk.img ::GAMES/LUA 2>/dev/null || true; \
+	  for f in src/userspace/lua/scripts/*.LUA; do [ -f "$$f" ] && mcopy -i disk.img "$$f" "::GAMES/LUA/$$(basename $$f)"; done; \
+	fi; \
 	copy_file assets/menu.png                SYS/MENU.PNG; \
 	copy_file $(PLAYER_MPG)                  SYS/BADAPPLE.MPG; \
 	if [ -f $(DOOM_ELF) ]; then \
