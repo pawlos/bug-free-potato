@@ -47,10 +47,23 @@ static pt::uint64_t syscall_dispatch(pt::uint64_t nr, pt::uint64_t arg1,
 			const char* buf = reinterpret_cast<const char*>(arg2);
 			pt::uint32_t n  = (pt::uint32_t)arg3;
 			if (fd == 1 || fd == 2) {
-				// stdout/stderr always go to the task's vterm (or the
-				// active vterm if none is bound). Windowed graphical
-				// tasks must not get text dumped into their framebuffer.
 				Task* wt = TaskScheduler::get_current_task();
+				// Text-mode windows (WF_TEXT: e.g. the shell, the Lua REPL)
+				// render stdout/stderr into the window itself. Graphical
+				// windows (Doom/Quake/ScummVM) deliberately do NOT — their
+				// debug text must not flicker over the framebuffer (ae1e841) —
+				// so they fall through to the vterm below along with
+				// non-windowed tasks.
+				if (wt && wt->owns_window && wt->window_id != INVALID_WID) {
+					Window* w = WindowManager::get_window(wt->window_id);
+					if (w && w->text_mode) {
+						for (pt::uint32_t i = 0; i < n; i++)
+							WindowManager::put_char(wt->window_id, buf[i]);
+						return (pt::uint64_t)n;
+					}
+				}
+				// stdout/stderr go to the task's vterm (or the active vterm
+				// if none is bound).
 				bool has_vterm = wt && wt->vterm_id != INVALID_VT;
 				VTerm* vt = has_vterm ? vterm_get(wt->vterm_id) : vterm_active();
 				if (vt) {

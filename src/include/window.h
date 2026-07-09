@@ -13,6 +13,10 @@ constexpr pt::uint32_t INVALID_WID  = 0xFFFFFFFF;
 
 // Flags for create_window
 constexpr pt::uint32_t WF_CHROMELESS = 1u; // no border or title bar; client = full rect
+constexpr pt::uint32_t WF_TEXT       = 2u; // text-mode window: stdout/stderr (SYS_WRITE
+                                           // fd=1/2) render into this window instead of the
+                                           // vterm. Graphical windows omit this so their
+                                           // debug text stays out of the framebuffer.
 
 // 64-bit event encoding: bit 8 = pressed, bits 7:0 = PS/2 set-1 scancode.
 // 0 is the sentinel for "no event" (scancode 0 is never emitted by PS/2).
@@ -28,6 +32,7 @@ struct Window {
     pt::uint32_t vt_id;           // VT that owns this window
     bool         active;
     bool         chromeless;      // no border/title bar; client area = full rect
+    bool         text_mode;       // WF_TEXT: stdout/stderr routed into this window
 
     // Outer frame position and size (includes border + title bar)
     pt::uint32_t screen_x, screen_y;

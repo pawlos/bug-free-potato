@@ -239,6 +239,20 @@ static inline long sys_create_window(long cx, long cy, long cw, long ch)
     return ret;
 }
 
+/* Text-mode window: stdout/stderr (SYS_WRITE fd=1/2) render into the window
+   instead of the vterm. Use for console apps (shell, REPL). Flag WF_TEXT = 2. */
+static inline long sys_create_window_text(long cx, long cy, long cw, long ch)
+{
+    register long _ch    __asm__("rcx") = ch;
+    register long _flags __asm__("r8")  = 2;   /* WF_TEXT */
+    long ret;
+    __asm__ volatile("int $0x80"
+        : "=a"(ret)
+        : "a"((long)SYS_CREATE_WINDOW), "D"(cx), "S"(cy), "d"(cw), "r"(_ch), "r"(_flags)
+        : "memory");
+    return ret;
+}
+
 static inline long sys_destroy_window(long wid)
     { return __sc1(SYS_DESTROY_WINDOW, wid); }
 

@@ -18,6 +18,7 @@ void WindowManager::initialize()
         windows[i].owner_task_id = INVALID_WID;
         windows[i].active        = false;
         windows[i].chromeless    = false;
+        windows[i].text_mode     = false;
         windows[i].screen_x      = 0;
         windows[i].screen_y      = 0;
         windows[i].total_w       = 0;
@@ -119,6 +120,7 @@ pt::uint32_t WindowManager::create_window(pt::uint32_t x, pt::uint32_t y,
     win->owner_task_id = owner_task_id;
     win->active        = true;
     win->chromeless    = (flags & WF_CHROMELESS) != 0;
+    win->text_mode     = (flags & WF_TEXT) != 0;
 
     if (win->chromeless) {
         win->screen_x  = x;

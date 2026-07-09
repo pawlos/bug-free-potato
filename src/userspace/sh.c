@@ -469,7 +469,7 @@ static void shell_loop(void) {
 }
 
 int main(void) {
-    long wid = sys_create_window(20, 20, 640, 400);
+    long wid = sys_create_window_text(20, 20, 640, 400);
     sys_set_window_title(wid, "Shell");
 
     puts("potatOS shell v1.0");
