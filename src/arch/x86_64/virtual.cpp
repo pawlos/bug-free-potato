@@ -330,15 +330,47 @@ void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
 {
     if (frame_allocator_ready) return;
 
-    // Calculate total memory
-    pt::size_t total_memory = 0;
+    // Calculate total memory and the highest RAM address (top of physical RAM).
+    pt::size_t    total_memory = 0;
+    pt::uintptr_t top_of_ram   = 0;
     for (pt::size_t i = 0; i < MEMORY_ENTRIES_LIMIT; i++)
     {
         if (mmap[i] == nullptr) break;
         if (mmap[i]->type == 1)  // Free memory
         {
             total_memory += mmap[i]->length;
+            pt::uintptr_t region_end = mmap[i]->base_addr + mmap[i]->length;
+            if (region_end > top_of_ram) top_of_ram = region_end;
         }
+    }
+
+    // The ELF staging area lives at a fixed high physical address
+    // (ELF_STAGING_PHYS .. +ELF_STAGING_SIZE, reserved below).  If RAM does
+    // not physically extend that far, the staging region is unbacked: writes
+    // are silently dropped and reads return zero, so every ELF loads as a page
+    // of zeros and the task faults at its entry point.  Refuse to boot with a
+    // clear message instead of limping into that corruption.  (QEMU's default
+    // is 128 MB; run with e.g. `-m 512M` — the Makefile's `make run` does.)
+    //
+    // TODO(refactor): this fixed staging area is the root of two problems — the
+    // 400 MB RAM floor enforced here, and an unlocked shared-buffer race (the
+    // staging region + ElfLoader::page_flags[] are globals; create_elf_task is
+    // preemptible mid-copy, so two concurrent exec/load calls corrupt each
+    // other's staging).  Both go away by copying PT_LOAD segments directly into
+    // the freshly-allocated per-task code frames and dropping this region; then
+    // this RAM check can be relaxed/removed.
+    constexpr pt::uintptr_t ELF_STAGING_PHYS = 0x18000000;          // 384 MB
+    constexpr pt::size_t    ELF_STAGING_SIZE = 16 * 1024 * 1024;    // 16 MB
+    constexpr pt::uintptr_t MIN_RAM_REQUIRED = ELF_STAGING_PHYS + ELF_STAGING_SIZE;  // 400 MB
+    if (top_of_ram < MIN_RAM_REQUIRED)
+    {
+        klog("[VMM] FATAL: only %d MB RAM detected; potatOS needs at least %d MB "
+             "(ELF staging area lives at %d MB). Boot QEMU with e.g. -m 512M.\n",
+             (int)(top_of_ram / (1024 * 1024)),
+             (int)(MIN_RAM_REQUIRED / (1024 * 1024)),
+             (int)(ELF_STAGING_PHYS / (1024 * 1024)));
+        kernel_panic("Insufficient RAM: need >= 400 MB (try QEMU -m 512M)",
+                     NotAbleToAllocateMemory);
     }
 
     // Calculate bitmap size (1 bit per 4KB frame)
@@ -379,9 +411,8 @@ void VMM::initialize_frame_allocator(memory_map_entry* mmap[])
     // create_elf_task copies code pages FROM the staging area while
     // simultaneously calling allocate_frame() for destination frames;
     // without this reservation, allocated frames can land in the staging
-    // range and corrupt the source data mid-copy.
-    constexpr pt::uintptr_t ELF_STAGING_PHYS = 0x18000000;
-    constexpr pt::size_t    ELF_STAGING_SIZE  = 16 * 1024 * 1024;
+    // range and corrupt the source data mid-copy.  (ELF_STAGING_PHYS /
+    // ELF_STAGING_SIZE are declared above with the minimum-RAM check.)
     pt::size_t staging_start = ELF_STAGING_PHYS / 4096;
     pt::size_t staging_end   = (ELF_STAGING_PHYS + ELF_STAGING_SIZE) / 4096;
     for (pt::size_t i = staging_start; i < staging_end; i++)
