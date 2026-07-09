@@ -10,6 +10,7 @@ CFLAGS_DOOM = -ffreestanding -fno-stack-protector -fno-builtin \
               -m64 -nostdlib -w \
               -include stddef.h \
               -DFEATURE_SOUND \
+              -I $(DOOM_DIR) \
               -I src/userspace/libc \
               -I src/userspace \
               -I $(DOOMGEN_DIR)
