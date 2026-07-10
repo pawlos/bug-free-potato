@@ -55,6 +55,18 @@ void* VMM::kmalloc(pt::size_t size)
     size -= remainder;
     if (remainder != 0) size += 8;
 
+    // Disable interrupts for the whole free-list walk-and-splice.  The heap's
+    // free list is a shared intrusive list of kMemoryRegion headers; a
+    // disk-backed syscall re-enables interrupts mid-flight (ide.cpp sti while
+    // waiting on the drive), so the timer can preempt one task mid-kmalloc and
+    // let another task's kmalloc/kfree mutate the same list, corrupting the
+    // chunk headers and handing back overlapping memory.  Same hazard the
+    // frame allocator already guards against.  pushfq/popfq preserves the
+    // prior IF state so this is safe from both syscall (IF=0) and kernel
+    // (IF=1) context.
+    pt::uint64_t saved_flags;
+    asm volatile("pushfq; pop %0; cli" : "=r"(saved_flags) :: "memory");
+
     kMemoryRegion* currentMemorySegment = this->firstFreeMemoryRegion;
 
     while (true)
@@ -92,10 +104,12 @@ void* VMM::kmalloc(pt::size_t size)
             currentMemorySegment->prevFreeChunk = nullptr;
             currentMemorySegment->nextFreeChunk = nullptr;
 
+            asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
             return currentMemorySegment + 1;
         }
         if (currentMemorySegment->nextFreeChunk == nullptr)
         {
+            asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
             klog("[VMM] Out of memory: requested %d bytes\n", (int)size);
             return nullptr;
         }
@@ -177,10 +191,17 @@ void VMM::kfree(void *address)
         return;
     }
 
+    klog("[VMM] Freeing bytes memory at %p.\n", address);
+
+    // Guard the free-list splice + coalesce against concurrent kmalloc/kfree
+    // from a task that preempted us while interrupts were re-enabled mid-
+    // syscall (see kmalloc).  Without this, two tasks splicing the same list
+    // corrupt the chunk headers.
+    pt::uint64_t saved_flags;
+    asm volatile("pushfq; pop %0; cli" : "=r"(saved_flags) :: "memory");
+
     kMemoryRegion* seg = static_cast<kMemoryRegion *>(address) - 1;
     seg->free = true;
-
-    klog("[VMM] Freeing bytes memory at %p.\n", address);
 
     // Insert seg into the address-ordered free list.
     // prevFreeChunk/nextFreeChunk were cleared to null at allocation time,
@@ -210,6 +231,8 @@ void VMM::kfree(void *address)
         if (seg->prevChunk->free)
             combineFreeSegments(seg, seg->prevChunk);
     }
+
+    asm volatile("push %0; popfq" : : "r"(saved_flags) : "memory");
 }
 
 void VMM::map_page(pt::uintptr_t virt, pt::uintptr_t phys, pt::uint64_t flags)
